@@ -1,0 +1,19 @@
+spring:
+  application:
+    name: backend
+  datasource:
+    url: jdbc:postgresql://localhost:5433/sweprep
+    username: sweprep
+    password: sweprep
+  flyway:
+    enabled: true
+
+management:
+  endpoints:
+    web:
+      cors:
+        allowed-origins: "http://localhost:5173"
+        allowed-methods: GET
+  endpoint:
+    health:
+      show-details: always
