@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: sweprep
+      POSTGRES_USER: sweprep
+      POSTGRES_PASSWORD: sweprep
+    ports:
+      # Host port 5433, not 5432: leaves the standard Postgres port free for
+      # any other local instance already running on the machine.
+      - "5433:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sweprep -d sweprep"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres-data:
