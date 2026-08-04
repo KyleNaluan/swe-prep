@@ -1,0 +1,6 @@
+-- Baseline migration.
+--
+-- Intentionally empty: this scaffold predates any domain table (see issue #12).
+-- Its purpose is to establish Flyway, not Hibernate ddl-auto, as the only
+-- mechanism that ever changes this schema, starting from the first real
+-- table added in a later ticket.
