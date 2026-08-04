@@ -11,11 +11,54 @@ The daily loop:
 
 ## Stack
 
-- Spring Boot 3.4.x on Java 21
-- Postgres
-- React + Vite
+- Spring Boot 3.4.x on Java 21, Maven, in `backend/`
+- Postgres, via the `docker-compose.yml` at the repo root
+- React + Vite, in `frontend/`
 - Monaco editor
 - Run locally, reached over a tailnet
+
+See `AGENTS.md` for the repo layout decision and other project-intrinsic notes.
+
+## Running locally
+
+Prerequisites: Java 21 on `PATH`, Docker running, Node 24.
+
+1. Start Postgres:
+
+   ```sh
+   docker compose up -d
+   ```
+
+2. Start the backend (runs on `:8080`, applies Flyway migrations on boot):
+
+   ```sh
+   cd backend
+   ./mvnw spring-boot:run
+   ```
+
+3. Start the frontend (runs on `:5173`):
+
+   ```sh
+   cd frontend
+   npm install
+   npm run dev
+   ```
+
+4. Open `http://localhost:5173` — it calls the backend's `/actuator/health`
+   endpoint and shows whether the backend (and its Postgres connection) is up.
+
+If Postgres isn't reachable, the backend fails to start rather than coming up
+in a degraded state.
+
+## Running the tests
+
+```sh
+./test.sh
+```
+
+Runs the backend suite (Spring Boot tests against a real, disposable Postgres
+container via Testcontainers — needs Docker) and then the frontend suite
+(Vitest).
 
 ## Design decisions
 
