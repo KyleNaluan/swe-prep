@@ -16,4 +16,9 @@ management:
         allowed-methods: GET
   endpoint:
     health:
-      show-details: always
+      # Component-by-component detail (DB status, etc.) is only for
+      # authorised callers. There is no auth mechanism in this app yet, so
+      # today that means nobody gets it - only the top-level UP/DOWN status
+      # does, which is all the front end has ever read. When auth lands,
+      # this starts working correctly with no further change needed here.
+      show-details: when-authorized
