@@ -44,8 +44,9 @@ Prerequisites: Java 21 on `PATH`, Docker running, Node 24.
    npm run dev
    ```
 
-4. Open `http://localhost:5173` — it calls the backend's `/actuator/health`
-   endpoint and shows whether the backend (and its Postgres connection) is up.
+4. Open `http://localhost:5173` — it shows one coding exercise in a Monaco
+   editor; write a solution and press Run to have the backend compile and
+   execute it against the exercise's test cases and report `N of M tests passed`.
 
 If Postgres isn't reachable, the backend fails to start rather than coming up
 in a degraded state.

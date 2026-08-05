@@ -38,6 +38,23 @@ Two invariants from the map are the ones most likely to be violated by someone w
 
 `CLAUDE.md` is a symlink to this file.
 
+## Execution: exercise to verdict
+
+The seam that runs a submission lives under `backend/src/main/java/com/sweprep/backend/` in four packages: `exercise` (language-neutral model), `language` (adapters), `runner` (execution) and `grader` (pass/fail), wired to the editor by `web`.
+The first concrete instances are `JavaLanguageAdapter`, `LocalJavaRunner` and `TestCaseGrader`; issue #13 established their shape.
+
+Contracts, kept deliberately apart (see the map, issue #6):
+
+- `LanguageAdapter` generates both the editor stub and the harness from a `Signature`; neither is hand-written per problem.
+- `Runner` only compiles and executes (`ExecutionRequest` to `ExecutionResult`) and knows nothing about test cases or verdicts.
+- `Grader` writes the cases, invokes the runner, and interprets the outcome into a `Verdict`. `COMPILE_ERROR`, `TIMEOUT` and a test failure are distinct outcomes.
+
+Sharp edges worth knowing before touching this:
+
+- The harness classpath is resolved from the `CodeSource` of the Jackson classes it imports, not from `java.class.path`, because Surefire may hand the JVM a booter jar instead of the real dependency jars. See `JavaLanguageAdapter.jacksonClasspath`.
+- Result comparison is fully type-agnostic: the harness compares `mapper.valueToTree(actual)` against the expected JSON node with Jackson's semantic `JsonNode.equals`. Only argument binding needs per-type generated code, so it has no notion of "any valid answer" - problems whose output is not unique must pin an ordering in the statement/stub, or wait for a comparator-aware grader.
+- The execution timeout is `sweprep.grader.timeout` (default `PT10S`); the local runner is unsandboxed by design (single user, issue #2's swap point).
+
 ## Maintaining this file
 
 Keep this file for knowledge useful to almost every future agent session in this project.
