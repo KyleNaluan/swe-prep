@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      # test.sh runs `npm test`, not `npm install` - that's a prerequisite
+      # step for local dev covered by README.md, not part of the documented
+      # test command itself. Docker is already present and running on
+      # GitHub-hosted runners, which is what the backend suite needs for its
+      # Testcontainers Postgres.
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: frontend
+
+      - name: Run test suite
+        run: ./test.sh
