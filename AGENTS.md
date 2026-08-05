@@ -20,7 +20,9 @@ One repo, two toolchains, each left to own its usual root rather than nested und
 
 Schema migrations use Flyway (`backend/src/main/resources/db/migration/`), never Hibernate `ddl-auto`, starting from the very first migration. This is a hard invariant, not a style preference - see issue #12.
 
-Backend tests spin up a real, disposable Postgres via Testcontainers rather than mocking the datasource. The `api.version` system property pinned in `backend/pom.xml`'s surefire config is a required workaround, not stray config: Testcontainers' Docker connectivity probe hardcodes an old API version that current Docker Engine releases reject outright, so without it the probe fails before ever checking what the daemon supports. Don't remove it.
+Backend tests spin up a real, disposable Postgres via Testcontainers rather than mocking the datasource. The `api.version` system property pinned in `backend/pom.xml`'s surefire config is a workaround for the dev machine, not stray config: Testcontainers' Docker connectivity probe hardcodes an old API version that this machine's Docker Engine (new enough to enforce a stricter MinAPIVersion) rejects outright, so without it the probe fails before ever checking what the daemon supports. Don't remove it. It's confirmed *unnecessary* on GitHub Actions' hosted `ubuntu-latest` runners (Docker Engine 28.0.4 there accepts the hardcoded probe version fine) - keep the pin anyway, since it's harmless where it isn't needed and required on this box.
+
+CI (`.github/workflows/ci.yml`) runs `./test.sh` on every push and pull request, on GitHub-hosted `ubuntu-latest` runners with Docker preinstalled - so the backend's Testcontainers suite genuinely runs there, not just locally.
 
 ## Design decisions
 
