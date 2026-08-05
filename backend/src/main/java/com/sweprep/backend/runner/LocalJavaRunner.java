@@ -33,6 +33,8 @@ import org.springframework.stereotype.Component;
 @Component
 public class LocalJavaRunner implements Runner {
 
+    private static final int MAX_CAPTURED_BYTES = 1024 * 1024;
+
     @Override
     public ExecutionResult execute(ExecutionRequest request) {
         Path workDir = null;
@@ -134,10 +136,8 @@ public class LocalJavaRunner implements Runner {
         Process process = new ProcessBuilder(command).directory(workDir.toFile()).start();
 
         ExecutorService streams = Executors.newFixedThreadPool(2);
-        Future<String> stdout = streams.submit(() ->
-                new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8));
-        Future<String> stderr = streams.submit(() ->
-                new String(process.getErrorStream().readAllBytes(), StandardCharsets.UTF_8));
+        Future<String> stdout = streams.submit(() -> drainCapped(process.getInputStream()));
+        Future<String> stderr = streams.submit(() -> drainCapped(process.getErrorStream()));
 
         try {
             boolean finished = process.waitFor(request.timeout().toMillis(), TimeUnit.MILLISECONDS);
@@ -151,6 +151,28 @@ public class LocalJavaRunner implements Runner {
         } finally {
             streams.shutdownNow();
         }
+    }
+
+    /**
+     * Reads a stream fully - always draining so the process is never blocked by
+     * pipe backpressure - but keeps at most {@link #MAX_CAPTURED_BYTES} in memory
+     * so a runaway print loop cannot exhaust the backend heap.
+     */
+    private static String drainCapped(java.io.InputStream stream) throws IOException {
+        java.io.ByteArrayOutputStream captured = new java.io.ByteArrayOutputStream();
+        byte[] chunk = new byte[8192];
+        boolean truncated = false;
+        int read;
+        while ((read = stream.read(chunk)) != -1) {
+            int room = MAX_CAPTURED_BYTES - captured.size();
+            if (room > 0) {
+                captured.write(chunk, 0, Math.min(read, room));
+            } else {
+                truncated = true;
+            }
+        }
+        String text = captured.toString(StandardCharsets.UTF_8);
+        return truncated ? text + "\n...[output truncated]" : text;
     }
 
     private static String runClasspath(Path workDir, List<String> classpath) {

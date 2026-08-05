@@ -51,7 +51,7 @@ public class TestCaseGrader implements Grader {
         GeneratedHarness harness = adapter.generateHarness(exercise.signature());
 
         Map<String, String> sources = new HashMap<>(harness.sourceFiles());
-        sources.put(JavaLanguageAdapter.SUBMISSION_CLASS + ".java", submission);
+        sources.put(JavaLanguageAdapter.SUBMISSION_CLASS + ".java", submission == null ? "" : submission);
 
         ExecutionRequest request = new ExecutionRequest(
                 sources,
