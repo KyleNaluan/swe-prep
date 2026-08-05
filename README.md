@@ -60,6 +60,8 @@ Runs the backend suite (Spring Boot tests against a real, disposable Postgres
 container via Testcontainers — needs Docker) and then the frontend suite
 (Vitest).
 
+CI runs this same `./test.sh` on every push and pull request; see `AGENTS.md`.
+
 ## Design decisions
 
 The planning map at [issue #1](https://github.com/KyleNaluan/swe-prep/issues/1) is the authoritative record of design decisions for this project.
