@@ -22,6 +22,8 @@ Schema migrations use Flyway (`backend/src/main/resources/db/migration/`), never
 
 Backend tests spin up a real, disposable Postgres via Testcontainers rather than mocking the datasource. The `api.version` system property pinned in `backend/pom.xml`'s surefire config is a required workaround, not stray config: Testcontainers' Docker connectivity probe hardcodes an old API version that current Docker Engine releases reject outright, so without it the probe fails before ever checking what the daemon supports. Don't remove it.
 
+CI (`.github/workflows/ci.yml`) runs `./test.sh` on every push and pull request, on GitHub-hosted `ubuntu-latest` runners with Docker preinstalled - so the backend's Testcontainers suite genuinely runs there, not just locally.
+
 ## Design decisions
 
 The planning map at [issue #1](https://github.com/KyleNaluan/swe-prep/issues/1) is the authoritative source for design decisions.
