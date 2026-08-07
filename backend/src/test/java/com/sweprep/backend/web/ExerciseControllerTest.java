@@ -55,7 +55,11 @@ class ExerciseControllerTest {
                 .andExpect(jsonPath("$.response.kind").value("code"))
                 .andExpect(jsonPath("$.response.language").value("java"))
                 .andExpect(jsonPath("$.response.stub").value(Matchers.containsString("class Solution")))
-                .andExpect(jsonPath("$.response.stub").value(Matchers.containsString("pair")));
+                .andExpect(jsonPath("$.response.stub").value(Matchers.containsString("pair")))
+                // The hint-ladder rung names travel so the editor can offer them, but no
+                // bodies do - a rung's text is disclosed only when the solver takes it.
+                .andExpect(jsonPath("$.hints").value(Matchers.contains("Pattern", "Approach", "Key insight")))
+                .andExpect(jsonPath("$.hints[*].body").doesNotExist());
     }
 
     @Test

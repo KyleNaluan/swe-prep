@@ -55,10 +55,18 @@ Prerequisites: Java 21 on `PATH`, Docker running, Node 24.
 5. Open `http://localhost:5173` — pick an exercise from the selector. A coding
    exercise opens in a Monaco editor: write a solution and press Run to have the
    backend compile and execute it against the test cases and report
-   `N of M tests passed`. A concept exercise shows multiple-choice options and is
+   `N of M tests passed`. A failing run reports only that count, never a case's
+   input, expected, or actual value: reasoning about your own code without an oracle
+   is the interview skill being trained. Help is always available and never penalised
+   - an ordered hint ladder whose rungs you reveal one at a time, and, after a failing
+   run, a failing-case reveal that first asks for a one-line hypothesis before
+   disclosing the case; a "stuck?" nudge quietly offers the next hint after repeated
+   failures. Runtime is shown next to the verdict for interest only, never as part of
+   pass/fail. A concept exercise shows multiple-choice options and is
    graded with no code execution at all. Each sitting and every press of Run is
    recorded as durable practice history, shown in a History panel below the editor
-   and surviving a restart; a Give up button abandons an unsolved sitting.
+   (with the hints taken) and surviving a restart; a Give up button abandons an
+   unsolved sitting.
 
 If Postgres isn't reachable, the backend fails to start rather than coming up in
 a degraded state. If the content path is missing or a file is malformed, the app

@@ -28,8 +28,11 @@ import java.util.UUID;
  * @param outcome                how the sitting ended, or {@code IN_PROGRESS}
  * @param startedAt              when the sitting began
  * @param endedAt                when it reached a terminal outcome, or {@code null}
- * @param hintsTaken             hint-ladder rungs climbed (issue #16 populates)
- * @param failingCaseRevealed    whether the failing case was revealed (issue #5)
+ * @param hintsTaken             hint-ladder rungs climbed (issue #16)
+ * @param failingCaseRevealed    whether the failing case was revealed (issue #5/#16)
+ * @param revealHypothesis       the one-line guess the solver typed before revealing
+ *                               the failing case, or {@code null} if none was given;
+ *                               ungraded and never penalised (issue #16 pedagogy add)
  * @param complexityClaim        the solver's self-reported complexity (issue #17)
  * @param measuredComplexity     what measurement said (issue #17)
  * @param complexityClaimCorrect whether the claim matched measurement (issue #17)
@@ -46,6 +49,35 @@ public record Attempt(
         Instant endedAt,
         int hintsTaken,
         boolean failingCaseRevealed,
+        String revealHypothesis,
         String complexityClaim,
         String measuredComplexity,
-        Boolean complexityClaimCorrect) {}
+        Boolean complexityClaimCorrect) {
+
+    /** This attempt with a different outcome and end time; identity is unchanged. */
+    public Attempt withOutcome(AttemptOutcome newOutcome, Instant endedAt) {
+        return new Attempt(
+                id, userId, exerciseId, exerciseTitle, domain, form, newOutcome, startedAt, endedAt,
+                hintsTaken, failingCaseRevealed, revealHypothesis,
+                complexityClaim, measuredComplexity, complexityClaimCorrect);
+    }
+
+    /** This attempt with the hint ladder advanced to {@code newHintsTaken} rungs. */
+    public Attempt withHintsTaken(int newHintsTaken) {
+        return new Attempt(
+                id, userId, exerciseId, exerciseTitle, domain, form, outcome, startedAt, endedAt,
+                newHintsTaken, failingCaseRevealed, revealHypothesis,
+                complexityClaim, measuredComplexity, complexityClaimCorrect);
+    }
+
+    /**
+     * This attempt with the failing-case reveal recorded and the (optional) one-line
+     * hypothesis the solver typed first (issue #16). Both are recorded, never penalised.
+     */
+    public Attempt withFailingCaseRevealed(String hypothesis) {
+        return new Attempt(
+                id, userId, exerciseId, exerciseTitle, domain, form, outcome, startedAt, endedAt,
+                hintsTaken, true, hypothesis,
+                complexityClaim, measuredComplexity, complexityClaimCorrect);
+    }
+}

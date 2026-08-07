@@ -164,6 +164,147 @@
   }
 }
 
+.runtime {
+  font-weight: 400;
+  opacity: 0.75;
+}
+
+.hints,
+.reveal {
+  margin-top: 1.5rem;
+}
+
+.hints h2,
+.reveal h2 {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.5rem;
+}
+
+.hints-note {
+  font-size: 0.85rem;
+  color: #64748b;
+  line-height: 1.5;
+  margin: 0.4rem 0;
+}
+
+.hint-list {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.hint-list li {
+  padding: 0.6rem 0.9rem;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  border-radius: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.hint-name {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.hint-body {
+  line-height: 1.5;
+}
+
+.hint-offer {
+  margin-top: 0.5rem;
+}
+
+.hint-offer button,
+.reveal button {
+  padding: 0.5rem 1.1rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(148, 163, 184, 0.5);
+  background: transparent;
+  color: #64748b;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.hint-offer button:disabled,
+.reveal button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.hint-offer.nudge {
+  padding: 0.75rem 0.9rem;
+  border-radius: 0.5rem;
+  background: rgba(99, 102, 241, 0.08);
+}
+
+.nudge-line {
+  margin: 0 0 0.5rem;
+  font-size: 0.85rem;
+  color: #6366f1;
+  line-height: 1.5;
+}
+
+.reveal-prompt {
+  display: block;
+  font-size: 0.9rem;
+  color: #334155;
+  margin-bottom: 0.4rem;
+}
+
+.hypothesis {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid rgba(148, 163, 184, 0.5);
+  border-radius: 0.5rem;
+  background: transparent;
+  color: inherit;
+  font-size: 0.95rem;
+}
+
+.failing-case {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.4rem 1rem;
+  margin: 0.5rem 0 0;
+  padding: 0.75rem 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  border-radius: 0.5rem;
+}
+
+.failing-case dt {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  align-self: center;
+}
+
+.failing-case dd {
+  margin: 0;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 0.9rem;
+  overflow-x: auto;
+}
+
+@media (prefers-color-scheme: dark) {
+  .reveal-prompt {
+    color: #cbd5e1;
+  }
+}
+
 .history {
   margin-top: 2.5rem;
 }

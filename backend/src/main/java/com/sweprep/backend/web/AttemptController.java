@@ -17,11 +17,15 @@ import org.springframework.web.bind.annotation.RestController;
  * The editor's endpoints for durable practice history (issue #15).
  *
  * <p>A sitting is opened with {@code POST /api/attempts}; each press of Run is a
- * {@code POST .../submissions} that grades and records a submission; giving up is a
- * {@code POST .../abandon}; and the whole history is read back from
- * {@code GET /api/attempts}. Grading and its verdict shape are unchanged - a
- * submission returns the same {@link RunResponse} the stateless run used to - but the
- * attempt and every submission now survive a restart and are queryable per user.
+ * {@code POST .../submissions} that grades and records a submission; taking a hint is
+ * a {@code POST .../hints}; revealing the failing case is a {@code POST .../reveal};
+ * giving up is a {@code POST .../abandon}; and the whole history is read back from
+ * {@code GET /api/attempts}.
+ *
+ * <p>Judging withholds by default (issues #16/#5): a submission's {@link RunResponse}
+ * carries only the passing count, never a failing case's values. The hint ladder and
+ * the failing-case reveal are the always-available, always-recorded help - both record
+ * their use on the attempt and neither reduces a score or ends the sitting.
  */
 @RestController
 @RequestMapping("/api/attempts")
@@ -50,13 +54,19 @@ public class AttemptController {
         return RunResponse.of(submission);
     }
 
+    @PostMapping("/{id}/hints")
+    public HintResponse takeHint(@PathVariable UUID id) {
+        return HintResponse.of(attempts.takeHint(id));
+    }
+
     @PostMapping("/{id}/abandon")
     public AttemptView abandon(@PathVariable UUID id) {
         return AttemptView.of(attempts.abandon(id));
     }
 
     @PostMapping("/{id}/reveal")
-    public AttemptView reveal(@PathVariable UUID id) {
-        return AttemptView.of(attempts.recordFailingCaseReveal(id));
+    public RevealResponse reveal(@PathVariable UUID id, @RequestBody RevealRequest request) {
+        return RevealResponse.of(
+                attempts.revealFailingCase(id, request.submission(), request.hypothesis()));
     }
 }
