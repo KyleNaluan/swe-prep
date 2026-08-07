@@ -58,18 +58,15 @@ public record ExerciseView(
             case Response.Code code ->
                     ResponseView.code(adapter.languageId(), adapter.generateStub(code.signature()));
             case Response.Choice choice -> ResponseView.choice(choice.options());
-            // A free-text box renders for a "predict the output" rep (issue #18), whose
-            // typed value is machine-graded against an answer key. A self-check free-text
-            // item shares the response type but its produce-then-reveal editor view and
-            // self-rating flow are a later ticket (T5), so that pairing stays unrendered.
+            // A free-text box renders one of two ways, decided by the grading it is paired
+            // with. Paired with an answer key it is the machine-graded "predict the output"
+            // rep (issue #18); paired with a self-check it is the self-graded "explain in
+            // your own words" produce-then-reveal item (issue #41). The two render very
+            // differently, so the kind carries the distinction - but the self-check's model
+            // answer is never shipped up front, only revealed after the learner commits.
             case Response.FreeText ignored -> exercise.grading() instanceof Grading.SelfCheck
-                    ? throwSelfCheckNotRendered()
+                    ? ResponseView.selfCheck()
                     : ResponseView.freeText();
         };
-    }
-
-    private static ResponseView throwSelfCheckNotRendered() {
-        throw new UnsupportedOperationException(
-                "Self-check free-text responses are not rendered yet (design revision t3, T5)");
     }
 }

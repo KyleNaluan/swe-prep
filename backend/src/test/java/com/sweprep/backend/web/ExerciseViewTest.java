@@ -1,18 +1,17 @@
 package com.sweprep.backend.web;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.sweprep.backend.language.JavaLanguageAdapter;
 import com.sweprep.backend.testsupport.Fixtures;
 import org.junit.jupiter.api.Test;
 
 /**
- * The free-text rendering boundary (issue #18, design revision t3 T5). A free-text
- * response covers two different items distinguished by their grading: a "predict the
- * output" rep (answer key) renders as a plain text box now, while a self-check item
- * (its produce-then-reveal flow is a later ticket) still refuses to render, so turning
- * on predict-output did not smuggle in the unbuilt self-check view.
+ * The free-text rendering boundary (issues #18, #41). A free-text response covers two
+ * different items distinguished by their grading: a "predict the output" rep (answer key)
+ * renders as a plain machine-graded text box, while a self-check item (self-check grading)
+ * renders as its own produce-then-reveal kind - and, crucially, ships no model answer up
+ * front, so the reveal can only come after the learner commits their own text.
  */
 class ExerciseViewTest {
 
@@ -28,9 +27,14 @@ class ExerciseViewTest {
     }
 
     @Test
-    void aSelfCheckItemStillRefusesToRender() {
-        assertThatThrownBy(() -> ExerciseView.of(Fixtures.explain(), adapter))
-                .isInstanceOf(UnsupportedOperationException.class)
-                .hasMessageContaining("Self-check");
+    void aSelfCheckItemRendersAsSelfCheckWithoutShippingTheModelAnswer() {
+        ExerciseView view = ExerciseView.of(Fixtures.explainChallenge(), adapter);
+
+        assertThat(view.response().kind()).isEqualTo("selfCheck");
+        assertThat(view.response().options()).isNull();
+        assertThat(view.response().stub()).isNull();
+        // The model answer must never appear in the up-front view - not in the statement,
+        // not anywhere - or produce-then-reveal is defeated before it begins.
+        assertThat(view.statement()).doesNotContain("steepest descent");
     }
 }

@@ -1,6 +1,5 @@
 package com.sweprep.backend.attempt;
 
-import com.sweprep.backend.grader.Verdict;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
@@ -8,6 +7,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -168,6 +168,29 @@ public class SubmissionRepository {
         return byExercise;
     }
 
+    /** One submission by id, or empty when there is none. */
+    public Optional<Submission> findById(UUID id) {
+        return jdbc.sql("SELECT * FROM submission WHERE id = :id")
+                .param("id", id)
+                .query(MAPPER)
+                .optional();
+    }
+
+    /**
+     * Records a self-check's self-rating on its already-committed submission, in the
+     * existing {@code detail} column (design revision t3, section 5 - no migration). The
+     * submission was inserted when the model answer was revealed, freezing the produced
+     * text before the learner saw the answer; this only stamps the rating they then chose.
+     * The {@code SELF_RATED} outcome is untouched, so the row stays structurally invisible
+     * to the objective competence signal.
+     */
+    public void recordSelfRating(UUID id, String rating) {
+        jdbc.sql("UPDATE submission SET detail = :detail WHERE id = :id")
+                .param("id", id)
+                .param("detail", rating)
+                .update();
+    }
+
     /** Every submission in an attempt, oldest first. */
     public List<Submission> findByAttempt(UUID attemptId) {
         return jdbc.sql(
@@ -185,7 +208,7 @@ public class SubmissionRepository {
                 rs.getObject("attempt_id", UUID.class),
                 rs.getTimestamp("submitted_at").toInstant(),
                 rs.getString("response"),
-                Verdict.Outcome.valueOf(rs.getString("outcome")),
+                SubmissionOutcome.valueOf(rs.getString("outcome")),
                 rs.getInt("passed"),
                 rs.getInt("total"),
                 rs.getString("detail"),

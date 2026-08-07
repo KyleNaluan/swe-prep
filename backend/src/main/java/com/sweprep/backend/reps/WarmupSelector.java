@@ -3,6 +3,7 @@ package com.sweprep.backend.reps;
 import com.sweprep.backend.exercise.Exercise;
 import com.sweprep.backend.exercise.Family;
 import com.sweprep.backend.exercise.Form;
+import com.sweprep.backend.exercise.Grading;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -105,10 +106,24 @@ public final class WarmupSelector {
             ConfusionPairs confusionPairs) {
         List<Exercise> eligible = catalog.stream()
                 .filter(exercise -> exercise.form() == Form.REP)
+                .filter(WarmupSelector::warmupGradable)
                 .filter(exercise -> familyEligible(exercise, activeFamilies))
                 .filter(exercise -> gatingEligible(exercise, attemptedProblems))
                 .toList();
         return interleave(eligible, confusionPairs);
+    }
+
+    /**
+     * The required warm-up is recognition-and-fast (design revision t3, section 4.3): a
+     * self-graded "explain in your own words" item is production, not recognition, and its
+     * produce-then-reveal flow does not fit the ~4-minute core, so it is excluded here even
+     * when authored as a {@code REP}. Self-check items are first-class in the optional main
+     * and continuation (issue #41), never in the required core - this keeps the warm-up the
+     * same length it has always been. Every other grading (machine-graded choices and
+     * predict-output free text) is warm-up material.
+     */
+    private static boolean warmupGradable(Exercise exercise) {
+        return !(exercise.grading() instanceof Grading.SelfCheck);
     }
 
     /**

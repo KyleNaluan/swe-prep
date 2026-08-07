@@ -13,6 +13,7 @@ import com.sweprep.backend.exercise.Grading;
 import com.sweprep.backend.exercise.Hint;
 import com.sweprep.backend.exercise.Lesson;
 import com.sweprep.backend.exercise.Response;
+import com.sweprep.backend.exercise.SelfExplainPrompt;
 import com.sweprep.backend.exercise.Stability;
 import java.io.IOException;
 import java.time.LocalDate;
@@ -93,6 +94,25 @@ class FileExerciseCatalogTest {
               "domain": "fundamentals", "topics": ["messaging", "architecture"],
               "difficulty": "EASY",
               "checks": ["mq-when-to-use", "mq-vs-direct-call"]
+            }
+            """;
+
+    private static final String LESSON_WITH_PROMPTS =
+            """
+            {
+              "kind": "lesson",
+              "id": "concept-indexes",
+              "title": "Why an index sometimes is not used",
+              "statement": "A B-tree index speeds lookups by key.",
+              "domain": "fundamentals", "topics": ["databases"],
+              "difficulty": "MEDIUM",
+              "checks": [],
+              "prompts": [
+                { "prompt": "Explain why a function-wrapped column skips the index.",
+                  "modelAnswer": "The index stores raw values, not the function output." },
+                { "prompt": "Predict the plan for a 90%-selectivity query.",
+                  "modelAnswer": "A sequential scan is cheaper than the random I/O." }
+              ]
             }
             """;
 
@@ -418,6 +438,35 @@ class FileExerciseCatalogTest {
         assertThat(loaded.family()).isEmpty();
         assertThat(loaded.stability()).isEqualTo(Stability.STABLE);
         assertThat(loaded.reviewed()).isNull();
+        // A lesson with no prompts declared loads with an empty prompt list (issue #41).
+        assertThat(loaded.prompts()).isEmpty();
+    }
+
+    @Test
+    void loadsALessonsUngradedSelfExplanationPrompts(@TempDir Path dir) throws IOException {
+        write(dir, "idx.json", LESSON_WITH_PROMPTS);
+
+        Lesson loaded = (Lesson) catalog(dir).contentById("concept-indexes").orElseThrow();
+
+        assertThat(loaded.prompts())
+                .extracting(SelfExplainPrompt::prompt)
+                .containsExactly(
+                        "Explain why a function-wrapped column skips the index.",
+                        "Predict the plan for a 90%-selectivity query.");
+        assertThat(loaded.prompts().get(0).modelAnswer())
+                .isEqualTo("The index stores raw values, not the function output.");
+    }
+
+    @Test
+    void aMalformedLessonPromptNamesFileAndField(@TempDir Path dir) throws IOException {
+        // A prompt object missing its modelAnswer fails naming the file and the field.
+        String malformed = LESSON_WITH_PROMPTS.replace("\"modelAnswer\"", "\"nope\"");
+        write(dir, "idx.json", malformed);
+
+        assertThatThrownBy(catalog(dir)::allContent)
+                .isInstanceOf(ContentException.class)
+                .hasMessageContaining("idx.json")
+                .hasMessageContaining("modelAnswer");
     }
 
     @Test
