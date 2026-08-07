@@ -22,9 +22,10 @@ import Lesson from './Lesson'
 
 type SessionStatus = { dayComplete: boolean; completedAt: string | null; streak: number }
 
-// The two surfaces: the guided daily flow (warm-up, then the day-complete landing) and the
-// uncapped practice/browse surface (the main exercise and continuation). Browse is always
-// reachable - it is not gated behind finishing the warm-up.
+// The three surfaces: the guided daily flow (warm-up, then the day-complete landing), the
+// uncapped practice/browse surface (the main exercise and continuation), and the Learn
+// surface (lessons, read never attempted - issue #46/#41). Practice and Learn are always
+// reachable - neither is gated behind finishing the warm-up.
 type Mode = 'today' | 'practice' | 'learn'
 type Tier = 'warmup' | 'landing'
 
