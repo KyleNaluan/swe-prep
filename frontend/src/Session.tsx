@@ -67,7 +67,16 @@ function Session() {
         })
         .then(setStatus)
         .catch(() => {
-          // Best effort; the landing still shows and the day reads complete locally.
+          // The completion could not be saved (backend unreachable). The practice really
+          // happened, so mark the day complete locally rather than leaving the landing
+          // ("Day complete") and the DayBadge (not-complete) disagreeing. The endpoint is
+          // idempotent, so the next successful status read reconciles the true streak; we
+          // keep the prior streak count here rather than inventing an unverified number.
+          setStatus((prev) => ({
+            dayComplete: true,
+            completedAt: prev?.completedAt ?? null,
+            streak: prev?.streak ?? 0,
+          }))
         }),
     [],
   )
