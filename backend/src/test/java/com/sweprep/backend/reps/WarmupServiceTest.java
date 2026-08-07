@@ -6,7 +6,9 @@ import static org.mockito.Mockito.when;
 
 import com.sweprep.backend.attempt.AttemptRepository;
 import com.sweprep.backend.attempt.CurrentUser;
+import com.sweprep.backend.attempt.SubmissionRepository;
 import com.sweprep.backend.exercise.Exercise;
+import com.sweprep.backend.exercise.ExerciseCatalog;
 import com.sweprep.backend.exercise.Family;
 import com.sweprep.backend.testsupport.Fixtures;
 import java.util.List;
@@ -78,8 +80,13 @@ class WarmupServiceTest {
             AttemptRepository attempts, RepProperties properties, Exercise... catalog) {
         CurrentUser currentUser = mock(CurrentUser.class);
         when(currentUser.id()).thenReturn(user);
-        return new WarmupService(
-                Fixtures.catalogOf(catalog), attempts, currentUser, properties);
+        ExerciseCatalog exercises = Fixtures.catalogOf(catalog);
+        // No recorded wrong answers here: these tests prove the family/gating wiring, so
+        // the confusion relation is empty and never reorders the set.
+        SubmissionRepository submissions = mock(SubmissionRepository.class);
+        when(submissions.failedResponses(user)).thenReturn(List.of());
+        ConfusionPairService confusionPairs = new ConfusionPairService(submissions, exercises);
+        return new WarmupService(exercises, attempts, confusionPairs, currentUser, properties);
     }
 
     private static Exercise dataFamilyRep() {
