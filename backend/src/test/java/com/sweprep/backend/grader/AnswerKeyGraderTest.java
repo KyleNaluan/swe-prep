@@ -14,7 +14,7 @@ import org.junit.jupiter.api.Test;
  */
 class AnswerKeyGraderTest {
 
-    private final AnswerKeyGrader grader = new AnswerKeyGrader();
+    private final AnswerKeyGrader grader = new AnswerKeyGrader(Fixtures.MAPPER);
     private final Exercise concept = Fixtures.concept();
 
     @Test
@@ -44,6 +44,15 @@ class AnswerKeyGraderTest {
     @Test
     void surroundingWhitespaceIsIgnored() {
         assertThat(grader.grade(concept, "  B  ").outcome()).isEqualTo(Verdict.Outcome.PASSED);
+    }
+
+    @Test
+    void aNumericAnswerKeyMatchesByMagnitude() {
+        Exercise predict = Fixtures.predictNumber();
+
+        assertThat(grader.grade(predict, "42").outcome()).isEqualTo(Verdict.Outcome.PASSED);
+        assertThat(grader.grade(predict, "42.0").outcome()).isEqualTo(Verdict.Outcome.PASSED);
+        assertThat(grader.grade(predict, "43").outcome()).isEqualTo(Verdict.Outcome.FAILED);
     }
 
     @Test

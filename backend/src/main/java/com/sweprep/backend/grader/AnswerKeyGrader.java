@@ -1,5 +1,7 @@
 package com.sweprep.backend.grader;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.TextNode;
 import com.sweprep.backend.exercise.Exercise;
 import com.sweprep.backend.exercise.Grading;
@@ -19,6 +21,12 @@ import org.springframework.stereotype.Component;
 @Component
 public class AnswerKeyGrader implements Grader {
 
+    private final ObjectMapper mapper;
+
+    public AnswerKeyGrader(ObjectMapper mapper) {
+        this.mapper = mapper;
+    }
+
     @Override
     public boolean supports(Exercise exercise) {
         return exercise.grading() instanceof Grading.AnswerKey;
@@ -30,10 +38,22 @@ public class AnswerKeyGrader implements Grader {
         if (submission == null || submission.isBlank()) {
             return Verdict.of(0, 1);
         }
-        // The submission is the chosen option as plain text; compare it as a JSON
-        // string value so the shared numeric-aware comparison rules still apply.
-        TextNode actual = TextNode.valueOf(submission.strip());
-        boolean correct = key.comparison().matches(key.expected(), actual);
+        boolean correct = key.comparison().matches(key.expected(), parse(submission.strip()));
         return Verdict.of(correct ? 1 : 0, 1);
+    }
+
+    /**
+     * A numeric or structured answer key ("predict-output") is graded through the
+     * exercise's {@link com.sweprep.backend.exercise.Comparison} just like a test
+     * case, so the submission is parsed as JSON. A plain multiple-choice option is
+     * not valid JSON, so it falls back to a JSON string value, preserving exact
+     * matching against string answer keys.
+     */
+    private JsonNode parse(String submission) {
+        try {
+            return mapper.readTree(submission);
+        } catch (Exception e) {
+            return TextNode.valueOf(submission);
+        }
     }
 }

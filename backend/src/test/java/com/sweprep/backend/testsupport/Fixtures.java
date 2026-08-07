@@ -84,6 +84,26 @@ public final class Fixtures {
                 new Grading.AnswerKey(text("B"), Comparison.exact()));
     }
 
+    /**
+     * A code exercise judged by a fixed numeric answer key - "predict the output".
+     * Proves the answer-key grader is not string-only: the expected value is a
+     * number, matched by magnitude through the exercise's comparison.
+     */
+    public static Exercise predictNumber() {
+        Signature signature = new Signature(
+                "value", List.of(new Parameter("n", DataType.INT)), DataType.INT);
+        return new Exercise(
+                "predict-number",
+                "Predict Number",
+                "What does this program print?",
+                "fundamentals",
+                List.of("demo"),
+                Difficulty.EASY,
+                Form.REP,
+                new Response.Code(signature),
+                new Grading.AnswerKey(json("42"), Comparison.exact()));
+    }
+
     /** An in-memory catalog over the given exercises, in argument order. */
     public static ExerciseCatalog catalogOf(Exercise... exercises) {
         List<Exercise> all = List.of(exercises);
