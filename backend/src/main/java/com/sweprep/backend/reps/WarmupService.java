@@ -22,6 +22,7 @@ public class WarmupService {
 
     private final ExerciseCatalog catalog;
     private final AttemptRepository attempts;
+    private final ConfusionPairService confusionPairs;
     private final CurrentUser currentUser;
     private final WarmupSelector selector;
     private final Set<Family> activeFamilies;
@@ -29,10 +30,12 @@ public class WarmupService {
     public WarmupService(
             ExerciseCatalog catalog,
             AttemptRepository attempts,
+            ConfusionPairService confusionPairs,
             CurrentUser currentUser,
             RepProperties properties) {
         this.catalog = catalog;
         this.attempts = attempts;
+        this.confusionPairs = confusionPairs;
         this.currentUser = currentUser;
         this.selector =
                 new WarmupSelector(properties.warmupSize(), properties.maxConsecutiveSame());
@@ -45,7 +48,9 @@ public class WarmupService {
 
     /** The ordered warm-up set for the current user. */
     public List<Exercise> warmup() {
-        Set<String> attemptedProblems = attempts.attemptedExerciseIds(currentUser.id());
-        return selector.select(catalog.all(), activeFamilies, attemptedProblems);
+        java.util.UUID userId = currentUser.id();
+        Set<String> attemptedProblems = attempts.attemptedExerciseIds(userId);
+        return selector.select(
+                catalog.all(), activeFamilies, attemptedProblems, confusionPairs.forUser(userId));
     }
 }
