@@ -233,6 +233,7 @@ function App() {
         <select
           id="exercise-select"
           value={selectedId ?? ''}
+          disabled={run.phase === 'running'}
           onChange={(event) => setSelectedId(event.target.value)}
         >
           {catalog.map((summary) => (

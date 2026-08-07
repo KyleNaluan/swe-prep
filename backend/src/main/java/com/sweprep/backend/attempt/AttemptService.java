@@ -104,9 +104,14 @@ public class AttemptService {
         return submission;
     }
 
-    /** Records that the solver gave up on an open attempt. */
+    /**
+     * Records that the solver gave up on an open attempt, returning it with its live
+     * submission count. Only an {@code IN_PROGRESS} attempt is transitioned; the locking
+     * read in {@link #requireOwned} means a racing solve wins, so an abandon can never
+     * clobber a sitting that has already been marked solved.
+     */
     @Transactional
-    public Attempt abandon(UUID attemptId) {
+    public AttemptWithCount abandon(UUID attemptId) {
         Attempt attempt = requireOwned(attemptId);
         if (attempt.outcome() != AttemptOutcome.IN_PROGRESS) {
             throw new IllegalAttemptStateException(
@@ -114,16 +119,17 @@ public class AttemptService {
         }
         Attempt abandoned = withOutcome(attempt, AttemptOutcome.ABANDONED);
         attempts.update(abandoned);
-        return abandoned;
+        return withCount(abandoned);
     }
 
     /**
-     * Records that the failing case was revealed during an open attempt (issue #5).
-     * The reveal is recorded, never penalised; the actual failing-case content is the
-     * judging ticket's concern, not this one's.
+     * Records that the failing case was revealed during an open attempt (issue #5),
+     * returning it with its live submission count. The reveal is recorded, never
+     * penalised; the actual failing-case content is the judging ticket's concern, not
+     * this one's.
      */
     @Transactional
-    public Attempt recordFailingCaseReveal(UUID attemptId) {
+    public AttemptWithCount recordFailingCaseReveal(UUID attemptId) {
         Attempt attempt = requireOwned(attemptId);
         if (attempt.outcome() != AttemptOutcome.IN_PROGRESS) {
             throw new IllegalAttemptStateException(
@@ -145,7 +151,7 @@ public class AttemptService {
                 attempt.measuredComplexity(),
                 attempt.complexityClaimCorrect());
         attempts.update(revealed);
-        return revealed;
+        return withCount(revealed);
     }
 
     /** The current user's practice history, newest first, each with its submission count. */
@@ -158,9 +164,16 @@ public class AttemptService {
                 .toList();
     }
 
+    private AttemptWithCount withCount(Attempt attempt) {
+        return new AttemptWithCount(attempt, submissions.countByAttempt(attempt.id()));
+    }
+
+    // Reads an attempt under a row lock (all callers are state-changing and
+    // transactional), so a concurrent submit and abandon on the same sitting serialise
+    // rather than each committing over the other's outcome.
     private Attempt requireOwned(UUID attemptId) {
         Attempt attempt = attempts
-                .findById(attemptId)
+                .findByIdForUpdate(attemptId)
                 .orElseThrow(() -> new AttemptNotFoundException("No attempt with id " + attemptId));
         // Single-user today, but ownership is still checked so history can never cross
         // users if a real account mechanism ever lands (issue #14's discipline).
