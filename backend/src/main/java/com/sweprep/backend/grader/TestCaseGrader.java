@@ -89,6 +89,9 @@ public class TestCaseGrader implements Grader {
      * correctly is still graded on its answers.
      */
     private Verdict interpret(Exercise exercise, ExecutionResult result, int total) {
+        if (result.oversizedOutputFiles().contains(RESULT_FILE)) {
+            return Verdict.error("The program's result was too large to read back");
+        }
         String resultJson = result.outputFiles().get(RESULT_FILE);
         if (resultJson == null || resultJson.isBlank()) {
             return noResult(result);
@@ -131,7 +134,6 @@ public class TestCaseGrader implements Grader {
         for (TestCase testCase : testCases) {
             var node = mapper.createObjectNode();
             node.set("input", testCase.input());
-            node.set("expected", testCase.expected());
             cases.add(node);
         }
         try {
