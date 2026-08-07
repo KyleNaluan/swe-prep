@@ -35,6 +35,14 @@ public class LocalJavaRunner implements Runner {
 
     private static final int MAX_CAPTURED_BYTES = 1024 * 1024;
 
+    /**
+     * Upper bound on an output file the runner will read back into heap. Sized well
+     * above any realistic answer, it stops a submission that writes a huge (or
+     * runaway) result file from exhausting the backend heap - the same protection
+     * {@link #MAX_CAPTURED_BYTES} gives stdout, on the separate output-file channel.
+     */
+    private static final long MAX_RESULT_FILE_BYTES = 4L * 1024 * 1024;
+
     @Override
     public ExecutionResult execute(ExecutionRequest request) {
         Path workDir = null;
@@ -146,32 +154,45 @@ public class LocalJavaRunner implements Runner {
                 process.waitFor();
                 return ExecutionResult.timeout(readQuietly(stdout), readQuietly(stderr));
             }
+            OutputFiles outputs = readOutputFiles(workDir, request.outputFiles());
             return ExecutionResult.completed(
                     process.exitValue(),
                     readQuietly(stdout),
                     readQuietly(stderr),
-                    readOutputFiles(workDir, request.outputFiles()));
+                    outputs.present(),
+                    outputs.oversized());
         } finally {
             streams.shutdownNow();
         }
     }
 
+    /** The output files read back from the work directory, split by whether the
+     * runner would load them into heap. */
+    private record OutputFiles(Map<String, String> present, List<String> oversized) {}
+
     /**
      * Reads back the files the program was asked to produce, from the work
      * directory before it is deleted. A file the program never wrote is simply
      * omitted rather than reported as empty, so a missing result is
-     * distinguishable from a deliberately empty one.
+     * distinguishable from a deliberately empty one. A file larger than
+     * {@link #MAX_RESULT_FILE_BYTES} is not read into heap at all; its name is
+     * reported as oversized instead, kept distinct from both absent and empty.
      */
-    private static Map<String, String> readOutputFiles(Path workDir, List<String> names)
+    private static OutputFiles readOutputFiles(Path workDir, List<String> names)
             throws IOException {
         Map<String, String> contents = new java.util.HashMap<>();
+        List<String> oversized = new ArrayList<>();
         for (String name : names) {
             Path file = workDir.resolve(name);
             if (Files.isRegularFile(file)) {
-                contents.put(name, Files.readString(file, StandardCharsets.UTF_8));
+                if (Files.size(file) > MAX_RESULT_FILE_BYTES) {
+                    oversized.add(name);
+                } else {
+                    contents.put(name, Files.readString(file, StandardCharsets.UTF_8));
+                }
             }
         }
-        return contents;
+        return new OutputFiles(contents, oversized);
     }
 
     /**
