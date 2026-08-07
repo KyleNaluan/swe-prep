@@ -1,6 +1,7 @@
 package com.sweprep.backend.grader;
 
 import com.sweprep.backend.exercise.Exercise;
+import java.util.Optional;
 
 /**
  * Decides whether a submission passes. A grader owns the pass/fail decision; it
@@ -21,4 +22,19 @@ public interface Grader {
 
     /** Judge {@code submission} against {@code exercise}. Only call when {@link #supports} is true. */
     Verdict grade(Exercise exercise, String submission);
+
+    /**
+     * Disclose the first case this submission fails, when the solver explicitly asks
+     * for it (issues #16/#5). This is deliberately separate from {@link #grade}: a
+     * normal verdict withholds every case value and reveals only the failing count,
+     * and only an explicit reveal request calls this to give one case up.
+     *
+     * <p>A grader that judges against a fixed answer (no cases) has nothing to reveal,
+     * so the default returns empty; the test-case grader overrides it. An empty result
+     * also means there was no isolable failing case - the submission passed, or it did
+     * not compile, timed out, or otherwise produced no per-case result to compare.
+     */
+    default Optional<FailingCase> firstFailingCase(Exercise exercise, String submission) {
+        return Optional.empty();
+    }
 }

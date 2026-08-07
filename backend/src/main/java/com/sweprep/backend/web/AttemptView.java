@@ -18,8 +18,9 @@ import java.time.Instant;
  * @param startedAt              when the sitting began
  * @param endedAt                when it ended, or {@code null} while in progress
  * @param submissionCount        how many times Run was pressed
- * @param hintsTaken             hint-ladder rungs climbed (issue #16 populates)
- * @param failingCaseRevealed    whether the failing case was revealed (issue #5)
+ * @param hintsTaken             hint-ladder rungs climbed (issue #16)
+ * @param failingCaseRevealed    whether the failing case was revealed (issue #5/#16)
+ * @param revealHypothesis       the one-line guess typed before the reveal, or null
  * @param complexityClaim        the self-reported complexity (issue #17)
  * @param measuredComplexity     what measurement said (issue #17)
  * @param complexityClaimCorrect whether the claim matched measurement (issue #17)
@@ -36,6 +37,7 @@ public record AttemptView(
         int submissionCount,
         int hintsTaken,
         boolean failingCaseRevealed,
+        String revealHypothesis,
         String complexityClaim,
         String measuredComplexity,
         Boolean complexityClaimCorrect) {
@@ -53,6 +55,7 @@ public record AttemptView(
                 submissionCount,
                 attempt.hintsTaken(),
                 attempt.failingCaseRevealed(),
+                attempt.revealHypothesis(),
                 attempt.complexityClaim(),
                 attempt.measuredComplexity(),
                 attempt.complexityClaimCorrect());

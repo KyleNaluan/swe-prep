@@ -10,6 +10,7 @@ import com.sweprep.backend.exercise.Exercise;
 import com.sweprep.backend.exercise.ExerciseCatalog;
 import com.sweprep.backend.exercise.Form;
 import com.sweprep.backend.exercise.Grading;
+import com.sweprep.backend.exercise.Hint;
 import com.sweprep.backend.exercise.Response;
 import com.sweprep.backend.exercise.Signature;
 import com.sweprep.backend.exercise.Signature.Parameter;
@@ -54,8 +55,19 @@ public final class Fixtures {
                 Difficulty.EASY,
                 Form.CHALLENGE,
                 new Response.Code(signature),
-                new Grading.TestCases(Comparison.orderInsensitiveSequence(), cases));
+                new Grading.TestCases(Comparison.orderInsensitiveSequence(), cases),
+                PAIR_HINTS);
     }
+
+    /**
+     * A three-rung hint ladder for {@link #pairInAnyOrder()}: pattern, approach, then
+     * the key insight. Synthetic, like the exercise itself - it proves the ladder is
+     * ordered and disclosed one rung at a time, not that any real problem is hinted.
+     */
+    public static final List<Hint> PAIR_HINTS = List.of(
+            new Hint("Pattern", "This is just packing two values into an array."),
+            new Hint("Approach", "Allocate an int[] of length two and fill both slots."),
+            new Hint("Key insight", "Order does not matter here; return them in either order."));
 
     /** A correct solution to {@link #pairInAnyOrder()}. */
     public static final String PAIR_SOLUTION =
@@ -81,7 +93,8 @@ public final class Fixtures {
                 Difficulty.EASY,
                 Form.REP,
                 new Response.Choice(List.of("A", "B", "C")),
-                new Grading.AnswerKey(text("B"), Comparison.exact()));
+                new Grading.AnswerKey(text("B"), Comparison.exact()),
+                List.of());
     }
 
     /**
@@ -101,7 +114,8 @@ public final class Fixtures {
                 Difficulty.EASY,
                 Form.REP,
                 new Response.Code(signature),
-                new Grading.AnswerKey(json("42"), Comparison.exact()));
+                new Grading.AnswerKey(json("42"), Comparison.exact()),
+                List.of());
     }
 
     /**
@@ -119,7 +133,8 @@ public final class Fixtures {
                 Difficulty.EASY,
                 Form.REP,
                 new Response.Choice(List.of("true", "false")),
-                new Grading.AnswerKey(text("true"), Comparison.exact()));
+                new Grading.AnswerKey(text("true"), Comparison.exact()),
+                List.of());
     }
 
     /** An in-memory catalog over the given exercises, in argument order. */
