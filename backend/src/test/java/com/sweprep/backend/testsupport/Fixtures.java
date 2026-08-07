@@ -12,7 +12,9 @@ import com.sweprep.backend.exercise.Family;
 import com.sweprep.backend.exercise.Form;
 import com.sweprep.backend.exercise.Grading;
 import com.sweprep.backend.exercise.Hint;
+import com.sweprep.backend.exercise.Lesson;
 import com.sweprep.backend.exercise.Response;
+import com.sweprep.backend.exercise.SelfExplainPrompt;
 import com.sweprep.backend.exercise.Signature;
 import com.sweprep.backend.exercise.Signature.Parameter;
 import com.sweprep.backend.exercise.Stability;
@@ -167,6 +169,71 @@ public final class Fixtures {
                 new Response.FreeText(),
                 new Grading.SelfCheck("The model answer to compare yourself against."),
                 List.of());
+    }
+
+    /**
+     * A self-graded "explain in your own words" item shaped as an optional main (a {@code
+     * CHALLENGE}), tagged {@code AIML} - the flagship consumer of production practice
+     * (issue #41, design revision t3 section 3). FreeText + SelfCheck: produce, reveal the
+     * model answer, self-rate; the machine never grades it.
+     */
+    public static Exercise explainChallenge() {
+        return new Exercise(
+                "explain-gradient-descent",
+                "Explain gradient descent",
+                "Explain, in your own words, what gradient descent does and why the learning "
+                        + "rate matters.",
+                "ai-ml",
+                List.of("optimization"),
+                Difficulty.MEDIUM,
+                Form.CHALLENGE,
+                new Response.FreeText(),
+                new Grading.SelfCheck(
+                        "Gradient descent iteratively steps the parameters in the direction of "
+                                + "steepest descent of the loss - the negative gradient - to reduce "
+                                + "error. The learning rate scales each step: too small and it crawls; "
+                                + "too large and it overshoots or diverges."),
+                List.of(),
+                null,
+                List.of(Family.AIML),
+                Stability.STABLE,
+                null,
+                null);
+    }
+
+    // ---------------------------------------------------------------------------
+    // A lesson with embedded ungraded self-explanation prompts (issue #41, delta D3). It is
+    // read, never attempted: no response, no grading, no verdict. The prompts turn passive
+    // reading into a generative activity - think, then reveal the model answer.
+
+    /** A taught lesson carrying two ungraded self-explanation prompts. */
+    public static Lesson lessonWithPrompts() {
+        return new Lesson(
+                "lesson-indexes",
+                "Why an index sometimes is not used",
+                "A B-tree index speeds lookups by key, but the planner will skip it when a query "
+                        + "would read most of the table anyway, when the column is wrapped in a "
+                        + "function, or when the types do not match.",
+                "fundamentals",
+                List.of("databases"),
+                Difficulty.MEDIUM,
+                List.of(),
+                List.of(
+                        new SelfExplainPrompt(
+                                "Explain why wrapping an indexed column in a function (e.g. "
+                                        + "LOWER(email)) can stop the index being used.",
+                                "The index stores the raw column values, not the function's output, "
+                                        + "so the planner cannot match LOWER(email) against it - a "
+                                        + "separate expression index on LOWER(email) would be needed."),
+                        new SelfExplainPrompt(
+                                "Predict what the planner does when a query will return 90% of the "
+                                        + "rows.",
+                                "It prefers a sequential scan: reading nearly the whole table in "
+                                        + "order is cheaper than the random I/O of walking the index "
+                                        + "for almost every row.")),
+                List.of(Family.BACKEND, Family.DATA),
+                Stability.STABLE,
+                null);
     }
 
     // ---------------------------------------------------------------------------

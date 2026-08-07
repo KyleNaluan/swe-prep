@@ -239,6 +239,47 @@ describe('Session (daily loop, issue #19)', () => {
     await waitFor(() => expect(calls.completeWarmup).toBe(1))
   })
 
+  it('reaches the Learn surface via the Learn tab, without touching the warm-up', async () => {
+    const calls = { completeWarmup: 0, abandons: [] as string[] }
+    const base = mockFetch(calls)
+    // Layer lesson endpoints on top of the shared session mock for this test only.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+        const href = String(url)
+        if (href.endsWith('/api/lessons'))
+          return {
+            ok: true,
+            json: async () => [
+              { id: 'l1', title: 'A Lesson', domain: 'fundamentals', difficulty: 'EASY', promptCount: 1 },
+            ],
+          } as Response
+        if (href.endsWith('/api/lessons/l1'))
+          return {
+            ok: true,
+            json: async () => ({
+              id: 'l1',
+              title: 'A Lesson',
+              statement: 'Taught content.',
+              domain: 'fundamentals',
+              difficulty: 'EASY',
+              prompts: [{ prompt: 'Explain it.', modelAnswer: 'Because.' }],
+            }),
+          } as Response
+        return base(url, init)
+      }),
+    )
+    render(<Session />)
+    await screen.findByRole('heading', { name: 'Rep One' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Learn' }))
+
+    expect(await screen.findByRole('heading', { name: 'A Lesson' })).toBeInTheDocument()
+    expect(screen.getByText('Explain it.')).toBeInTheDocument()
+    // Opening Learn never completes the day.
+    await waitFor(() => expect(calls.completeWarmup).toBe(0))
+  })
+
   it('keeps the landing and the header badge consistent when saving the completion fails', async () => {
     // The warm-up really finished, but the POST that records it fails (backend down).
     vi.stubGlobal('fetch', mockFetch({ completeWarmup: 0, abandons: [] }, { failComplete: true }))

@@ -76,4 +76,27 @@ public class AttemptController {
         return RevealResponse.of(
                 attempts.revealFailingCase(id, request.submission(), request.hypothesis()));
     }
+
+    /**
+     * Commits a self-check explanation and reveals the model answer for self-comparison
+     * (issue #41). Nothing is machine-graded; the produced text is frozen as a submission
+     * before the answer is handed back.
+     */
+    @PostMapping("/{id}/self-check/reveal")
+    public SelfCheckRevealResponse revealSelfCheck(
+            @PathVariable UUID id, @RequestBody SelfCheckRevealRequest request) {
+        return SelfCheckRevealResponse.of(attempts.revealSelfCheck(id, request.produced()));
+    }
+
+    /**
+     * Records the learner's self-rating of a revealed self-check answer, ending the sitting
+     * as {@code EXPLAINED} (issue #41). The rating is a generation signal, never the
+     * objective competence number.
+     */
+    @PostMapping("/{id}/self-check/rating")
+    public SelfCheckRatingResponse rateSelfCheck(
+            @PathVariable UUID id, @RequestBody SelfCheckRatingRequest request) {
+        return SelfCheckRatingResponse.of(
+                attempts.rateSelfCheck(id, request.submission(), request.rating()));
+    }
 }

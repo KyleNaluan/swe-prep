@@ -26,5 +26,15 @@ public enum AttemptOutcome {
      * readiness picture counts it. Recorded from the start so the lesson ticket needs
      * no migration; lessons and their renderer are not built here.
      */
-    READ
+    READ,
+    /**
+     * A self-check "explain in your own words" item was produced, the model answer
+     * revealed, and the learner self-rated (issue #41, design revision t3 section 1.1).
+     * Like {@link #READ} it carries no machine verdict and the objective competence signal
+     * (issue #38) ignores it by construction - the self-rating is a separate generation
+     * signal, never the competence number. A distinct terminal state from {@link #SOLVED}
+     * precisely so a self-graded item can never be mistaken for a machine-solved one.
+     * Free-text stored, so it needed no migration.
+     */
+    EXPLAINED
 }
