@@ -47,6 +47,11 @@ public record ExerciseView(
             case Response.Code code ->
                     ResponseView.code(adapter.languageId(), adapter.generateStub(code.signature()));
             case Response.Choice choice -> ResponseView.choice(choice.options());
+            // Response.FreeText is modeled (design revision t3, T1) but not yet rendered:
+            // the produce-then-reveal editor view and self-rating flow are a later ticket
+            // (T5). No free-text content exists until then, so this path is unreachable.
+            case Response.FreeText ignored -> throw new UnsupportedOperationException(
+                    "Free-text responses are not rendered yet (design revision t3, T5)");
         };
     }
 }

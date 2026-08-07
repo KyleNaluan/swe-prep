@@ -137,6 +137,25 @@ public final class Fixtures {
                 List.of());
     }
 
+    /**
+     * A free-text exercise judged by self-check - the produce-then-reveal format
+     * that emits no machine verdict. The solver explains something in their own
+     * words and grades themselves against the revealed model answer.
+     */
+    public static Exercise explain() {
+        return new Exercise(
+                "explain-demo",
+                "Explain Demo",
+                "Explain the concept in your own words.",
+                "fundamentals",
+                List.of("demo"),
+                Difficulty.EASY,
+                Form.REP,
+                new Response.FreeText(),
+                new Grading.SelfCheck("The model answer to compare yourself against."),
+                List.of());
+    }
+
     /** An in-memory catalog over the given exercises, in argument order. */
     public static ExerciseCatalog catalogOf(Exercise... exercises) {
         List<Exercise> all = List.of(exercises);

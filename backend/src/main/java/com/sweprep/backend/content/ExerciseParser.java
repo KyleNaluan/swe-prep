@@ -5,13 +5,17 @@ import com.sweprep.backend.exercise.Comparison;
 import com.sweprep.backend.exercise.DataType;
 import com.sweprep.backend.exercise.Difficulty;
 import com.sweprep.backend.exercise.Exercise;
+import com.sweprep.backend.exercise.Family;
 import com.sweprep.backend.exercise.Form;
 import com.sweprep.backend.exercise.Grading;
 import com.sweprep.backend.exercise.Hint;
 import com.sweprep.backend.exercise.Response;
 import com.sweprep.backend.exercise.Signature;
 import com.sweprep.backend.exercise.Signature.Parameter;
+import com.sweprep.backend.exercise.Stability;
 import com.sweprep.backend.exercise.TestCase;
+import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -29,10 +33,15 @@ import java.util.List;
  *   "domain": "algorithms", "topics": ["array"],
  *   "difficulty": "EASY|MEDIUM|HARD", "form": "REP|CHALLENGE",
  *   "response": { "kind": "code",   "signature": {...} }
- *             |  { "kind": "choice", "options": ["..."] },
+ *             |  { "kind": "choice", "options": ["..."] }
+ *             |  { "kind": "freeText" },
  *   "grading":  { "kind": "testCases", "comparison": "...", "cases": [...] }
- *             |  { "kind": "answerKey", "comparison": "...", "expected": ... },
- *   "hints":    [ { "name": "Pattern", "body": "..." }, ... ]   // optional ladder
+ *             |  { "kind": "answerKey", "comparison": "...", "expected": ... }
+ *             |  { "kind": "selfCheck", "modelAnswer": "..." },
+ *   "hints":    [ { "name": "Pattern", "body": "..." }, ... ], // optional ladder
+ *   "family":   ["BACKEND", "AIML"],                           // optional, default []
+ *   "stability": "STABLE|VOLATILE",                            // optional, default STABLE
+ *   "reviewed": "2026-08-07"                                   // optional ISO date (VOLATILE)
  * }
  * </pre>
  */
@@ -55,8 +64,59 @@ final class ExerciseParser {
         Response response = response(source, requireObject(source, root, "response"));
         Grading grading = grading(source, requireObject(source, root, "grading"));
         List<Hint> hints = hints(source, root);
+        List<Family> family = family(source, root);
+        Stability stability = stability(source, root);
+        LocalDate reviewed = reviewed(source, root);
         return new Exercise(
-                id, title, statement, domain, topics, difficulty, form, response, grading, hints);
+                id, title, statement, domain, topics, difficulty, form, response, grading, hints,
+                family, stability, reviewed);
+    }
+
+    private static List<Family> family(String source, JsonNode root) {
+        JsonNode node = root.get("family");
+        if (node == null || node.isNull()) {
+            return List.of();
+        }
+        if (!node.isArray()) {
+            throw malformed(source, "'family' must be an array of role-family names");
+        }
+        List<Family> family = new ArrayList<>();
+        for (JsonNode element : node) {
+            if (!element.isTextual()) {
+                throw malformed(source, "'family' must contain only strings");
+            }
+            String value = element.asText();
+            try {
+                family.add(Family.valueOf(value));
+            } catch (IllegalArgumentException e) {
+                throw malformed(source, "'family' has unknown value '" + value + "'");
+            }
+        }
+        return family;
+    }
+
+    private static Stability stability(String source, JsonNode root) {
+        JsonNode node = root.get("stability");
+        if (node == null || node.isNull()) {
+            return Stability.STABLE;
+        }
+        return requireEnum(source, root, "stability", Stability.class);
+    }
+
+    private static LocalDate reviewed(String source, JsonNode root) {
+        JsonNode node = root.get("reviewed");
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        if (!node.isTextual()) {
+            throw malformed(source, "'reviewed' must be an ISO-8601 date string (YYYY-MM-DD)");
+        }
+        try {
+            return LocalDate.parse(node.asText());
+        } catch (DateTimeParseException e) {
+            throw malformed(
+                    source, "'reviewed' must be an ISO-8601 date (YYYY-MM-DD): '" + node.asText() + "'");
+        }
     }
 
     private static List<Hint> hints(String source, JsonNode root) {
@@ -100,6 +160,7 @@ final class ExerciseParser {
         return switch (kind) {
             case "code" -> new Response.Code(signature(source, requireObject(source, node, "signature")));
             case "choice" -> new Response.Choice(stringArray(source, node, "options"));
+            case "freeText" -> new Response.FreeText();
             default -> throw malformed(source, "unknown response kind '" + kind + "'");
         };
     }
@@ -125,6 +186,7 @@ final class ExerciseParser {
             case "testCases" -> new Grading.TestCases(comparison(source, node), cases(source, node));
             case "answerKey" -> new Grading.AnswerKey(
                     requireField(source, node, "expected"), comparison(source, node));
+            case "selfCheck" -> new Grading.SelfCheck(requireText(source, node, "modelAnswer"));
             default -> throw malformed(source, "unknown grading kind '" + kind + "'");
         };
     }

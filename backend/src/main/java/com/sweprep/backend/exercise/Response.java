@@ -13,7 +13,7 @@ import java.util.List;
  * short answer, a SQL query) is added as one more permitted record without
  * touching the exercise model.
  */
-public sealed interface Response permits Response.Code, Response.Choice {
+public sealed interface Response permits Response.Code, Response.Choice, Response.FreeText {
 
     /**
      * The solver writes code implementing a method. The editor is seeded with a
@@ -33,4 +33,16 @@ public sealed interface Response permits Response.Code, Response.Choice {
             options = List.copyOf(options);
         }
     }
+
+    /**
+     * The solver types free-form text into a box. Nothing is compiled or run, so an
+     * exercise with this response needs no runner. It is the response for two very
+     * different items, distinguished by their {@link Grading}: paired with a
+     * {@link Grading.SelfCheck} it is a self-graded "explain in your own words" item
+     * the machine never judges (design revision t3, section 1.1); paired with a
+     * {@link Grading.AnswerKey} it is a machine-graded short answer (a
+     * "predict the output" rep). The response itself carries nothing beyond being a
+     * text box - what is expected of the text lives in the grading spec.
+     */
+    record FreeText() implements Response {}
 }
