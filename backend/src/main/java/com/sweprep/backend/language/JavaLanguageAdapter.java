@@ -119,6 +119,7 @@ public class JavaLanguageAdapter implements LanguageAdapter {
         return switch (type) {
             case INT -> "int";
             case INT_ARRAY -> "int[]";
+            case INT_MATRIX -> "int[][]";
             case BOOLEAN -> "boolean";
             case STRING -> "String";
         };
@@ -128,6 +129,7 @@ public class JavaLanguageAdapter implements LanguageAdapter {
         return switch (type) {
             case INT -> "int.class";
             case INT_ARRAY -> "int[].class";
+            case INT_MATRIX -> "int[][].class";
             case BOOLEAN -> "boolean.class";
             case STRING -> "String.class";
         };
