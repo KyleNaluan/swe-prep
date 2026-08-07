@@ -5,6 +5,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.sweprep.backend.exercise.Comparison;
 import com.sweprep.backend.exercise.Exercise;
+import com.sweprep.backend.exercise.Grading;
+import com.sweprep.backend.exercise.Response;
+import com.sweprep.backend.exercise.Signature;
 import com.sweprep.backend.exercise.TestCase;
 import com.sweprep.backend.language.GeneratedHarness;
 import com.sweprep.backend.language.JavaLanguageAdapter;
@@ -22,9 +25,10 @@ import org.springframework.stereotype.Component;
 /**
  * Grades a submission against an exercise's language-neutral test cases by
  * generating a harness (via a {@link LanguageAdapter}), running it (via a
- * {@link Runner}), and interpreting the outcome into a {@link Verdict}. The
- * generic pass-counting logic lives here; nothing about it is Java-specific,
- * which is the whole point of the adapter seam.
+ * {@link Runner}), and interpreting the outcome into a {@link Verdict}. It handles
+ * exercises whose grading spec is {@link Grading.TestCases}; the generic
+ * pass-counting logic lives here and nothing about it is Java-specific, which is
+ * the whole point of the adapter seam.
  */
 @Component
 public class TestCaseGrader implements Grader {
@@ -55,16 +59,23 @@ public class TestCaseGrader implements Grader {
     }
 
     @Override
+    public boolean supports(Exercise exercise) {
+        return exercise.grading() instanceof Grading.TestCases;
+    }
+
+    @Override
     public Verdict grade(Exercise exercise, String submission) {
-        int total = exercise.testCases().size();
-        GeneratedHarness harness = adapter.generateHarness(exercise.signature());
+        Grading.TestCases spec = (Grading.TestCases) exercise.grading();
+        Signature signature = codeSignature(exercise);
+        int total = spec.cases().size();
+        GeneratedHarness harness = adapter.generateHarness(signature);
 
         Map<String, String> sources = new HashMap<>(harness.sourceFiles());
         sources.put(JavaLanguageAdapter.SUBMISSION_CLASS + ".java", submission == null ? "" : submission);
 
         ExecutionRequest request = new ExecutionRequest(
                 sources,
-                Map.of(CASES_FILE, casesJson(exercise.testCases())),
+                Map.of(CASES_FILE, casesJson(spec.cases())),
                 harness.mainClass(),
                 List.of(CASES_FILE, RESULT_FILE),
                 harness.runtimeClasspath(),
@@ -77,18 +88,27 @@ public class TestCaseGrader implements Grader {
             case TIMEOUT -> Verdict.timeout(
                     total,
                     "Execution timed out after " + timeout.toSeconds() + "s (possible infinite loop)");
-            case COMPLETED -> interpret(exercise, result, total);
+            case COMPLETED -> interpret(spec, result, total);
         };
+    }
+
+    /** The signature the harness is generated from - test-case grading needs a code response. */
+    private static Signature codeSignature(Exercise exercise) {
+        if (exercise.response() instanceof Response.Code code) {
+            return code.signature();
+        }
+        throw new IllegalStateException(
+                "Exercise '" + exercise.id() + "' is graded by test cases but has no code response");
     }
 
     /**
      * Counts how many cases pass by comparing each recorded return value against
-     * the exercise's expected value under its declared {@link Comparison} rule.
+     * the expected value under the grading spec's declared {@link Comparison} rule.
      * The results come from the harness's dedicated result file, never from the
      * submission's stdout, so a solution that prints a lot and then returns
      * correctly is still graded on its answers.
      */
-    private Verdict interpret(Exercise exercise, ExecutionResult result, int total) {
+    private Verdict interpret(Grading.TestCases spec, ExecutionResult result, int total) {
         if (result.oversizedOutputFiles().contains(RESULT_FILE)) {
             return Verdict.error("The program's result was too large to read back");
         }
@@ -106,8 +126,8 @@ public class TestCaseGrader implements Grader {
             return noResult(result);
         }
 
-        Comparison comparison = exercise.comparison();
-        List<TestCase> cases = exercise.testCases();
+        Comparison comparison = spec.comparison();
+        List<TestCase> cases = spec.cases();
         int passed = 0;
         for (int i = 0; i < total; i++) {
             JsonNode entry = results.get(i);
