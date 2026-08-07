@@ -274,6 +274,100 @@ describe('App', () => {
     expect(screen.getByText('6')).toBeInTheDocument()
   })
 
+  it('shows the check explanation automatically on a wrong answer', async () => {
+    const explainingCheck = { ...CHOICE_EXERCISE, hasExplanation: true }
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+        const href = String(url)
+        if (href.endsWith('/api/exercises')) return { ok: true, json: async () => CATALOG } as Response
+        if (href.endsWith('/api/exercises/two-sum'))
+          return { ok: true, json: async () => CODE_EXERCISE } as Response
+        if (href.endsWith('/api/exercises/hashmap-lookup'))
+          return { ok: true, json: async () => explainingCheck } as Response
+        if (href.endsWith('/api/attempts')) {
+          if (init?.method === 'POST')
+            return { ok: true, json: async () => ({ id: 'attempt-1' }) } as Response
+          return { ok: true, json: async () => [] } as Response
+        }
+        if (href.endsWith('/submissions'))
+          return {
+            ok: true,
+            json: async () => ({
+              outcome: 'FAILED',
+              passed: 0,
+              total: 1,
+              detail: '',
+              explanation: 'O(1) is right because a hash map keys straight to the bucket.',
+            }),
+          } as Response
+        throw new Error(`unexpected fetch to ${href}`)
+      }) as unknown as typeof fetch,
+    )
+
+    render(<App />)
+    await screen.findByRole('heading', { name: 'Two Sum' })
+    fireEvent.change(screen.getByLabelText('Exercise'), { target: { value: 'hashmap-lookup' } })
+    await screen.findByRole('heading', { name: 'Hash Map Lookup' })
+
+    fireEvent.click(screen.getByLabelText('O(n)'))
+    fireEvent.click(screen.getByRole('button', { name: 'Submit' }))
+
+    // A wrong answer discloses the explanation on its own - no button needed.
+    expect(await screen.findByText(/keys straight to the bucket/i)).toBeInTheDocument()
+  })
+
+  it('offers the explanation on request when correct, and withholds it until asked', async () => {
+    const explainingCheck = { ...CHOICE_EXERCISE, hasExplanation: true }
+    let explanationRequested = false
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+        const href = String(url)
+        if (href.endsWith('/api/exercises')) return { ok: true, json: async () => CATALOG } as Response
+        if (href.endsWith('/api/exercises/two-sum'))
+          return { ok: true, json: async () => CODE_EXERCISE } as Response
+        if (href.endsWith('/api/exercises/hashmap-lookup'))
+          return { ok: true, json: async () => explainingCheck } as Response
+        if (href.endsWith('/explanation')) {
+          explanationRequested = true
+          return {
+            ok: true,
+            json: async () => ({ explanation: 'O(1): a hash map keys straight to the bucket.' }),
+          } as Response
+        }
+        if (href.endsWith('/api/attempts')) {
+          if (init?.method === 'POST')
+            return { ok: true, json: async () => ({ id: 'attempt-1' }) } as Response
+          return { ok: true, json: async () => [] } as Response
+        }
+        if (href.endsWith('/submissions'))
+          return {
+            ok: true,
+            json: async () => ({ outcome: 'PASSED', passed: 1, total: 1, detail: '' }),
+          } as Response
+        throw new Error(`unexpected fetch to ${href}`)
+      }) as unknown as typeof fetch,
+    )
+
+    render(<App />)
+    await screen.findByRole('heading', { name: 'Two Sum' })
+    fireEvent.change(screen.getByLabelText('Exercise'), { target: { value: 'hashmap-lookup' } })
+    await screen.findByRole('heading', { name: 'Hash Map Lookup' })
+
+    fireEvent.click(screen.getByLabelText('O(1)'))
+    fireEvent.click(screen.getByRole('button', { name: 'Submit' }))
+    expect(await screen.findByText('Correct')).toBeInTheDocument()
+
+    // A correct answer withholds the explanation; it is one keystroke away.
+    expect(screen.queryByText(/keys straight to the bucket/i)).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Why is this the answer?' }))
+
+    expect(await screen.findByText(/keys straight to the bucket/i)).toBeInTheDocument()
+    expect(explanationRequested).toBe(true)
+  })
+
   it('shows the backend error message when content cannot be loaded', async () => {
     vi.stubGlobal(
       'fetch',

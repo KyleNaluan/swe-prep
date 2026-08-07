@@ -14,10 +14,12 @@ import com.sweprep.backend.attempt.AttemptNotFoundException;
 import com.sweprep.backend.attempt.AttemptOutcome;
 import com.sweprep.backend.attempt.AttemptService;
 import com.sweprep.backend.attempt.AttemptWithCount;
+import com.sweprep.backend.attempt.ExplanationResult;
 import com.sweprep.backend.attempt.HintResult;
 import com.sweprep.backend.attempt.IllegalAttemptStateException;
 import com.sweprep.backend.attempt.RevealResult;
 import com.sweprep.backend.attempt.Submission;
+import com.sweprep.backend.attempt.SubmitResult;
 import com.sweprep.backend.exercise.Hint;
 import com.sweprep.backend.grader.FailingCase;
 import com.sweprep.backend.grader.Verdict;
@@ -65,6 +67,7 @@ class AttemptControllerTest {
                 0,
                 false,
                 null,
+                false,
                 null,
                 null,
                 null);
@@ -91,7 +94,8 @@ class AttemptControllerTest {
         Submission submission = new Submission(
                 UUID.randomUUID(), id, Instant.now(), "class Solution {}",
                 Verdict.Outcome.FAILED, 3, 4, "", 12L);
-        when(service.submit(eq(id), any())).thenReturn(submission);
+        // A wrong answer here carries no explanation (this check has none).
+        when(service.submit(eq(id), any())).thenReturn(new SubmitResult(submission, null));
 
         mockMvc.perform(post("/api/attempts/" + id + "/submissions")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -104,7 +108,40 @@ class AttemptControllerTest {
                 // A failing verdict discloses only the count - no input/expected/actual.
                 .andExpect(jsonPath("$.input").doesNotExist())
                 .andExpect(jsonPath("$.expected").doesNotExist())
-                .andExpect(jsonPath("$.actual").doesNotExist());
+                .andExpect(jsonPath("$.actual").doesNotExist())
+                // No explanation on this check, so the field is omitted entirely.
+                .andExpect(jsonPath("$.explanation").doesNotExist());
+    }
+
+    @Test
+    void aWrongAnswerDisclosesTheExplanationAutomatically() throws Exception {
+        UUID id = UUID.randomUUID();
+        Submission submission = new Submission(
+                UUID.randomUUID(), id, Instant.now(), "B",
+                Verdict.Outcome.FAILED, 0, 1, "", 0L);
+        when(service.submit(eq(id), any()))
+                .thenReturn(new SubmitResult(submission, "Because B holds in every case."));
+
+        mockMvc.perform(post("/api/attempts/" + id + "/submissions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(new RunRequest("A"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.outcome").value("FAILED"))
+                .andExpect(jsonPath("$.explanation").value("Because B holds in every case."));
+    }
+
+    @Test
+    void requestingTheExplanationReturnsItAndRecordsTheRequest() throws Exception {
+        UUID id = UUID.randomUUID();
+        Attempt requested = attempt(id, AttemptOutcome.SOLVED).withExplanationRequested();
+        AttemptWithCount withCount = new AttemptWithCount(requested, 1);
+        when(service.requestExplanation(id))
+                .thenReturn(new ExplanationResult(withCount, "Because B holds in every case."));
+
+        mockMvc.perform(post("/api/attempts/" + id + "/explanation"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.explanation").value("Because B holds in every case."))
+                .andExpect(jsonPath("$.attempt.explanationRequested").value(true));
     }
 
     @Test

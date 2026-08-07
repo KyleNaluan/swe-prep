@@ -170,18 +170,28 @@
 }
 
 .hints,
-.reveal {
+.reveal,
+.explanation {
   margin-top: 1.5rem;
 }
 
 .hints h2,
-.reveal h2 {
+.reveal h2,
+.explanation h2 {
   font-size: 0.85rem;
   font-weight: 600;
   color: #64748b;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   margin-bottom: 0.5rem;
+}
+
+.explanation-body {
+  line-height: 1.6;
+  margin: 0.4rem 0;
+  padding: 0.7rem 0.95rem;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  border-radius: 0.5rem;
 }
 
 .hints-note {
@@ -226,7 +236,8 @@
 }
 
 .hint-offer button,
-.reveal button {
+.reveal button,
+.explanation button {
   padding: 0.5rem 1.1rem;
   border-radius: 0.5rem;
   border: 1px solid rgba(148, 163, 184, 0.5);
@@ -237,7 +248,8 @@
 }
 
 .hint-offer button:disabled,
-.reveal button:disabled {
+.reveal button:disabled,
+.explanation button:disabled {
   opacity: 0.6;
   cursor: default;
 }

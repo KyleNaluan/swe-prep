@@ -18,7 +18,15 @@ import java.util.List;
  * a hint an always-chosen, always-recorded act rather than something on the page from
  * the start.
  *
- * @param hints the hint-ladder rung names in order, empty when there are none
+ * <p>The check's explanation follows the same withholding discipline (issue #51): only
+ * {@code hasExplanation} travels up front - whether one exists, so the editor knows
+ * whether to offer the "why" button - never the text. The explanation is disclosed
+ * automatically on a wrong answer (in the submission's response) or on request when
+ * correct, so shipping it here would defeat both by letting the solver read it before
+ * answering.
+ *
+ * @param hints          the hint-ladder rung names in order, empty when there are none
+ * @param hasExplanation whether the check carries an explanation to disclose
  */
 public record ExerciseView(
         String id,
@@ -28,7 +36,8 @@ public record ExerciseView(
         String difficulty,
         String form,
         ResponseView response,
-        List<String> hints) {
+        List<String> hints,
+        boolean hasExplanation) {
 
     static ExerciseView of(Exercise exercise, LanguageAdapter adapter) {
         return new ExerciseView(
@@ -39,7 +48,8 @@ public record ExerciseView(
                 exercise.difficulty().name(),
                 exercise.form().name(),
                 responseView(exercise.response(), adapter),
-                exercise.hints().stream().map(Hint::name).toList());
+                exercise.hints().stream().map(Hint::name).toList(),
+                exercise.explanation() != null);
     }
 
     private static ResponseView responseView(Response response, LanguageAdapter adapter) {

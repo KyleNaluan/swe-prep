@@ -220,6 +220,46 @@ class FileExerciseCatalogTest {
     }
 
     @Test
+    void parsesACheckExplanationWhenPresent(@TempDir Path dir) throws IOException {
+        String withExplanation = CHOICE_EXERCISE.replaceFirst(
+                "\\}\\s*$",
+                """
+                ,
+                  "explanation": "B is correct because it is the only stable option."
+                }
+                """);
+        write(dir, "pick.json", withExplanation);
+
+        Exercise loaded = catalog(dir).byId("pick-demo").orElseThrow();
+        assertThat(loaded.explanation())
+                .isEqualTo("B is correct because it is the only stable option.");
+    }
+
+    @Test
+    void aCheckWithNoExplanationLoadsWithNull(@TempDir Path dir) throws IOException {
+        write(dir, "pick.json", CHOICE_EXERCISE);
+
+        assertThat(catalog(dir).byId("pick-demo").orElseThrow().explanation()).isNull();
+    }
+
+    @Test
+    void aBlankExplanationNamesFileAndField(@TempDir Path dir) throws IOException {
+        String blankExplanation = CHOICE_EXERCISE.replaceFirst(
+                "\\}\\s*$",
+                """
+                ,
+                  "explanation": "   "
+                }
+                """);
+        write(dir, "bad-explanation.json", blankExplanation);
+
+        assertThatThrownBy(catalog(dir)::all)
+                .isInstanceOf(ContentException.class)
+                .hasMessageContaining("bad-explanation.json")
+                .hasMessageContaining("explanation");
+    }
+
+    @Test
     void aMalformedHintRungNamesFileAndField(@TempDir Path dir) throws IOException {
         String badHints = CODE_EXERCISE.replaceFirst(
                 "\\}\\s*$",

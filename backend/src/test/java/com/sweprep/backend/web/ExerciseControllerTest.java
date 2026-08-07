@@ -59,7 +59,9 @@ class ExerciseControllerTest {
                 // The hint-ladder rung names travel so the editor can offer them, but no
                 // bodies do - a rung's text is disclosed only when the solver takes it.
                 .andExpect(jsonPath("$.hints").value(Matchers.contains("Pattern", "Approach", "Key insight")))
-                .andExpect(jsonPath("$.hints[*].body").doesNotExist());
+                .andExpect(jsonPath("$.hints[*].body").doesNotExist())
+                // This check carries no explanation, so hasExplanation is false.
+                .andExpect(jsonPath("$.hasExplanation").value(false));
     }
 
     @Test
@@ -68,7 +70,11 @@ class ExerciseControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.response.kind").value("choice"))
                 .andExpect(jsonPath("$.response.options").value(Matchers.contains("A", "B", "C")))
-                .andExpect(jsonPath("$.response.stub").doesNotExist());
+                .andExpect(jsonPath("$.response.stub").doesNotExist())
+                // The check carries an explanation, so the editor is told one exists -
+                // but its text never travels up front (issue #51).
+                .andExpect(jsonPath("$.hasExplanation").value(true))
+                .andExpect(jsonPath("$.explanation").doesNotExist());
     }
 
     @Test
