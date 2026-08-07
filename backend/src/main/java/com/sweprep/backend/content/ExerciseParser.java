@@ -40,7 +40,9 @@ import java.util.List;
  *   "explanation": "why the correct answer is correct",        // optional (issue #51)
  *   "family":   ["BACKEND", "AIML"],                           // optional, default []
  *   "stability": "STABLE|VOLATILE",                            // optional, default STABLE
- *   "reviewed": "2026-08-07"                                   // optional ISO date (VOLATILE)
+ *   "reviewed": "2026-08-07",                                  // optional ISO date (VOLATILE)
+ *   "derivedFrom": "two-sum"                                   // optional; the problem
+ *                                                              // a rep is gated on (issue #18)
  * }
  * </pre>
  */
@@ -62,9 +64,11 @@ final class ExerciseParser {
         Grading grading = grading(json, json.requireObject(root, "grading"));
         List<Hint> hints = hints(json, root);
         String explanation = json.optionalText(root, "explanation");
+        String derivedFrom = json.optionalText(root, "derivedFrom");
         return new Exercise(
                 id, title, statement, domain, topics, difficulty, form, response, grading, hints,
-                explanation, json.family(root), json.stability(root), json.reviewed(root));
+                explanation, json.family(root), json.stability(root), json.reviewed(root),
+                derivedFrom);
     }
 
     private static List<Hint> hints(ContentJson json, JsonNode root) {
