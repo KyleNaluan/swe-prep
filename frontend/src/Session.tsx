@@ -31,6 +31,10 @@ function Session() {
   const [mode, setMode] = useState<Mode>('today')
   const [tier, setTier] = useState<Tier>('warmup')
   const [status, setStatus] = useState<SessionStatus | null>(null)
+  // Whether today's warm-up set came back empty. When it does there are no reps to finish
+  // the day, so completing a single Practice exercise becomes the fallback that banks it -
+  // an empty warm-up must never leave the day impossible to complete.
+  const [warmupEmpty, setWarmupEmpty] = useState(false)
 
   const refreshStatus = useCallback(() => {
     apiFetch('/api/session')
@@ -51,21 +55,41 @@ function Session() {
     refreshStatus()
   }, [refreshStatus])
 
+  // Record the day as complete and refresh the streak. This is the single client path to
+  // the only backend endpoint that completes a day; both the warm-up finishing and (when
+  // the warm-up was empty) a Practice solve route through it. It is idempotent server-side.
+  const recordDayComplete = useCallback(
+    () =>
+      apiFetch('/api/session/complete-warmup', { method: 'POST' })
+        .then(async (response) => {
+          if (!response.ok) throw new Error(await errorMessage(response))
+          return (await response.json()) as SessionStatus
+        })
+        .then(setStatus)
+        .catch(() => {
+          // Best effort; the landing still shows and the day reads complete locally.
+        }),
+    [],
+  )
+
   // Finishing the warm-up completes the day - the whole required core. Record it (the day
-  // is complete from here on, whatever happens with the optional main), refresh the streak,
-  // and show the day-complete landing.
+  // is complete from here on, whatever happens with the optional main) and show the
+  // day-complete landing.
   const handleWarmupComplete = useCallback(() => {
-    apiFetch('/api/session/complete-warmup', { method: 'POST' })
-      .then(async (response) => {
-        if (!response.ok) throw new Error(await errorMessage(response))
-        return (await response.json()) as SessionStatus
-      })
-      .then(setStatus)
-      .catch(() => {
-        // Best effort; the landing still shows and the day reads complete locally.
-      })
+    void recordDayComplete()
     setTier('landing')
-  }, [])
+  }, [recordDayComplete])
+
+  const handleWarmupEmpty = useCallback(() => setWarmupEmpty(true), [])
+
+  // When the warm-up set was empty, solving any Practice exercise is the fallback that
+  // completes the day. Otherwise the warm-up owns completion and the main stays optional,
+  // so a Practice solve must not touch the day.
+  const handleMainSolved = useCallback(() => {
+    if (warmupEmpty && !status?.dayComplete) {
+      void recordDayComplete()
+    }
+  }, [warmupEmpty, status?.dayComplete, recordDayComplete])
 
   return (
     <main className="workspace">
@@ -95,12 +119,12 @@ function Session() {
 
       {mode === 'today' ? (
         tier === 'warmup' ? (
-          <Warmup onComplete={handleWarmupComplete} />
+          <Warmup onComplete={handleWarmupComplete} onEmpty={handleWarmupEmpty} />
         ) : (
           <Landing status={status} onStartMain={() => setMode('practice')} />
         )
       ) : (
-        <Practice dayComplete={status?.dayComplete ?? false} />
+        <Practice dayComplete={status?.dayComplete ?? false} onSolved={handleMainSolved} />
       )}
     </main>
   )

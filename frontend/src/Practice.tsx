@@ -116,7 +116,16 @@ type RunState =
   | { phase: 'done'; verdict: Verdict }
   | { phase: 'error'; message: string }
 
-function Practice({ dayComplete = false }: { dayComplete?: boolean }) {
+// `onSolved` fires whenever an exercise here is solved. The session uses it only as the
+// fallback that completes the day when the warm-up set was empty (issue #19); normally
+// the warm-up completes the day and the main exercise stays optional, so this is a no-op.
+function Practice({
+  dayComplete = false,
+  onSolved,
+}: {
+  dayComplete?: boolean
+  onSolved?: () => void
+}) {
   const [catalog, setCatalog] = useState<Summary[] | null>(null)
   const [catalogError, setCatalogError] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -279,6 +288,7 @@ function Practice({ dayComplete = false }: { dayComplete?: boolean }) {
         if (attemptRef.current) attemptRef.current.solved = true
         setSolved(true)
         setConsecutiveFailures(0)
+        onSolved?.()
       } else {
         setConsecutiveFailures((n) => n + 1)
       }

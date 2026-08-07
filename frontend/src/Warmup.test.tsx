@@ -197,5 +197,24 @@ describe('Warmup', () => {
     render(<Warmup />)
 
     expect(await screen.findByRole('heading', { name: /nothing to warm up/i })).toBeInTheDocument()
+    // Standalone there is no day to finish, so the session-only fallback line is absent.
+    expect(screen.queryByText(/finishes your day/i)).not.toBeInTheDocument()
+  })
+
+  it('when embedded, tells the parent the set is empty and points to Practice for the day', async () => {
+    const onEmpty = vi.fn()
+    vi.stubGlobal(
+      'fetch',
+      mockWarmup({ set: [], reps: {}, verdictFor: () => ({}) }) as unknown as typeof fetch,
+    )
+
+    render(<Warmup onComplete={() => {}} onEmpty={onEmpty} />)
+
+    expect(await screen.findByRole('heading', { name: /nothing to warm up/i })).toBeInTheDocument()
+    // The empty screen says plainly how the day still gets finished, and the parent is told.
+    expect(
+      screen.getByText(/completing any one exercise in Practice finishes your day/i),
+    ).toBeInTheDocument()
+    await waitFor(() => expect(onEmpty).toHaveBeenCalledTimes(1))
   })
 })
