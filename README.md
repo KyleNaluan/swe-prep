@@ -44,7 +44,9 @@ Prerequisites: Java 21 on `PATH`, Docker running, Node 24.
    ./mvnw spring-boot:run
    ```
 
-4. Start the frontend (runs on `:5173`):
+4. Start the frontend (runs on `:5173`, and only `:5173`: the dev server is pinned with
+   `strictPort` so it fails loudly if that port is taken instead of silently moving to
+   another one and leaving every API call refused with nothing explaining why):
 
    ```sh
    cd frontend
@@ -52,7 +54,7 @@ Prerequisites: Java 21 on `PATH`, Docker running, Node 24.
    npm run dev
    ```
 
-5. Open `http://localhost:5173` — pick an exercise from the selector. A coding
+5. Open `http://localhost:5173` - pick an exercise from the selector. A coding
    exercise opens in a Monaco editor: write a solution and press Run to have the
    backend compile and execute it against the test cases and report
    `N of M tests passed`. A failing run reports only that count, never a case's
@@ -70,7 +72,20 @@ Prerequisites: Java 21 on `PATH`, Docker running, Node 24.
 
 If Postgres isn't reachable, the backend fails to start rather than coming up in
 a degraded state. If the content path is missing or a file is malformed, the app
-still starts and the editor shows a clear error naming the cause.
+still starts and the editor shows a clear error naming the cause. If the browser
+can't reach the backend at all - it's down, or this page was opened from an origin
+the backend doesn't allow - the app shows that too, naming the cause, instead of an
+unexplained blank screen (issue #34).
+
+### Reaching it from another device over the tailnet
+
+The frontend dev server binds every interface, not just `localhost`, so opening
+`http://<tailnet-hostname-or-IP>:5173` from your phone or another machine works the
+same as `localhost:5173` does. The frontend's API calls go through the dev server's
+own proxy to the backend on the same host, so this needs no CORS configuration at
+all - the browser only ever talks to whatever origin loaded the page. The backend's
+own CORS list (`sweprep.web.allowed-origins`, `backend/src/main/resources/application.yml`)
+only matters for a client that talks to it directly, bypassing the frontend.
 
 ## Content
 

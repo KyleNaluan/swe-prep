@@ -288,4 +288,21 @@ describe('App', () => {
 
     expect(await screen.findByText(/Content directory not found/i)).toBeInTheDocument()
   })
+
+  // The browser rejects fetch with a bare, undescriptive TypeError for a blocked or
+  // failed request - including a CORS-blocked call, which was the original bug (issue
+  // #34): the page loaded fine and every call went nowhere with nothing on screen
+  // explaining why. Confirms that failure now surfaces an actionable message instead.
+  it('names the cause when a request never reaches the backend', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new TypeError('Failed to fetch')
+      }) as unknown as typeof fetch,
+    )
+
+    render(<App />)
+
+    expect(await screen.findByText(/could not reach the backend/i)).toBeInTheDocument()
+  })
 })

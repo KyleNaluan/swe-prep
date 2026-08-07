@@ -7,6 +7,15 @@ sweprep:
     # the content repo is cloned into <repo-root>/content. Override with the
     # SWEPREP_CONTENT_PATH env var to point at a clone elsewhere.
     path: ${SWEPREP_CONTENT_PATH:../content}
+  web:
+    # Browser origins allowed to call the backend directly, comma-separated. The single
+    # source for both WebConfig's CORS mapping and the actuator's CORS config below - it
+    # used to be the same localhost literal hardcoded in both places, which is what let
+    # the app fail silently the moment Vite ran on any other port (issue #34). Not
+    # actually load-bearing for the frontend's own calls in dev, since the Vite dev
+    # server proxies them same-origin (frontend/vite.config.ts) - this is for anything
+    # that calls the backend directly instead. Override with SWEPREP_ALLOWED_ORIGINS.
+    allowed-origins: ${SWEPREP_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:5174}
 
 spring:
   application:
@@ -22,7 +31,7 @@ management:
   endpoints:
     web:
       cors:
-        allowed-origins: "http://localhost:5173"
+        allowed-origins: ${sweprep.web.allowed-origins}
         allowed-methods: GET
   endpoint:
     health:
