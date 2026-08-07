@@ -45,7 +45,7 @@ class RealContentSmokeTest {
     private GraderRegistry graders() {
         TestCaseGrader testCases = new TestCaseGrader(
                 new JavaLanguageAdapter(), new LocalJavaRunner(), mapper, Duration.ofSeconds(10));
-        return new GraderRegistry(List.of(testCases, new AnswerKeyGrader()));
+        return new GraderRegistry(List.of(testCases, new AnswerKeyGrader(mapper)));
     }
 
     @Test
