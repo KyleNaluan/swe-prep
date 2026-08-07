@@ -59,7 +59,13 @@ type Phase =
   | { name: 'active' }
   | { name: 'done' }
 
-function Warmup() {
+// When embedded in the daily session loop the parent is told the moment the set is
+// finished, so it can complete the day and show the day-complete landing (issue #19).
+// The prop is optional so the runner still works standalone (it then shows its own
+// built-in done screen).
+type WarmupProps = { onComplete?: (correctCount: number) => void }
+
+function Warmup({ onComplete }: WarmupProps = {}) {
   const [phase, setPhase] = useState<Phase>({ name: 'loading' })
   // The working queue of rep ids. A wrong answer appends its rep, so the queue can grow
   // past the original set; `pos` walks it and the set ends when `pos` runs off the end.
@@ -235,7 +241,14 @@ function Warmup() {
   async function handleNext() {
     await abandonIfUnsolved()
     if (pos + 1 >= queue.length) {
-      setPhase({ name: 'done' })
+      // The set is finished. In the session loop the parent owns what comes next (record
+      // the day complete, show the landing); standalone, fall back to the built-in done
+      // screen so the runner still works on its own.
+      if (onComplete) {
+        onComplete(correctCount)
+      } else {
+        setPhase({ name: 'done' })
+      }
       return
     }
     setPos((p) => p + 1)
