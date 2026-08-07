@@ -5,9 +5,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.Mockito.when;
 
+import com.sweprep.backend.exercise.ContentCatalog;
 import com.sweprep.backend.exercise.Exercise;
 import com.sweprep.backend.exercise.ExerciseCatalog;
-import com.sweprep.backend.grader.Verdict;
 import com.sweprep.backend.testsupport.Fixtures;
 import java.util.List;
 import java.util.Optional;
@@ -60,6 +60,11 @@ class AttemptPersistenceTest {
     @MockitoBean
     private ExerciseCatalog catalog;
 
+    // Mocking ExerciseCatalog replaces the shared FileExerciseCatalog bean, so the wider
+    // ContentCatalog (LessonController's dependency) must be supplied for the context to load.
+    @MockitoBean
+    private ContentCatalog contentCatalog;
+
     private Exercise concept;
     private Exercise pair;
     private Exercise predict;
@@ -82,7 +87,7 @@ class AttemptPersistenceTest {
         SubmitResult result = service.submit(started.id(), "B");
         Submission submission = result.submission();
 
-        assertThat(submission.outcome()).isEqualTo(Verdict.Outcome.PASSED);
+        assertThat(submission.outcome()).isEqualTo(SubmissionOutcome.PASSED);
         // A passing answer withholds the explanation - it is offered on request instead.
         assertThat(result.explanation()).isNull();
 
@@ -96,7 +101,7 @@ class AttemptPersistenceTest {
         List<Submission> stored = submissions.findByAttempt(started.id());
         assertThat(stored).singleElement().satisfies(s -> {
             assertThat(s.response()).isEqualTo("B");
-            assertThat(s.outcome()).isEqualTo(Verdict.Outcome.PASSED);
+            assertThat(s.outcome()).isEqualTo(SubmissionOutcome.PASSED);
         });
     }
 
@@ -121,7 +126,7 @@ class AttemptPersistenceTest {
         SubmitResult result = service.submit(started.id(), "A");
 
         // The explanation is shown automatically on a wrong answer (issue #51)...
-        assertThat(result.submission().outcome()).isEqualTo(Verdict.Outcome.FAILED);
+        assertThat(result.submission().outcome()).isEqualTo(SubmissionOutcome.FAILED);
         assertThat(result.explanation()).isEqualTo(Fixtures.CONCEPT_EXPLANATION);
 
         // ...but that automatic disclosure is not a request, so nothing is recorded and
@@ -153,7 +158,7 @@ class AttemptPersistenceTest {
         Attempt started = service.start("predict-number");
         // Wrong answer: still nothing to auto-disclose, since this check has no explanation.
         SubmitResult wrong = service.submit(started.id(), "7");
-        assertThat(wrong.submission().outcome()).isEqualTo(Verdict.Outcome.FAILED);
+        assertThat(wrong.submission().outcome()).isEqualTo(SubmissionOutcome.FAILED);
         assertThat(wrong.explanation()).isNull();
 
         // Giving up then reading why is a legitimate terminal path: the explanation is

@@ -511,3 +511,76 @@
     color: #cbd5e1;
   }
 }
+
+/* Self-graded "explain in your own words" produce-then-reveal (issue #41). */
+.self-check {
+  margin-top: 1rem;
+}
+
+.explain-box {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid rgba(148, 163, 184, 0.5);
+  border-radius: 0.5rem;
+  background: transparent;
+  color: inherit;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.explain-box:disabled {
+  opacity: 0.7;
+}
+
+.self-rating {
+  margin-top: 1.5rem;
+}
+
+.self-rating h2 {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.5rem;
+}
+
+/* Ungraded self-explanation prompts embedded in a lesson (issue #41). */
+.prompts {
+  margin-top: 1.75rem;
+}
+
+.prompts h2 {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.6rem;
+}
+
+.prompt {
+  padding: 0.85rem 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  border-radius: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.prompt-question {
+  margin: 0 0 0.6rem;
+  line-height: 1.6;
+  font-weight: 500;
+}
+
+.prompt button {
+  padding: 0.45rem 1rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(148, 163, 184, 0.5);
+  background: transparent;
+  color: #64748b;
+  font-size: 0.9rem;
+  cursor: pointer;
+}

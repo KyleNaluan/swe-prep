@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { apiFetch, errorMessage } from './api'
 import Warmup from './Warmup'
 import Practice from './Practice'
+import Lesson from './Lesson'
 
 // The daily session loop (issue #19) - the product the rest of the machinery serves.
 //
@@ -21,10 +22,11 @@ import Practice from './Practice'
 
 type SessionStatus = { dayComplete: boolean; completedAt: string | null; streak: number }
 
-// The two surfaces: the guided daily flow (warm-up, then the day-complete landing) and the
-// uncapped practice/browse surface (the main exercise and continuation). Browse is always
-// reachable - it is not gated behind finishing the warm-up.
-type Mode = 'today' | 'practice'
+// The three surfaces: the guided daily flow (warm-up, then the day-complete landing), the
+// uncapped practice/browse surface (the main exercise and continuation), and the Learn
+// surface (lessons, read never attempted - issue #46/#41). Practice and Learn are always
+// reachable - neither is gated behind finishing the warm-up.
+type Mode = 'today' | 'practice' | 'learn'
 type Tier = 'warmup' | 'landing'
 
 function Session() {
@@ -124,6 +126,14 @@ function Session() {
         >
           Practice
         </button>
+        <button
+          type="button"
+          className={mode === 'learn' ? 'active' : ''}
+          aria-pressed={mode === 'learn'}
+          onClick={() => setMode('learn')}
+        >
+          Learn
+        </button>
       </nav>
 
       {mode === 'today' ? (
@@ -132,8 +142,10 @@ function Session() {
         ) : (
           <Landing status={status} onStartMain={() => setMode('practice')} />
         )
-      ) : (
+      ) : mode === 'practice' ? (
         <Practice dayComplete={status?.dayComplete ?? false} onSolved={handleMainSolved} />
+      ) : (
+        <Lesson />
       )}
     </main>
   )

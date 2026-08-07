@@ -44,6 +44,22 @@ class WarmupSelectorTest {
     }
 
     @Test
+    void excludesSelfCheckRepsSoTheRequiredCoreStaysRecognitionAndFast() {
+        // A self-graded "explain in your own words" item is production, not recognition, and
+        // its produce-then-reveal flow does not belong in the ~4-minute core (issue #41). Even
+        // authored as a REP it must never leak into the warm-up; it lives in the optional tiers.
+        WarmupSelector selector = new WarmupSelector(8, 2);
+        List<Exercise> catalog = List.of(
+                rep("r1", "arrays", List.of(Family.CORE), null),
+                selfCheckRep("explain1", "concepts"),
+                rep("r2", "graphs", List.of(Family.CORE), null));
+
+        List<Exercise> set = selector.select(catalog, ALL, NOTHING_ATTEMPTED);
+
+        assertThat(set).extracting(Exercise::id).containsExactly("r1", "r2");
+    }
+
+    @Test
     void capsTheSetAtItsConfiguredSize() {
         WarmupSelector selector = new WarmupSelector(3, 2);
         List<Exercise> catalog = new ArrayList<>();
@@ -305,6 +321,26 @@ class WarmupSelectorTest {
                                 "Two pointers", "Sliding window", "Binary search", "Hash set",
                                 "Group by", "Left join")),
                 new Grading.AnswerKey(TextNode.valueOf(correctLabel), Comparison.exact()),
+                List.of(),
+                null,
+                List.of(Family.CORE),
+                Stability.STABLE,
+                null,
+                null);
+    }
+
+    /** A self-graded explain rep (FreeText + SelfCheck) - the kind the warm-up must exclude. */
+    private static Exercise selfCheckRep(String id, String topic) {
+        return new Exercise(
+                id,
+                id,
+                "Explain it in your own words.",
+                "fundamentals",
+                List.of(topic),
+                Difficulty.EASY,
+                Form.REP,
+                new Response.FreeText(),
+                new Grading.SelfCheck("the model answer"),
                 List.of(),
                 null,
                 List.of(Family.CORE),

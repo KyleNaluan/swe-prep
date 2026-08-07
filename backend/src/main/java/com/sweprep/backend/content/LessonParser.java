@@ -3,6 +3,7 @@ package com.sweprep.backend.content;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.sweprep.backend.exercise.Difficulty;
 import com.sweprep.backend.exercise.Lesson;
+import com.sweprep.backend.exercise.SelfExplainPrompt;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -25,11 +26,16 @@ import java.util.List;
  *   "domain": "fundamentals", "topics": ["messaging"],
  *   "difficulty": "EASY|MEDIUM|HARD",
  *   "checks": ["mq-when-to-use", "mq-vs-direct-call"], // ids of its REP exercises
+ *   "prompts": [ { "prompt": "Explain why...", "modelAnswer": "..." }, ... ], // optional (issue #41)
  *   "family":   ["BACKEND"],                           // optional, default []
  *   "stability": "STABLE|VOLATILE",                    // optional, default STABLE
  *   "reviewed": "2026-08-07"                           // optional ISO date (VOLATILE)
  * }
  * </pre>
+ *
+ * <p>The {@code prompts} are ungraded self-explanation prompts (issue #41): part of active
+ * reading, not an attempt. They carry no response spec and no grader - a lesson stays
+ * {@code READ}.
  */
 final class LessonParser {
 
@@ -45,9 +51,34 @@ final class LessonParser {
         List<String> topics = json.topics(root);
         Difficulty difficulty = json.requireEnum(root, "difficulty", Difficulty.class);
         List<String> checks = checks(json, root);
+        List<SelfExplainPrompt> prompts = prompts(json, root);
         return new Lesson(
-                id, title, statement, domain, topics, difficulty, checks,
+                id, title, statement, domain, topics, difficulty, checks, prompts,
                 json.family(root), json.stability(root), json.reviewed(root));
+    }
+
+    /**
+     * The optional self-explanation prompts (issue #41). Absent means none; when present it
+     * must be an array of {@code { prompt, modelAnswer }} objects, each with both fields, so
+     * a malformed prompt fails naming the file and field exactly as any other content does.
+     */
+    private static List<SelfExplainPrompt> prompts(ContentJson json, JsonNode root) {
+        JsonNode node = root.get("prompts");
+        if (node == null || node.isNull()) {
+            return List.of();
+        }
+        if (!node.isArray()) {
+            throw json.malformed("'prompts' must be an array of { prompt, modelAnswer } objects");
+        }
+        List<SelfExplainPrompt> prompts = new ArrayList<>();
+        for (JsonNode prompt : node) {
+            if (!prompt.isObject()) {
+                throw json.malformed("each prompt must be an object with 'prompt' and 'modelAnswer'");
+            }
+            prompts.add(new SelfExplainPrompt(
+                    json.requireText(prompt, "prompt"), json.requireText(prompt, "modelAnswer")));
+        }
+        return prompts;
     }
 
     /**

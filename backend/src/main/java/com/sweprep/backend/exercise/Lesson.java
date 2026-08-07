@@ -29,6 +29,9 @@ import java.util.List;
  * @param difficulty how hard the material is
  * @param checks     ids of the {@code Form = REP} exercises this lesson introduces;
  *                   empty when the lesson has no checks authored yet
+ * @param prompts    ungraded self-explanation prompts embedded in the lesson (issue #41);
+ *                   each is read, thought about, then its model answer revealed - part of
+ *                   active reading, never an attempt. Empty when the lesson has none.
  * @param family     the role families this content serves (design revision t3)
  * @param stability  how durable the subject matter is; {@link Stability#STABLE}
  *                   unless it rots
@@ -43,6 +46,7 @@ public record Lesson(
         List<String> topics,
         Difficulty difficulty,
         List<String> checks,
+        List<SelfExplainPrompt> prompts,
         List<Family> family,
         Stability stability,
         LocalDate reviewed) implements Content {
@@ -50,15 +54,16 @@ public record Lesson(
     public Lesson {
         topics = List.copyOf(topics);
         checks = List.copyOf(checks);
+        prompts = List.copyOf(prompts);
         family = List.copyOf(family);
         stability = stability == null ? Stability.STABLE : stability;
     }
 
     /**
-     * Convenience constructor for a lesson with no content-level family or stability
-     * tags: an empty family, {@link Stability#STABLE}, and no review date. These are
-     * additive metadata (design revision t3); an untagged lesson is a stable one with
-     * no family.
+     * Convenience constructor for a lesson with no self-explanation prompts and no
+     * content-level family or stability tags: an empty family, {@link Stability#STABLE},
+     * and no review date. These are additive metadata (design revision t3, issue #41); an
+     * untagged lesson is a stable one with no family and no prompts.
      */
     public Lesson(
             String id,
@@ -68,6 +73,7 @@ public record Lesson(
             List<String> topics,
             Difficulty difficulty,
             List<String> checks) {
-        this(id, title, statement, domain, topics, difficulty, checks, List.of(), Stability.STABLE, null);
+        this(id, title, statement, domain, topics, difficulty, checks, List.of(), List.of(),
+                Stability.STABLE, null);
     }
 }

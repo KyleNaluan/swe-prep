@@ -2,9 +2,11 @@ package com.sweprep.backend.attempt;
 
 import com.sweprep.backend.exercise.Exercise;
 import com.sweprep.backend.exercise.ExerciseCatalog;
+import com.sweprep.backend.exercise.Grading;
 import com.sweprep.backend.exercise.Hint;
 import com.sweprep.backend.grader.FailingCase;
 import com.sweprep.backend.grader.GraderRegistry;
+import com.sweprep.backend.grader.SelfCheckGrader;
 import com.sweprep.backend.grader.Verdict;
 import java.time.Instant;
 import java.util.List;
@@ -41,6 +43,7 @@ public class AttemptService {
 
     private final ExerciseCatalog catalog;
     private final GraderRegistry graders;
+    private final SelfCheckGrader selfCheckGrader;
     private final AttemptRepository attempts;
     private final SubmissionRepository submissions;
     private final CurrentUser currentUser;
@@ -48,11 +51,13 @@ public class AttemptService {
     public AttemptService(
             ExerciseCatalog catalog,
             GraderRegistry graders,
+            SelfCheckGrader selfCheckGrader,
             AttemptRepository attempts,
             SubmissionRepository submissions,
             CurrentUser currentUser) {
         this.catalog = catalog;
         this.graders = graders;
+        this.selfCheckGrader = selfCheckGrader;
         this.attempts = attempts;
         this.submissions = submissions;
         this.currentUser = currentUser;
@@ -113,7 +118,7 @@ public class AttemptService {
                 attempt.id(),
                 Instant.now(),
                 response,
-                verdict.outcome(),
+                SubmissionOutcome.of(verdict.outcome()),
                 verdict.passed(),
                 verdict.total(),
                 verdict.detail(),
@@ -126,6 +131,84 @@ public class AttemptService {
         String explanationOnWrong =
                 verdict.outcome() == Verdict.Outcome.FAILED ? exercise.explanation() : null;
         return new SubmitResult(submission, explanationOnWrong);
+    }
+
+    /**
+     * Commits a self-check "explain in your own words" answer and reveals the model answer
+     * for self-comparison (issue #41, design revision t3 section 1.1). Nothing is
+     * machine-graded: the produced text is stored as a {@link SubmissionOutcome#SELF_RATED}
+     * submission and the model answer is handed back for the learner to judge themselves.
+     *
+     * <p>The order is load-bearing and enforced here, not just in the editor. The produced
+     * text must be non-blank - you cannot reveal before producing - and the submission is
+     * inserted <em>before</em> the model answer is returned, freezing what the learner wrote
+     * cold. That is what makes a later self-rating after peeking distinguishable: the record
+     * holds the pre-reveal text, not a copy edited once the answer was in view. Each reveal
+     * is its own committed submission, so re-typing and revealing again is a fresh honest
+     * commit rather than a rewrite of the first.
+     *
+     * @throws IllegalAttemptStateException    if the attempt has already ended
+     * @throws InvalidAttemptRequestException if the exercise is not self-check graded, or the
+     *                                         produced text is blank
+     */
+    @Transactional
+    public SelfCheckReveal revealSelfCheck(UUID attemptId, String produced) {
+        Attempt attempt = requireInProgress(attemptId);
+        Exercise exercise = requireExercise(attempt);
+        if (!(exercise.grading() instanceof Grading.SelfCheck)) {
+            throw new InvalidAttemptRequestException(
+                    "Exercise '" + exercise.id() + "' is not a self-check item; there is no model"
+                            + " answer to reveal for self-assessment");
+        }
+        if (produced == null || produced.isBlank()) {
+            throw new InvalidAttemptRequestException(
+                    "Produce an explanation before revealing the model answer");
+        }
+        String modelAnswer = selfCheckGrader.reveal(exercise);
+        Submission submission = new Submission(
+                UUID.randomUUID(),
+                attempt.id(),
+                Instant.now(),
+                produced.strip(),
+                SubmissionOutcome.SELF_RATED,
+                0,
+                0,
+                "",
+                0);
+        submissions.insert(submission);
+        return new SelfCheckReveal(submission, modelAnswer);
+    }
+
+    /**
+     * Records the learner's self-rating of a revealed self-check answer and ends the sitting
+     * as {@link AttemptOutcome#EXPLAINED} (issue #41). The rating is stamped onto the
+     * already-committed submission (design revision t3 section 5, in {@code detail} - no
+     * migration); it is a separate generation signal, never the objective competence number,
+     * which cannot see a {@code SELF_RATED} row.
+     *
+     * <p>Rating is only possible for a submission that this attempt actually revealed, which
+     * enforces reveal-before-rate: the submission exists only because {@link #revealSelfCheck}
+     * created it. Rating once ends the sitting, so it cannot be redone - a self-check verdict
+     * is committed exactly as irreversibly as a solve.
+     *
+     * @throws IllegalAttemptStateException if the attempt has already ended
+     * @throws AttemptNotFoundException     if the submission is unknown or not a self-check
+     *                                      commit of this attempt
+     */
+    @Transactional
+    public SelfCheckRating rateSelfCheck(UUID attemptId, UUID submissionId, SelfRating rating) {
+        Attempt attempt = requireInProgress(attemptId);
+        Submission submission = submissions
+                .findById(submissionId)
+                .filter(s -> s.attemptId().equals(attempt.id()))
+                .filter(s -> s.outcome() == SubmissionOutcome.SELF_RATED)
+                .orElseThrow(() -> new AttemptNotFoundException(
+                        "No revealed self-check submission " + submissionId + " on attempt "
+                                + attemptId + "; reveal the model answer before rating"));
+        submissions.recordSelfRating(submission.id(), rating.name());
+        Attempt explained = attempt.withOutcome(AttemptOutcome.EXPLAINED, Instant.now());
+        attempts.update(explained);
+        return new SelfCheckRating(withCount(explained), rating);
     }
 
     /**
@@ -252,6 +335,24 @@ public class AttemptService {
 
     private AttemptWithCount withCount(Attempt attempt) {
         return new AttemptWithCount(attempt, submissions.countByAttempt(attempt.id()));
+    }
+
+    // Reads an owned attempt and requires it to still be open, the precondition every
+    // state-changing lifecycle step shares (an already-ended attempt is a 409).
+    private Attempt requireInProgress(UUID attemptId) {
+        Attempt attempt = requireOwned(attemptId);
+        if (attempt.outcome() != AttemptOutcome.IN_PROGRESS) {
+            throw new IllegalAttemptStateException(
+                    "Attempt " + attemptId + " has already ended (" + attempt.outcome() + ")");
+        }
+        return attempt;
+    }
+
+    private Exercise requireExercise(Attempt attempt) {
+        return catalog
+                .byId(attempt.exerciseId())
+                .orElseThrow(() -> new AttemptNotFoundException(
+                        "Exercise '" + attempt.exerciseId() + "' is no longer available"));
     }
 
     // Reads an attempt under a row lock (all callers are state-changing and
