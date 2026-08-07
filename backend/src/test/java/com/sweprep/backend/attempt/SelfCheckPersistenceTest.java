@@ -109,7 +109,7 @@ class SelfCheckPersistenceTest {
     void producingIsRequiredBeforeRevealing() {
         UUID attemptId = attempts.start("explain-gradient-descent").id();
         assertThatThrownBy(() -> attempts.revealSelfCheck(attemptId, "   "))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(InvalidAttemptRequestException.class)
                 .hasMessageContaining("Produce an explanation");
     }
 
@@ -117,7 +117,7 @@ class SelfCheckPersistenceTest {
     void revealingANonSelfCheckItemIsRejected() {
         UUID attemptId = attempts.start("concept-demo").id();
         assertThatThrownBy(() -> attempts.revealSelfCheck(attemptId, "text"))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(InvalidAttemptRequestException.class)
                 .hasMessageContaining("not a self-check");
     }
 

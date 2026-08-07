@@ -2,6 +2,7 @@ package com.sweprep.backend.web;
 
 import com.sweprep.backend.attempt.AttemptNotFoundException;
 import com.sweprep.backend.attempt.IllegalAttemptStateException;
+import com.sweprep.backend.attempt.InvalidAttemptRequestException;
 import com.sweprep.backend.web.ContentErrorHandler.ApiError;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -28,8 +29,8 @@ public class AttemptErrorHandler {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(new ApiError(e.getMessage()));
     }
 
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<ApiError> handleBadRequest(IllegalArgumentException e) {
+    @ExceptionHandler(InvalidAttemptRequestException.class)
+    public ResponseEntity<ApiError> handleBadRequest(InvalidAttemptRequestException e) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ApiError(e.getMessage()));
     }
 }
