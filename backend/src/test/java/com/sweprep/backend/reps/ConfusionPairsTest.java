@@ -10,9 +10,11 @@ import com.sweprep.backend.exercise.Exercise;
 import com.sweprep.backend.exercise.Family;
 import com.sweprep.backend.exercise.Form;
 import com.sweprep.backend.exercise.Grading;
+import com.sweprep.backend.exercise.Option;
 import com.sweprep.backend.exercise.Response;
 import com.sweprep.backend.exercise.Stability;
 import java.util.List;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -106,7 +108,12 @@ class ConfusionPairsTest {
                 Difficulty.EASY,
                 Form.REP,
                 new Response.Choice(
-                        List.of("Two pointers", "Sliding window", "Binary search", "Hash set")),
+                        Stream.of("Two pointers", "Sliding window", "Binary search", "Hash set")
+                                .map(label -> label.equals(correctLabel)
+                                        ? Option.correct(label)
+                                        : Option.distractor(
+                                                label, "confuses this pattern with " + correctLabel))
+                                .toList()),
                 new Grading.AnswerKey(TextNode.valueOf(correctLabel), Comparison.exact()),
                 List.of(),
                 null,

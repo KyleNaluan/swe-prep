@@ -1,6 +1,8 @@
 package com.sweprep.backend.content;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.TextNode;
 import com.sweprep.backend.exercise.Comparison;
 import com.sweprep.backend.exercise.DataType;
 import com.sweprep.backend.exercise.Difficulty;
@@ -8,6 +10,7 @@ import com.sweprep.backend.exercise.Exercise;
 import com.sweprep.backend.exercise.Form;
 import com.sweprep.backend.exercise.Grading;
 import com.sweprep.backend.exercise.Hint;
+import com.sweprep.backend.exercise.Option;
 import com.sweprep.backend.exercise.Response;
 import com.sweprep.backend.exercise.Signature;
 import com.sweprep.backend.exercise.Signature.Parameter;
@@ -31,7 +34,10 @@ import java.util.List;
  *   "domain": "algorithms", "topics": ["array"],
  *   "difficulty": "EASY|MEDIUM|HARD", "form": "REP|CHALLENGE",
  *   "response": { "kind": "code",   "signature": {...} }
- *             |  { "kind": "choice", "options": ["..."] }
+ *             |  { "kind": "choice", "options": [                     // issue #42
+ *                    "The correct answer",                            // a plain string, or
+ *                    { "text": "A wrong option",                      // an object whose
+ *                      "misconception": "the specific mistake it catches" } ] }
  *             |  { "kind": "freeText" },
  *   "grading":  { "kind": "testCases", "comparison": "...", "cases": [...] }
  *             |  { "kind": "answerKey", "comparison": "...", "expected": ... }
@@ -48,6 +54,8 @@ import java.util.List;
  */
 final class ExerciseParser {
 
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
     private ExerciseParser() {}
 
     /** Parse one exercise; {@code source} names the file for error messages. */
@@ -62,6 +70,7 @@ final class ExerciseParser {
         Form form = json.requireEnum(root, "form", Form.class);
         Response response = response(json, json.requireObject(root, "response"));
         Grading grading = grading(json, json.requireObject(root, "grading"));
+        validateDistractors(json, response, grading);
         List<Hint> hints = hints(json, root);
         String explanation = json.optionalText(root, "explanation");
         String derivedFrom = json.optionalText(root, "derivedFrom");
@@ -93,7 +102,7 @@ final class ExerciseParser {
         String kind = json.requireText(node, "kind");
         return switch (kind) {
             case "code" -> new Response.Code(signature(json, json.requireObject(node, "signature")));
-            case "choice" -> new Response.Choice(stringArray(json, node, "options"));
+            case "choice" -> new Response.Choice(options(json, node));
             case "freeText" -> new Response.FreeText();
             default -> throw json.malformed("unknown response kind '" + kind + "'");
         };
@@ -157,18 +166,96 @@ final class ExerciseParser {
         };
     }
 
-    private static List<String> stringArray(ContentJson json, JsonNode node, String field) {
-        JsonNode value = json.requireField(node, field);
+    /**
+     * The choice options. Each element is either a plain string (an option that declares
+     * no misconception) or an object {@code { "text": ..., "misconception": ... }}. The
+     * shape is lenient on purpose: the semantic bar - every distractor must name a
+     * misconception - is enforced in {@link #validateDistractors} once the answer key
+     * (and thus which option is correct) is known, so it can name the exact offending
+     * option rather than every bare string.
+     */
+    private static List<Option> options(ContentJson json, JsonNode node) {
+        JsonNode value = json.requireField(node, "options");
         if (!value.isArray() || value.isEmpty()) {
-            throw json.malformed("'" + field + "' must be a non-empty array of strings");
+            throw json.malformed("'options' must be a non-empty array");
         }
-        List<String> result = new ArrayList<>();
+        List<Option> result = new ArrayList<>();
         for (JsonNode element : value) {
-            if (!element.isTextual()) {
-                throw json.malformed("'" + field + "' must contain only strings");
+            if (element.isTextual()) {
+                if (element.asText().isBlank()) {
+                    throw json.malformed("a choice option string must be non-empty");
+                }
+                result.add(new Option(element.asText(), null));
+            } else if (element.isObject()) {
+                result.add(new Option(
+                        json.requireText(element, "text"),
+                        json.optionalText(element, "misconception")));
+            } else {
+                throw json.malformed(
+                        "each choice option must be a string or an object "
+                                + "{ text, misconception }");
             }
-            result.add(element.asText());
         }
         return result;
+    }
+
+    /**
+     * The competitive-distractor gate (issue #42), enforced mechanically at load time:
+     * for a choice judged by an answer key, every wrong option (distractor) must declare
+     * the specific misconception it targets. A missing misconception fails the check
+     * naming the exact option, so a giveaway option that no learner would plausibly pick -
+     * or one an author simply forgot to annotate - never loads. It also catches an answer
+     * key that matches none of the options (an unanswerable check).
+     *
+     * <p>This is the "was the misconception <em>declared</em>" half of the bar, which is a
+     * machine question; whether a declared misconception is genuinely <em>plausible</em> is
+     * the human red-team judgement the authoring checklist owns. Only Choice + AnswerKey is
+     * gated, since only there is one option the correct answer and the rest distractors.
+     */
+    private static void validateDistractors(ContentJson json, Response response, Grading grading) {
+        if (!(response instanceof Response.Choice choice)
+                || !(grading instanceof Grading.AnswerKey key)) {
+            return;
+        }
+        boolean anyCorrect = false;
+        for (Option option : choice.options()) {
+            if (matchesKey(key, option.text())) {
+                anyCorrect = true;
+            } else if (!option.hasMisconception()) {
+                throw json.malformed(
+                        "choice option '" + option.text() + "' is a distractor but declares no "
+                                + "target misconception - every distractor must name the specific "
+                                + "misconception it encodes (issue #42)");
+            }
+        }
+        if (!anyCorrect) {
+            throw json.malformed(
+                    "the answer key '" + key.expected().asText() + "' matches none of the choice "
+                            + "options, so the check has no correct answer");
+        }
+    }
+
+    /**
+     * Whether {@code optionText} is the correct answer under the key, using the same
+     * matching {@code AnswerKeyGrader} applies to a choice submission: the stripped text,
+     * and its parsed-JSON form when it is valid JSON, each compared under the exercise's
+     * {@link Comparison}. Keeping the rule identical here means an option is classed a
+     * distractor exactly when a learner picking it would be marked wrong.
+     */
+    private static boolean matchesKey(Grading.AnswerKey key, String optionText) {
+        String stripped = optionText.strip();
+        if (key.comparison().matches(key.expected(), TextNode.valueOf(stripped))) {
+            return true;
+        }
+        JsonNode asJson = tryParse(stripped);
+        return asJson != null && key.comparison().matches(key.expected(), asJson);
+    }
+
+    private static JsonNode tryParse(String value) {
+        try {
+            return MAPPER.readTree(value);
+        } catch (Exception e) {
+            return null;
+        }
     }
 }
