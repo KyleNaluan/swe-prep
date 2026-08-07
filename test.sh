@@ -7,6 +7,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 
 echo "== no committed content =="
 ./scripts/check-no-content.sh
+./scripts/check-no-content.test.sh
 
 echo "== backend =="
 (cd backend && ./mvnw test)
