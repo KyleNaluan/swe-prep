@@ -3,6 +3,8 @@ package com.sweprep.backend.attempt;
 import com.sweprep.backend.grader.Verdict;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -108,6 +110,63 @@ public class SubmissionRepository {
      * Choice rep).
      */
     public record FailedResponse(String exerciseId, String response) {}
+
+    /**
+     * The instant of every <em>clean machine-verdict pass</em> this user earned on one
+     * exercise, oldest first - the raw material the successive-relearning criterion (issue
+     * #38) reduces to spaced sessions. Only a {@code PASSED} outcome is a clean pass; every
+     * other outcome is either a wrong answer or an execution problem, not a retrieval to
+     * criterion, and is excluded.
+     *
+     * <p>This {@code outcome = 'PASSED'} filter is the <b>structural</b> boundary that keeps
+     * read and self-check items out of the objective competence signal (design revision t3
+     * section 4.1): a self-check is never machine-graded - {@code SelfCheckGrader.grade}
+     * throws before any submission is inserted - and a lesson read is never graded at all, so
+     * neither can ever produce a {@code PASSED} row for this query to return. The exclusion is
+     * therefore enforced by the grade path and the query together, not by a caller remembering
+     * to filter by content kind (which this table does not even store).
+     */
+    public List<Instant> cleanPassInstants(UUID userId, String exerciseId) {
+        return jdbc.sql(
+                        """
+                        SELECT s.submitted_at AS submitted_at
+                        FROM submission s
+                        JOIN attempt a ON s.attempt_id = a.id
+                        WHERE a.user_id = :userId
+                          AND a.exercise_id = :exerciseId
+                          AND s.outcome = 'PASSED'
+                        ORDER BY s.submitted_at
+                        """)
+                .param("userId", userId)
+                .param("exerciseId", exerciseId)
+                .query((ResultSet rs, int rowNum) -> rs.getTimestamp("submitted_at").toInstant())
+                .list();
+    }
+
+    /**
+     * Every user's clean machine-verdict passes grouped by exercise, so the scheduler (issue
+     * #8) can evaluate the whole catalog's learned state in one query rather than one round
+     * trip per exercise. Same {@code outcome = 'PASSED'} boundary as {@link #cleanPassInstants}
+     * - read and self-check items are structurally absent. Exercises with no clean pass are
+     * simply missing from the map; the caller reads them as {@code NEW}.
+     */
+    public Map<String, List<Instant>> cleanPassInstantsByExercise(UUID userId) {
+        Map<String, List<Instant>> byExercise = new HashMap<>();
+        jdbc.sql(
+                        """
+                        SELECT a.exercise_id AS exercise_id, s.submitted_at AS submitted_at
+                        FROM submission s
+                        JOIN attempt a ON s.attempt_id = a.id
+                        WHERE a.user_id = :userId AND s.outcome = 'PASSED'
+                        ORDER BY s.submitted_at
+                        """)
+                .param("userId", userId)
+                .query((ResultSet rs, int rowNum) -> byExercise
+                        .computeIfAbsent(rs.getString("exercise_id"), key -> new ArrayList<>())
+                        .add(rs.getTimestamp("submitted_at").toInstant()))
+                .list();
+        return byExercise;
+    }
 
     /** Every submission in an attempt, oldest first. */
     public List<Submission> findByAttempt(UUID attemptId) {
