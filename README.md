@@ -78,7 +78,8 @@ decision, [issue #4](https://github.com/KyleNaluan/swe-prep/issues/4).
 ./test.sh
 ```
 
-Runs the backend suite (Spring Boot tests against a real, disposable Postgres
+First asserts no private content is committed (`scripts/check-no-content.sh`),
+then runs the backend suite (Spring Boot tests against a real, disposable Postgres
 container via Testcontainers — needs Docker) and then the frontend suite
 (Vitest).
 
