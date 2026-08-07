@@ -63,8 +63,10 @@ Prerequisites: Java 21 on `PATH`, Docker running, Node 24.
    - an ordered hint ladder whose rungs you reveal one at a time, and, after a failing
    run, a failing-case reveal that first asks for a one-line hypothesis before
    disclosing the case; a "stuck?" nudge quietly offers the next hint after repeated
-   failures. Runtime is shown next to the verdict for interest only, never as part of
-   pass/fail. A concept exercise shows multiple-choice options and is
+   failures. A check that carries an explanation of why the answer is right shows it
+   automatically on a wrong answer, and offers it one click away once the sitting has
+   ended; asking is recorded but never affects your score - it is not a hint. Runtime is
+   shown next to the verdict for interest only, never as part of pass/fail. A concept exercise shows multiple-choice options and is
    graded with no code execution at all. Each sitting and every press of Run is
    recorded as durable practice history, shown in a History panel below the editor
    (with the hints taken) and surviving a restart; a Give up button abandons an
