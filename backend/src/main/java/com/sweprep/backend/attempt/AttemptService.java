@@ -29,6 +29,12 @@ import org.springframework.transaction.annotation.Transactional;
  * score, blocks completion, or ends a sitting. Taking a hint records the rung reached;
  * revealing records the reveal and the one-line hypothesis typed first. Neither is
  * penalised.
+ *
+ * <p>The check's explanation (issue #51) is separate from that help. It is shown
+ * automatically on a wrong answer by {@link #submit} (a disclosure, not a request, so
+ * nothing is recorded), and disclosed on request by {@link #requestExplanation} when
+ * correct - where the request is recorded as its own confidence signal, kept distinct
+ * from the hint count so "took a hint" never blurs into "read why I was wrong".
  */
 @Service
 public class AttemptService {
@@ -72,6 +78,7 @@ public class AttemptService {
                 0,
                 false,
                 null,
+                false,
                 null,
                 null,
                 null);
@@ -81,11 +88,15 @@ public class AttemptService {
 
     /**
      * Grades one press of Run within an attempt and stores it as a submission. If the
-     * verdict passes, the attempt is marked solved. Returns the stored submission,
-     * which carries the verdict.
+     * verdict passes, the attempt is marked solved. Returns the stored submission and,
+     * when a wrong answer earns it, the check's explanation to show automatically
+     * (issue #51): the explanation is disclosed on a {@code FAILED} verdict when the
+     * check carries one, and withheld otherwise (a passing answer offers it on request
+     * instead, and an execution problem is not a wrong answer). This automatic
+     * disclosure is not a request and records nothing.
      */
     @Transactional
-    public Submission submit(UUID attemptId, String response) {
+    public SubmitResult submit(UUID attemptId, String response) {
         Attempt attempt = requireOwned(attemptId);
         if (attempt.outcome() != AttemptOutcome.IN_PROGRESS) {
             throw new IllegalAttemptStateException(
@@ -112,7 +123,9 @@ public class AttemptService {
         if (verdict.outcome() == Verdict.Outcome.PASSED) {
             attempts.update(attempt.withOutcome(AttemptOutcome.SOLVED, Instant.now()));
         }
-        return submission;
+        String explanationOnWrong =
+                verdict.outcome() == Verdict.Outcome.FAILED ? exercise.explanation() : null;
+        return new SubmitResult(submission, explanationOnWrong);
     }
 
     /**
@@ -191,6 +204,30 @@ public class AttemptService {
         Attempt advanced = attempt.withHintsTaken(taken + 1);
         attempts.update(advanced);
         return new HintResult(withCount(advanced), taken + 1, total, rung);
+    }
+
+    /**
+     * Discloses the check's explanation when the solver explicitly asks (issue #51),
+     * recording the request as its own confidence signal. This is the "one keystroke
+     * away when correct" path: unlike the automatic disclosure on a wrong answer it is a
+     * request, so it is recorded - but deliberately in {@code explanation_requested},
+     * not in the hint count, since asking why a correct answer is correct is not asking
+     * for help to solve. It is never penalised and never ends the sitting, and it works
+     * whatever the outcome, since a correct sitting is already {@code SOLVED}. Returns
+     * the explanation, which is {@code null} when the check carries none (the request is
+     * still recorded, since the solver did ask).
+     */
+    @Transactional
+    public ExplanationResult requestExplanation(UUID attemptId) {
+        Attempt attempt = requireOwned(attemptId);
+        Exercise exercise = catalog
+                .byId(attempt.exerciseId())
+                .orElseThrow(() -> new AttemptNotFoundException(
+                        "Exercise '" + attempt.exerciseId() + "' is no longer available"));
+
+        Attempt recorded = attempt.withExplanationRequested();
+        attempts.update(recorded);
+        return new ExplanationResult(withCount(recorded), exercise.explanation());
     }
 
     /** The current user's practice history, newest first, each with its submission count. */

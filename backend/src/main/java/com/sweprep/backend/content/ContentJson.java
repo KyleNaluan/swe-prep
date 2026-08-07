@@ -104,6 +104,24 @@ final class ContentJson {
         }
     }
 
+    /**
+     * Reads an optional text field: {@code null} when the field is absent or JSON
+     * {@code null}, its trimmed value otherwise, and a malformed error when it is
+     * present but not a non-blank string. Unlike {@link #requireText}, a missing field
+     * is not an error - the caller's field is optional (e.g. a check's {@code
+     * explanation}, issue #51).
+     */
+    String optionalText(JsonNode node, String field) {
+        JsonNode value = node == null ? null : node.get(field);
+        if (value == null || value.isNull()) {
+            return null;
+        }
+        if (!value.isTextual() || value.asText().isBlank()) {
+            throw malformed("'" + field + "' must be a non-empty string when present");
+        }
+        return value.asText();
+    }
+
     String requireText(JsonNode node, String field) {
         JsonNode value = requireField(node, field);
         if (!value.isTextual() || value.asText().isBlank()) {
