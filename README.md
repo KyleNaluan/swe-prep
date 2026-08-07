@@ -54,7 +54,14 @@ Prerequisites: Java 21 on `PATH`, Docker running, Node 24.
    npm run dev
    ```
 
-5. Open `http://localhost:5173` - pick an exercise from the selector. A coding
+5. Open `http://localhost:5173`. The app opens on the daily warm-up, with a
+   Warm-up/Practice tab to switch surfaces. The warm-up (issue #18) walks an
+   interleaved set of ~8 quick reps one at a time - multiple-choice or a short
+   predict-the-output box - driving the same attempt flow every exercise uses; a
+   wrong answer shows the check's explanation at once and re-queues that rep later
+   in the set, while a correct answer withholds the explanation but keeps it one
+   keystroke away. The Practice tab is the free-practice editor: pick an exercise
+   from the selector. A coding
    exercise opens in a Monaco editor: write a solution and press Run to have the
    backend compile and execute it against the test cases and report
    `N of M tests passed`. A failing run reports only that count, never a case's
