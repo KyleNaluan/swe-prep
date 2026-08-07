@@ -69,7 +69,18 @@ Problem content lives only in the separate private repo `swe-prep-content`, neve
 
 - Loading is lazy and cached; a *failed* load is not cached, so cloning content after boot works without a restart. Missing path, malformed file, duplicate id, etc. all surface as `ContentException`, mapped to a 500-with-message by `ContentErrorHandler` so the editor shows a clear error.
 - **Never commit problem content here.** `scripts/check-no-content.sh` fails CI and `./test.sh` if any is (tracked `content/`, un-ignored `content/`, or any tracked JSON carrying both `"statement"` and `"grading"`). Backend tests use synthetic fixtures (`testsupport/Fixtures`, temp-dir JSON); the real seeded set is only exercised by `RealContentSmokeTest`, which *skips* when no local clone is present.
-- Person-owned tables carry a `user_id` and exactly one user is seeded (migration `V2__app_user.sql`); `app_user` is the person table its own PK is that id. Persisting attempts is #15, not this ticket.
+- Person-owned tables carry a `user_id` and exactly one user is seeded (migration `V2__app_user.sql`); `app_user` is the person table its own PK is that id.
+
+## Persistence: attempts and submissions
+
+Practice history is durable (issue #15), in the `attempt` package over plain Spring JDBC (`JdbcClient`, not JPA) with the schema owned by Flyway migration `V3__attempts.sql`.
+The record is deliberately the schedulers' input (issue #8) and over-captures on purpose, since thin records would cripple that later work.
+
+- An `Attempt` is one sitting with an exercise; a `Submission` is one press of Run within it. Both are person-owned (`user_id` -> `app_user`). `exercise_id` is a plain text id, **not** a foreign key - content lives only in the private repo (issue #4/#14) - so the attempt snapshots `exercise_title`, `domain` and `form` at creation, keeping history readable even with no content clone.
+- `AttemptOutcome` is `IN_PROGRESS | SOLVED | ABANDONED | READ`, stored as free text (no DB `CHECK`), so a new outcome is added in the enum alone with no migration - which is how `READ` (a lesson is read, not solved; carries no 0-5 quality, SRS ignores it, readiness counts it) was added ahead of the lesson track that produces it. Abandonment being a recorded outcome, distinct from a never-started absence (no row), is the ticket's core invariant.
+- Fields whose producing feature is not built yet are columns now so those tickets need no migration: `hints_taken` (ladder is #16), and `complexity_claim`/`measured_complexity`/`complexity_claim_correct` (measurement is #17). `failing_case_revealed` (#5) is actively recordable via the reveal endpoint. None of these are penalised.
+- `AttemptService` owns the lifecycle (grading is still delegated to `GraderRegistry`): `start` opens an attempt snapshotting the exercise, `submit` grades + stores a submission and marks the attempt `SOLVED` on the first passing verdict, `abandon` and `recordFailingCaseReveal` act only on an `IN_PROGRESS` attempt (else `IllegalAttemptStateException` -> 409; unknown id -> `AttemptNotFoundException` -> 404, both mapped by `AttemptErrorHandler`). The current user is the single seeded one via the `CurrentUser` seam - the one place to change when auth ever lands.
+- The web seam is `AttemptController` (`/api/attempts`: `GET` history, `POST` start, `POST /{id}/submissions|abandon|reveal`). Grading no longer lives on `ExerciseController` - every run is a persisted submission, so there is no stateless grade path to bypass it. The React editor starts an attempt lazily on the first Run (so glancing never creates an empty row), abandons an unsolved sitting on switch-away, and renders a plain history table.
 
 ## Maintaining this file
 

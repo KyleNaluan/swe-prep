@@ -52,9 +52,10 @@ const CHOICE_EXERCISE = {
 }
 
 // Routes the app's fetches to canned responses. `run` is the verdict returned by
-// the run endpoint for whichever exercise is posted to.
+// posting a submission for whichever attempt is posted to. Starting an attempt and
+// listing history are stubbed so the lazy-start + history flow (issue #15) resolves.
 function mockFetch(run: unknown, runOk = true) {
-  return vi.fn(async (url: string | URL | Request) => {
+  return vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
     const href = String(url)
     if (href.endsWith('/api/exercises')) {
       return { ok: true, json: async () => CATALOG } as Response
@@ -65,8 +66,18 @@ function mockFetch(run: unknown, runOk = true) {
     if (href.endsWith('/api/exercises/hashmap-lookup')) {
       return { ok: true, json: async () => CHOICE_EXERCISE } as Response
     }
-    if (href.endsWith('/run')) {
+    // GET history / POST start both target /api/attempts.
+    if (href.endsWith('/api/attempts')) {
+      if (init?.method === 'POST') {
+        return { ok: true, json: async () => ({ id: 'attempt-1', submissionCount: 0 }) } as Response
+      }
+      return { ok: true, json: async () => [] } as Response
+    }
+    if (href.endsWith('/submissions')) {
       return { ok: runOk, status: runOk ? 200 : 500, json: async () => run } as Response
+    }
+    if (href.endsWith('/abandon')) {
+      return { ok: true, json: async () => ({ id: 'attempt-1' }) } as Response
     }
     throw new Error(`unexpected fetch to ${href}`)
   })
@@ -139,6 +150,41 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Submit' }))
 
     expect(await screen.findByText('Correct')).toBeInTheDocument()
+  })
+
+  it('shows past attempts in the history list', async () => {
+    const attempts = [
+      {
+        id: 'a1',
+        exerciseId: 'two-sum',
+        exerciseTitle: 'Two Sum',
+        domain: 'algorithms',
+        form: 'CHALLENGE',
+        outcome: 'ABANDONED',
+        startedAt: '2026-08-06T10:00:00Z',
+        endedAt: '2026-08-06T10:05:00Z',
+        submissionCount: 2,
+        hintsTaken: 0,
+        failingCaseRevealed: true,
+      },
+    ]
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL | Request) => {
+        const href = String(url)
+        if (href.endsWith('/api/exercises')) return { ok: true, json: async () => CATALOG } as Response
+        if (href.endsWith('/api/exercises/two-sum'))
+          return { ok: true, json: async () => CODE_EXERCISE } as Response
+        if (href.endsWith('/api/attempts')) return { ok: true, json: async () => attempts } as Response
+        throw new Error(`unexpected fetch to ${href}`)
+      }) as unknown as typeof fetch,
+    )
+
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { name: 'History' })).toBeInTheDocument()
+    expect(screen.getByRole('cell', { name: 'abandoned' })).toBeInTheDocument()
+    expect(screen.getByRole('cell', { name: '2' })).toBeInTheDocument()
   })
 
   it('shows the backend error message when content cannot be loaded', async () => {
