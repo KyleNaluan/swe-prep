@@ -1,13 +1,18 @@
 package com.sweprep.backend;
 
 import com.sweprep.backend.content.ContentProperties;
+import com.sweprep.backend.learned.LearnedProperties;
 import com.sweprep.backend.reps.RepProperties;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 
 @SpringBootApplication
-@EnableConfigurationProperties({ContentProperties.class, RepProperties.class})
+@EnableConfigurationProperties({
+    ContentProperties.class,
+    RepProperties.class,
+    LearnedProperties.class
+})
 public class BackendApplication {
 
     public static void main(String[] args) {
