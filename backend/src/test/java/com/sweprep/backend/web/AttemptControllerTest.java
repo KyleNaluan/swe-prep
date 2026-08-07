@@ -1,5 +1,6 @@
 package com.sweprep.backend.web;
 
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
@@ -17,6 +18,7 @@ import com.sweprep.backend.attempt.AttemptWithCount;
 import com.sweprep.backend.attempt.ExplanationResult;
 import com.sweprep.backend.attempt.HintResult;
 import com.sweprep.backend.attempt.IllegalAttemptStateException;
+import com.sweprep.backend.attempt.InvalidAttemptRequestException;
 import com.sweprep.backend.attempt.RevealResult;
 import com.sweprep.backend.attempt.SelfCheckRating;
 import com.sweprep.backend.attempt.SelfCheckReveal;
@@ -273,7 +275,8 @@ class AttemptControllerTest {
     void revealingANonSelfCheckItemIsABadRequest() throws Exception {
         UUID id = UUID.randomUUID();
         when(service.revealSelfCheck(eq(id), any()))
-                .thenThrow(new IllegalArgumentException("Exercise 'x' is not a self-check item"));
+                .thenThrow(new InvalidAttemptRequestException(
+                        "Exercise 'x' is not a self-check item"));
 
         mockMvc.perform(post("/api/attempts/" + id + "/self-check/reveal")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -281,5 +284,18 @@ class AttemptControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error")
                         .value(org.hamcrest.Matchers.containsString("not a self-check")));
+    }
+
+    @Test
+    void aServerSideIllegalArgumentIsNotEchoedAsABadRequest() {
+        UUID id = UUID.randomUUID();
+        when(service.revealSelfCheck(eq(id), any()))
+                .thenThrow(new IllegalArgumentException(
+                        "No enum constant com.sweprep.backend.attempt.SubmissionOutcome.BOGUS"));
+
+        assertThatThrownBy(() -> mockMvc.perform(post("/api/attempts/" + id + "/self-check/reveal")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(new SelfCheckRevealRequest("text")))))
+                .hasCauseInstanceOf(IllegalArgumentException.class);
     }
 }

@@ -147,21 +147,21 @@ public class AttemptService {
      * is its own committed submission, so re-typing and revealing again is a fresh honest
      * commit rather than a rewrite of the first.
      *
-     * @throws IllegalAttemptStateException if the attempt has already ended
-     * @throws IllegalArgumentException     if the exercise is not self-check graded, or the
-     *                                      produced text is blank
+     * @throws IllegalAttemptStateException    if the attempt has already ended
+     * @throws InvalidAttemptRequestException if the exercise is not self-check graded, or the
+     *                                         produced text is blank
      */
     @Transactional
     public SelfCheckReveal revealSelfCheck(UUID attemptId, String produced) {
         Attempt attempt = requireInProgress(attemptId);
         Exercise exercise = requireExercise(attempt);
         if (!(exercise.grading() instanceof Grading.SelfCheck)) {
-            throw new IllegalArgumentException(
+            throw new InvalidAttemptRequestException(
                     "Exercise '" + exercise.id() + "' is not a self-check item; there is no model"
                             + " answer to reveal for self-assessment");
         }
         if (produced == null || produced.isBlank()) {
-            throw new IllegalArgumentException(
+            throw new InvalidAttemptRequestException(
                     "Produce an explanation before revealing the model answer");
         }
         String modelAnswer = selfCheckGrader.reveal(exercise);
