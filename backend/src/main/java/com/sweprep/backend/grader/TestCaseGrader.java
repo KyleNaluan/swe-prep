@@ -1,7 +1,9 @@
 package com.sweprep.backend.grader;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.sweprep.backend.exercise.Comparison;
 import com.sweprep.backend.exercise.Exercise;
 import com.sweprep.backend.exercise.TestCase;
 import com.sweprep.backend.language.GeneratedHarness;
@@ -28,6 +30,13 @@ import org.springframework.stereotype.Component;
 public class TestCaseGrader implements Grader {
 
     private static final String CASES_FILE = "cases.json";
+
+    /**
+     * Where the harness writes each case's raw return value. It is a runner output
+     * file, not part of the submission's stdout, so the submission cannot truncate
+     * it away by printing (see issue #31, finding 3).
+     */
+    private static final String RESULT_FILE = "results.json";
 
     private final LanguageAdapter adapter;
     private final Runner runner;
@@ -57,8 +66,9 @@ public class TestCaseGrader implements Grader {
                 sources,
                 Map.of(CASES_FILE, casesJson(exercise.testCases())),
                 harness.mainClass(),
-                List.of(CASES_FILE),
+                List.of(CASES_FILE, RESULT_FILE),
                 harness.runtimeClasspath(),
+                List.of(RESULT_FILE),
                 timeout);
 
         ExecutionResult result = runner.execute(request);
@@ -67,36 +77,53 @@ public class TestCaseGrader implements Grader {
             case TIMEOUT -> Verdict.timeout(
                     total,
                     "Execution timed out after " + timeout.toSeconds() + "s (possible infinite loop)");
-            case COMPLETED -> interpret(result, total);
+            case COMPLETED -> interpret(exercise, result, total);
         };
     }
 
-    private Verdict interpret(ExecutionResult result, int total) {
-        Integer passed = parsePassed(result.stdout());
-        if (passed == null) {
-            String detail = result.stderr().isBlank()
-                    ? "The program did not report a result (exit code " + result.exitCode() + ")"
-                    : result.stderr().strip();
-            return Verdict.error(detail);
+    /**
+     * Counts how many cases pass by comparing each recorded return value against
+     * the exercise's expected value under its declared {@link Comparison} rule.
+     * The results come from the harness's dedicated result file, never from the
+     * submission's stdout, so a solution that prints a lot and then returns
+     * correctly is still graded on its answers.
+     */
+    private Verdict interpret(Exercise exercise, ExecutionResult result, int total) {
+        String resultJson = result.outputFiles().get(RESULT_FILE);
+        if (resultJson == null || resultJson.isBlank()) {
+            return noResult(result);
+        }
+        JsonNode results;
+        try {
+            results = mapper.readTree(resultJson);
+        } catch (Exception e) {
+            return noResult(result);
+        }
+        if (!results.isArray() || results.size() != total) {
+            return noResult(result);
+        }
+
+        Comparison comparison = exercise.comparison();
+        List<TestCase> cases = exercise.testCases();
+        int passed = 0;
+        for (int i = 0; i < total; i++) {
+            JsonNode entry = results.get(i);
+            if (entry == null || entry.path("threw").asBoolean(false)) {
+                continue;
+            }
+            JsonNode actual = entry.get("returned");
+            if (actual != null && comparison.matches(cases.get(i).expected(), actual)) {
+                passed++;
+            }
         }
         return Verdict.of(passed, total);
     }
 
-    private static Integer parsePassed(String stdout) {
-        Integer passed = null;
-        for (String line : stdout.split("\\R")) {
-            if (line.startsWith(JavaLanguageAdapter.SUMMARY_PREFIX)) {
-                String[] parts = line.substring(JavaLanguageAdapter.SUMMARY_PREFIX.length()).trim().split("\\s+");
-                if (parts.length >= 1) {
-                    try {
-                        passed = Integer.parseInt(parts[0]);
-                    } catch (NumberFormatException ignored) {
-                        // Ignore a malformed summary line; treated as no result.
-                    }
-                }
-            }
-        }
-        return passed;
+    private static Verdict noResult(ExecutionResult result) {
+        String detail = result.stderr().isBlank()
+                ? "The program did not report a result (exit code " + result.exitCode() + ")"
+                : result.stderr().strip();
+        return Verdict.error(detail);
     }
 
     private String casesJson(List<TestCase> testCases) {

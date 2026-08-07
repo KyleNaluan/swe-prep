@@ -1,5 +1,7 @@
 package com.sweprep.backend.runner;
 
+import java.util.Map;
+
 /**
  * The raw outcome of one {@link Runner} execution. It reports what happened at
  * the level of the process - it did not compile, it ran, it was killed for
@@ -11,6 +13,10 @@ package com.sweprep.backend.runner;
  *                        {@link Outcome#COMPLETED}, otherwise undefined
  * @param stdout          everything the program wrote to standard out
  * @param stderr          everything the program wrote to standard error
+ * @param outputFiles     contents of the requested
+ *                        {@link ExecutionRequest#outputFiles()} that existed when
+ *                        the program exited, keyed by filename; absent files are
+ *                        simply not present
  * @param compilerMessage compiler diagnostics when {@code outcome} is
  *                        {@link Outcome#COMPILE_ERROR}, otherwise empty
  */
@@ -19,7 +25,12 @@ public record ExecutionResult(
         int exitCode,
         String stdout,
         String stderr,
+        Map<String, String> outputFiles,
         String compilerMessage) {
+
+    public ExecutionResult {
+        outputFiles = Map.copyOf(outputFiles);
+    }
 
     public enum Outcome {
         /** The sources compiled and the program ran to completion. */
@@ -31,14 +42,15 @@ public record ExecutionResult(
     }
 
     static ExecutionResult compileError(String message) {
-        return new ExecutionResult(Outcome.COMPILE_ERROR, -1, "", "", message);
+        return new ExecutionResult(Outcome.COMPILE_ERROR, -1, "", "", Map.of(), message);
     }
 
     static ExecutionResult timeout(String stdout, String stderr) {
-        return new ExecutionResult(Outcome.TIMEOUT, -1, stdout, stderr, "");
+        return new ExecutionResult(Outcome.TIMEOUT, -1, stdout, stderr, Map.of(), "");
     }
 
-    static ExecutionResult completed(int exitCode, String stdout, String stderr) {
-        return new ExecutionResult(Outcome.COMPLETED, exitCode, stdout, stderr, "");
+    static ExecutionResult completed(
+            int exitCode, String stdout, String stderr, Map<String, String> outputFiles) {
+        return new ExecutionResult(Outcome.COMPLETED, exitCode, stdout, stderr, outputFiles, "");
     }
 }
