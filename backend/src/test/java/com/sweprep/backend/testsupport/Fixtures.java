@@ -8,12 +8,14 @@ import com.sweprep.backend.exercise.DataType;
 import com.sweprep.backend.exercise.Difficulty;
 import com.sweprep.backend.exercise.Exercise;
 import com.sweprep.backend.exercise.ExerciseCatalog;
+import com.sweprep.backend.exercise.Family;
 import com.sweprep.backend.exercise.Form;
 import com.sweprep.backend.exercise.Grading;
 import com.sweprep.backend.exercise.Hint;
 import com.sweprep.backend.exercise.Response;
 import com.sweprep.backend.exercise.Signature;
 import com.sweprep.backend.exercise.Signature.Parameter;
+import com.sweprep.backend.exercise.Stability;
 import com.sweprep.backend.exercise.TestCase;
 import java.util.List;
 import java.util.Optional;
@@ -100,6 +102,7 @@ public final class Fixtures {
                 CONCEPT_EXPLANATION,
                 List.of(),
                 null,
+                null,
                 null);
     }
 
@@ -164,6 +167,141 @@ public final class Fixtures {
                 new Response.FreeText(),
                 new Grading.SelfCheck("The model answer to compare yourself against."),
                 List.of());
+    }
+
+    // ---------------------------------------------------------------------------
+    // The five warm-up rep types (issue #9's resolution), one synthetic example of
+    // each. They exercise rendering, grading and the warm-up endpoint end to end. The
+    // distractors are written to be genuinely plausible - a rep with three obviously
+    // wrong options teaches nothing (the authoring standard, issue #18) - even though
+    // the surrounding problems are throwaway, not real content (issue #4/#14). A
+    // pattern-identification rep is available cold (no derivedFrom); the other four are
+    // gated on their underlying problem.
+
+    /** Pattern identification: read a problem, name the pattern. Available cold. */
+    public static Exercise patternIdRep() {
+        return rep(
+                "rep-pattern-id",
+                "Pattern: sorted-pair sum",
+                "A sorted array must be scanned for two entries summing to a target, in O(n) "
+                        + "time and O(1) extra space. Which pattern fits best?",
+                "two-pointer",
+                new Response.Choice(
+                        List.of("Two pointers", "Sliding window", "Binary search", "Hash set")),
+                new Grading.AnswerKey(text("Two pointers"), Comparison.exact()),
+                "Two pointers from both ends run in O(n) with no extra space; a hash set is O(n) "
+                        + "time but O(n) space, and sliding window needs a monotonic window it "
+                        + "does not have here.",
+                null);
+    }
+
+    /** Complexity of a snippet: pick its time complexity from the ladder. */
+    public static Exercise complexityRep() {
+        return rep(
+                "rep-complexity",
+                "Complexity: one hash pass",
+                "A single loop inserts each of n elements into a hash set and checks membership "
+                        + "once. What is its time complexity?",
+                "hashing",
+                new Response.Choice(List.of("O(1)", "O(log n)", "O(n)", "O(n^2)")),
+                new Grading.AnswerKey(text("O(n)"), Comparison.exact()),
+                "Each insert and lookup is O(1) average, done n times, so the pass is O(n) - not "
+                        + "O(n^2), which would need a nested scan.",
+                "sorted-pair-sum");
+    }
+
+    /** Fill in the missing line: choose the correct line from plausible near-misses. */
+    public static Exercise fillBlankRep() {
+        return rep(
+                "rep-fill-blank",
+                "Fill the blank: binary search",
+                "In a binary search over an ascending array, after `int mid = lo + (hi - lo) / 2;` "
+                        + "the code does `if (a[mid] < target) ___`. Which line belongs in the blank?",
+                "binary-search",
+                new Response.Choice(
+                        List.of("lo = mid + 1;", "lo = mid;", "hi = mid - 1;", "hi = mid;")),
+                new Grading.AnswerKey(text("lo = mid + 1;"), Comparison.exact()),
+                "The target is above mid, so the answer is to its right; moving to `mid + 1` "
+                        + "excludes mid and guarantees progress. `lo = mid;` can loop forever.",
+                "binary-search");
+    }
+
+    /** Predict the output: free text, matched exactly after normalisation. */
+    public static Exercise predictOutputRep() {
+        return rep(
+                "rep-predict-output",
+                "Predict output: reverse and mark",
+                "`\"abc\"` is reversed and a `\"!\"` is appended. Type the exact string produced.",
+                "strings",
+                new Response.FreeText(),
+                new Grading.AnswerKey(text("cba!"), Comparison.exact()),
+                "Reversing \"abc\" gives \"cba\"; appending \"!\" yields \"cba!\".",
+                "reverse-string");
+    }
+
+    /** Spot the bug: identify the defect in subtly wrong code. */
+    public static Exercise spotBugRep() {
+        return rep(
+                "rep-spot-bug",
+                "Spot the bug: running max",
+                "This loop means to return the largest element: "
+                        + "`int max = 0; for (int x : a) if (x > max) max = x; return max;`. "
+                        + "What is wrong with it?",
+                "arrays",
+                new Response.Choice(
+                        List.of(
+                                "It returns 0 for an all-negative array",
+                                "It skips the last element",
+                                "It is off by one on the first element",
+                                "Nothing is wrong")),
+                new Grading.AnswerKey(
+                        text("It returns 0 for an all-negative array"), Comparison.exact()),
+                "Seeding `max` with 0 instead of the first element (or Integer.MIN_VALUE) means a "
+                        + "wholly negative array wrongly reports 0, an element that is not present.",
+                "max-element");
+    }
+
+    /**
+     * A predict-output free-text rep whose answer key is the given string, for proving
+     * free-text normalisation on both the submission and the expected value.
+     */
+    public static Exercise freeTextWithExpected(String expected) {
+        return rep(
+                "rep-free-text",
+                "Predict output",
+                "Type the exact output.",
+                "strings",
+                new Response.FreeText(),
+                new Grading.AnswerKey(text(expected), Comparison.exact()),
+                "The expected value, spelled out.",
+                "some-problem");
+    }
+
+    private static Exercise rep(
+            String id,
+            String title,
+            String statement,
+            String topic,
+            Response response,
+            Grading grading,
+            String explanation,
+            String derivedFrom) {
+        return new Exercise(
+                id,
+                title,
+                statement,
+                "algorithms",
+                List.of(topic),
+                Difficulty.EASY,
+                Form.REP,
+                response,
+                grading,
+                List.of(),
+                explanation,
+                List.of(Family.CORE),
+                Stability.STABLE,
+                null,
+                derivedFrom);
     }
 
     /** An in-memory catalog over the given exercises, in argument order. */

@@ -120,6 +120,21 @@ public class AttemptRepository {
                 .list();
     }
 
+    /**
+     * The distinct ids of every exercise this user has ever opened a sitting with,
+     * whatever its outcome. This is the "problems attempted" set the warm-up selector
+     * gates derived reps on (issue #18): a rep built from a problem is only served once
+     * that problem has been met, and any sitting - even an abandoned one - counts as
+     * having met it.
+     */
+    public java.util.Set<String> attemptedExerciseIds(UUID userId) {
+        return new java.util.HashSet<>(
+                jdbc.sql("SELECT DISTINCT exercise_id FROM attempt WHERE user_id = :userId")
+                        .param("userId", userId)
+                        .query(String.class)
+                        .list());
+    }
+
     private static java.sql.Timestamp toTimestamp(Instant instant) {
         return instant == null ? null : java.sql.Timestamp.from(instant);
     }
