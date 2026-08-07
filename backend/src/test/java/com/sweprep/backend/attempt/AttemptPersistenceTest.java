@@ -2,6 +2,7 @@ package com.sweprep.backend.attempt;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.Mockito.when;
 
 import com.sweprep.backend.exercise.Exercise;
@@ -52,6 +53,9 @@ class AttemptPersistenceTest {
 
     @Autowired
     private SubmissionRepository submissions;
+
+    @Autowired
+    private CurrentUser currentUser;
 
     @MockitoBean
     private ExerciseCatalog catalog;
@@ -287,6 +291,21 @@ class AttemptPersistenceTest {
         assertThat(history).extracting(h -> h.attempt().id()).containsExactly(second.id(), first.id());
         assertThat(history.get(0).submissionCount()).isZero();
         assertThat(history.get(1).submissionCount()).isEqualTo(2);
+    }
+
+    @Test
+    void wrongChoiceSubmissionsAreQueryableForConfusionDerivation() {
+        Attempt started = service.start("concept-demo");
+        service.submit(started.id(), "A"); // wrong: FAILED, the confusion signal (issue #39)
+        service.submit(started.id(), "B"); // right: PASSED, not a picked distractor
+
+        // Only the wrong pick surfaces, as (exercise id, chosen distractor), so the
+        // confusion relation can be derived from the picked response with no new column.
+        assertThat(submissions.failedResponses(currentUser.id()))
+                .extracting(
+                        SubmissionRepository.FailedResponse::exerciseId,
+                        SubmissionRepository.FailedResponse::response)
+                .containsExactly(tuple("concept-demo", "A"));
     }
 
     @Test
