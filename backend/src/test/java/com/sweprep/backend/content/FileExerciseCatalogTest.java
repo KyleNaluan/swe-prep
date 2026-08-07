@@ -12,6 +12,7 @@ import com.sweprep.backend.exercise.Family;
 import com.sweprep.backend.exercise.Grading;
 import com.sweprep.backend.exercise.Hint;
 import com.sweprep.backend.exercise.Lesson;
+import com.sweprep.backend.exercise.Option;
 import com.sweprep.backend.exercise.Response;
 import com.sweprep.backend.exercise.SelfExplainPrompt;
 import com.sweprep.backend.exercise.Stability;
@@ -47,13 +48,18 @@ class FileExerciseCatalogTest {
             }
             """;
 
+    // The canonical passing choice: its one distractor names the misconception it targets
+    // (issue #42), and the correct option is a plain string (which needs none). The mixed
+    // string/object shape is deliberate - both are accepted.
     private static final String CHOICE_EXERCISE =
             """
             {
               "id": "pick-demo", "title": "Pick", "statement": "Pick B.",
               "domain": "fundamentals", "topics": ["demo"],
               "difficulty": "EASY", "form": "REP",
-              "response": { "kind": "choice", "options": ["A", "B"] },
+              "response": { "kind": "choice", "options": [
+                { "text": "A", "misconception": "picks the first option without reading on" },
+                "B" ] },
               "grading": { "kind": "answerKey", "comparison": "exact", "expected": "B" }
             }
             """;
@@ -260,6 +266,98 @@ class FileExerciseCatalogTest {
         write(dir, "pick.json", CHOICE_EXERCISE);
 
         assertThat(catalog(dir).byId("pick-demo").orElseThrow().explanation()).isNull();
+    }
+
+    // --- The competitive-distractor gate (issue #42) ----------------------------------
+
+    @Test
+    void parsesAnnotatedDistractorsAndKeepsTheMisconceptionsOffTheOptionText(@TempDir Path dir)
+            throws IOException {
+        write(dir, "pick.json", CHOICE_EXERCISE);
+
+        Response.Choice choice =
+                (Response.Choice) catalog(dir).byId("pick-demo").orElseThrow().response();
+
+        // Every option's text is preserved in order...
+        assertThat(choice.optionTexts()).containsExactly("A", "B");
+        // ...the distractor carries its declared misconception...
+        Option distractor = choice.options().get(0);
+        assertThat(distractor.text()).isEqualTo("A");
+        assertThat(distractor.misconception()).isEqualTo("picks the first option without reading on");
+        // ...and the correct option (a plain string) declares none.
+        assertThat(choice.options().get(1).misconception()).isNull();
+    }
+
+    @Test
+    void aDistractorWithNoDeclaredMisconceptionFailsTheGate(@TempDir Path dir) throws IOException {
+        // A deliberately bad set: the wrong option "A" is a bare string, so it names no
+        // misconception - the giveaway a competitive question must not contain. It must
+        // not load, and the error must name the offending option and the rule.
+        String giveaway =
+                """
+                {
+                  "id": "lazy-choice", "title": "Lazy", "statement": "Pick B.",
+                  "domain": "fundamentals", "topics": ["demo"],
+                  "difficulty": "EASY", "form": "REP",
+                  "response": { "kind": "choice", "options": ["A", "B"] },
+                  "grading": { "kind": "answerKey", "comparison": "exact", "expected": "B" }
+                }
+                """;
+        write(dir, "lazy-choice.json", giveaway);
+
+        assertThatThrownBy(catalog(dir)::all)
+                .isInstanceOf(ContentException.class)
+                .hasMessageContaining("lazy-choice.json")
+                .hasMessageContaining("'A'")
+                .hasMessageContaining("distractor")
+                .hasMessageContaining("misconception")
+                .hasMessageContaining("#42");
+    }
+
+    @Test
+    void aDistractorWithABlankMisconceptionFailsTheGate(@TempDir Path dir) throws IOException {
+        // "Declared but empty" must not slip through as if annotated.
+        String blank =
+                """
+                {
+                  "id": "blank-choice", "title": "Blank", "statement": "Pick B.",
+                  "domain": "fundamentals", "topics": ["demo"],
+                  "difficulty": "EASY", "form": "REP",
+                  "response": { "kind": "choice", "options": [
+                    { "text": "A", "misconception": "   " },
+                    "B" ] },
+                  "grading": { "kind": "answerKey", "comparison": "exact", "expected": "B" }
+                }
+                """;
+        write(dir, "blank-choice.json", blank);
+
+        assertThatThrownBy(catalog(dir)::all)
+                .isInstanceOf(ContentException.class)
+                .hasMessageContaining("blank-choice.json")
+                .hasMessageContaining("misconception");
+    }
+
+    @Test
+    void anAnswerKeyThatMatchesNoOptionIsAClearError(@TempDir Path dir) throws IOException {
+        // A choice whose key is not one of the options has no correct answer at all.
+        String unanswerable =
+                """
+                {
+                  "id": "no-answer", "title": "No answer", "statement": "Pick the key.",
+                  "domain": "fundamentals", "topics": ["demo"],
+                  "difficulty": "EASY", "form": "REP",
+                  "response": { "kind": "choice", "options": [
+                    { "text": "A", "misconception": "an off-by-one" },
+                    { "text": "B", "misconception": "a sign error" } ] },
+                  "grading": { "kind": "answerKey", "comparison": "exact", "expected": "C" }
+                }
+                """;
+        write(dir, "no-answer.json", unanswerable);
+
+        assertThatThrownBy(catalog(dir)::all)
+                .isInstanceOf(ContentException.class)
+                .hasMessageContaining("no-answer.json")
+                .hasMessageContaining("matches none of the choice options");
     }
 
     @Test

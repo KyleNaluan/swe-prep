@@ -13,6 +13,7 @@ import com.sweprep.backend.exercise.Form;
 import com.sweprep.backend.exercise.Grading;
 import com.sweprep.backend.exercise.Hint;
 import com.sweprep.backend.exercise.Lesson;
+import com.sweprep.backend.exercise.Option;
 import com.sweprep.backend.exercise.Response;
 import com.sweprep.backend.exercise.SelfExplainPrompt;
 import com.sweprep.backend.exercise.Signature;
@@ -98,7 +99,10 @@ public final class Fixtures {
                 List.of("demo"),
                 Difficulty.EASY,
                 Form.REP,
-                new Response.Choice(List.of("A", "B", "C")),
+                new Response.Choice(List.of(
+                        Option.distractor("A", "picks the first option without checking the others"),
+                        Option.correct("B"),
+                        Option.distractor("C", "assumes the last option is a catch-all"))),
                 new Grading.AnswerKey(text("B"), Comparison.exact()),
                 List.of(),
                 CONCEPT_EXPLANATION,
@@ -147,7 +151,9 @@ public final class Fixtures {
                 List.of("demo"),
                 Difficulty.EASY,
                 Form.REP,
-                new Response.Choice(List.of("true", "false")),
+                new Response.Choice(List.of(
+                        Option.correct("true"),
+                        Option.distractor("false", "reads the predicate as negated"))),
                 new Grading.AnswerKey(text("true"), Comparison.exact()),
                 List.of());
     }
@@ -238,12 +244,12 @@ public final class Fixtures {
 
     // ---------------------------------------------------------------------------
     // The five warm-up rep types (issue #9's resolution), one synthetic example of
-    // each. They exercise rendering, grading and the warm-up endpoint end to end. The
-    // distractors are written to be genuinely plausible - a rep with three obviously
-    // wrong options teaches nothing (the authoring standard, issue #18) - even though
-    // the surrounding problems are throwaway, not real content (issue #4/#14). A
-    // pattern-identification rep is available cold (no derivedFrom); the other four are
-    // gated on their underlying problem.
+    // each. They exercise rendering, grading and the warm-up endpoint end to end. Each
+    // distractor names the specific misconception it targets (issue #42) - the same bar
+    // real content is held to - so these throwaway reps double as worked examples of a
+    // passing distractor set, even though the surrounding problems are not real content
+    // (issue #4/#14). A pattern-identification rep is available cold (no derivedFrom);
+    // the other four are gated on their underlying problem.
 
     /** Pattern identification: read a problem, name the pattern. Available cold. */
     public static Exercise patternIdRep() {
@@ -253,8 +259,20 @@ public final class Fixtures {
                 "A sorted array must be scanned for two entries summing to a target, in O(n) "
                         + "time and O(1) extra space. Which pattern fits best?",
                 "two-pointer",
-                new Response.Choice(
-                        List.of("Two pointers", "Sliding window", "Binary search", "Hash set")),
+                new Response.Choice(List.of(
+                        Option.correct("Two pointers"),
+                        Option.distractor(
+                                "Sliding window",
+                                "reaches for a window because the array is contiguous, missing "
+                                        + "that there is no fixed- or variable-size subarray here"),
+                        Option.distractor(
+                                "Binary search",
+                                "sees 'sorted' and assumes binary search, forgetting it finds one "
+                                        + "value, not a pair summing to a target"),
+                        Option.distractor(
+                                "Hash set",
+                                "the natural unsorted-array answer, but it spends O(n) extra space "
+                                        + "the sorted input makes unnecessary"))),
                 new Grading.AnswerKey(text("Two pointers"), Comparison.exact()),
                 "Two pointers from both ends run in O(n) with no extra space; a hash set is O(n) "
                         + "time but O(n) space, and sliding window needs a monotonic window it "
@@ -270,7 +288,18 @@ public final class Fixtures {
                 "A single loop inserts each of n elements into a hash set and checks membership "
                         + "once. What is its time complexity?",
                 "hashing",
-                new Response.Choice(List.of("O(1)", "O(log n)", "O(n)", "O(n^2)")),
+                new Response.Choice(List.of(
+                        Option.distractor(
+                                "O(1)",
+                                "mistakes a single hash operation's O(1) cost for the whole loop's"),
+                        Option.distractor(
+                                "O(log n)",
+                                "assumes any hashing structure implies logarithmic cost, confusing "
+                                        + "it with a balanced tree"),
+                        Option.correct("O(n)"),
+                        Option.distractor(
+                                "O(n^2)",
+                                "double-counts the inner hash lookup as a nested scan"))),
                 new Grading.AnswerKey(text("O(n)"), Comparison.exact()),
                 "Each insert and lookup is O(1) average, done n times, so the pass is O(n) - not "
                         + "O(n^2), which would need a nested scan.",
@@ -285,8 +314,20 @@ public final class Fixtures {
                 "In a binary search over an ascending array, after `int mid = lo + (hi - lo) / 2;` "
                         + "the code does `if (a[mid] < target) ___`. Which line belongs in the blank?",
                 "binary-search",
-                new Response.Choice(
-                        List.of("lo = mid + 1;", "lo = mid;", "hi = mid - 1;", "hi = mid;")),
+                new Response.Choice(List.of(
+                        Option.correct("lo = mid + 1;"),
+                        Option.distractor(
+                                "lo = mid;",
+                                "moves the low bound to mid without excluding it, so the range can "
+                                        + "stop shrinking and the search loops forever"),
+                        Option.distractor(
+                                "hi = mid - 1;",
+                                "updates the wrong bound - narrows the high side when the target is "
+                                        + "known to be above mid"),
+                        Option.distractor(
+                                "hi = mid;",
+                                "both wrong bound and wrong direction, conflating the two branches "
+                                        + "of the comparison"))),
                 new Grading.AnswerKey(text("lo = mid + 1;"), Comparison.exact()),
                 "The target is above mid, so the answer is to its right; moving to `mid + 1` "
                         + "excludes mid and guarantees progress. `lo = mid;` can loop forever.",
@@ -315,12 +356,17 @@ public final class Fixtures {
                         + "`int max = 0; for (int x : a) if (x > max) max = x; return max;`. "
                         + "What is wrong with it?",
                 "arrays",
-                new Response.Choice(
-                        List.of(
-                                "It returns 0 for an all-negative array",
+                new Response.Choice(List.of(
+                        Option.correct("It returns 0 for an all-negative array"),
+                        Option.distractor(
                                 "It skips the last element",
+                                "miscounts the for-each as an index loop with an off-by-one bound"),
+                        Option.distractor(
                                 "It is off by one on the first element",
-                                "Nothing is wrong")),
+                                "blames a fencepost error rather than the wrong initial value"),
+                        Option.distractor(
+                                "Nothing is wrong",
+                                "reads the happy path only and misses the all-negative edge case"))),
                 new Grading.AnswerKey(
                         text("It returns 0 for an all-negative array"), Comparison.exact()),
                 "Seeding `max` with 0 instead of the first element (or Integer.MIN_VALUE) means a "
