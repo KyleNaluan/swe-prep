@@ -23,14 +23,25 @@ public sealed interface Response permits Response.Code, Response.Choice, Respons
     record Code(Signature signature) implements Response {}
 
     /**
-     * The solver picks one of a fixed list of options. Nothing is compiled or run,
-     * so an exercise with this response and an {@link Grading.AnswerKey} needs no
+     * The solver picks one of a fixed list of {@link Option}s. Nothing is compiled or
+     * run, so an exercise with this response and an {@link Grading.AnswerKey} needs no
      * runner at all.
+     *
+     * <p>Each option carries its visible text and, for a distractor, the misconception
+     * it targets (issue #42) - so a choice's wrong options are annotated at the point
+     * they are declared. The editor is served only the option {@code text}
+     * (see {@link #optionTexts()}); the misconceptions are authoring metadata the loader
+     * validates but never ships.
      */
-    record Choice(List<String> options) implements Response {
+    record Choice(List<Option> options) implements Response {
 
         public Choice {
             options = List.copyOf(options);
+        }
+
+        /** The visible option texts, in order - what the editor renders and the learner picks. */
+        public List<String> optionTexts() {
+            return options.stream().map(Option::text).toList();
         }
     }
 
