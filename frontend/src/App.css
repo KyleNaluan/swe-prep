@@ -429,3 +429,85 @@
   background: rgba(99, 102, 241, 0.15);
   color: #6366f1;
 }
+
+/* Daily session loop (issue #19): the header wordmark + day badge, the day-complete
+   landing, and the continuation note. The landing is deliberately celebratory and the
+   optional-main card deliberately low-key, so declining it never reads as failing. */
+.session-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.wordmark {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.day-badge {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #64748b;
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.15);
+}
+
+.day-badge.complete {
+  color: #16a34a;
+  background: rgba(34, 197, 94, 0.15);
+}
+
+.day-badge .check {
+  font-weight: 700;
+}
+
+.day-complete {
+  padding: 1rem 0;
+}
+
+.day-complete h1 {
+  margin: 0 0 0.6rem;
+  font-size: 1.8rem;
+}
+
+.main-offer {
+  margin-top: 1.75rem;
+  padding: 1.1rem 1.25rem;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 0.75rem;
+  background: rgba(148, 163, 184, 0.06);
+}
+
+.main-offer h2 {
+  margin: 0 0 0.4rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.main-offer p {
+  margin: 0 0 0.9rem;
+  line-height: 1.6;
+  color: #334155;
+}
+
+.continuation-note {
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: #64748b;
+  margin: 0 0 1.25rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  .main-offer p {
+    color: #cbd5e1;
+  }
+}
