@@ -5,30 +5,28 @@ import com.sweprep.backend.exercise.Comparison;
 import com.sweprep.backend.exercise.DataType;
 import com.sweprep.backend.exercise.Difficulty;
 import com.sweprep.backend.exercise.Exercise;
-import com.sweprep.backend.exercise.Family;
 import com.sweprep.backend.exercise.Form;
 import com.sweprep.backend.exercise.Grading;
 import com.sweprep.backend.exercise.Hint;
 import com.sweprep.backend.exercise.Response;
 import com.sweprep.backend.exercise.Signature;
 import com.sweprep.backend.exercise.Signature.Parameter;
-import com.sweprep.backend.exercise.Stability;
 import com.sweprep.backend.exercise.TestCase;
-import java.time.LocalDate;
-import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Builds an {@link Exercise} from the language-neutral JSON one content file
- * holds. It is hand-rolled rather than delegated to Jackson data binding so that
- * every failure names the file and the exact field at fault - "malformed content
- * reports a clear error" is an acceptance criterion (issue #14), and a generic
- * binding exception would not meet it.
+ * Builds an {@link Exercise} from the language-neutral JSON one content file holds
+ * when its {@code kind} is {@code "exercise"} (the default). The shared metadata
+ * reads live in {@link ContentJson}; this parser adds the exercise-only parts - the
+ * {@link Response} and {@link Grading} specs, the signature, and the hint ladder -
+ * and, like {@code ContentJson}, is hand-rolled so every failure names the file and
+ * the exact field at fault (issue #14).
  *
  * <p>The format:
  * <pre>
  * {
+ *   "kind": "exercise",   // optional; the default (see ContentParser)
  *   "id": "...", "title": "...", "statement": "...",
  *   "domain": "algorithms", "topics": ["array"],
  *   "difficulty": "EASY|MEDIUM|HARD", "form": "REP|CHALLENGE",
@@ -51,228 +49,120 @@ final class ExerciseParser {
 
     /** Parse one exercise; {@code source} names the file for error messages. */
     static Exercise parse(String source, JsonNode root) {
-        if (root == null || !root.isObject()) {
-            throw malformed(source, "the file is not a JSON object");
-        }
-        String id = requireText(source, root, "id");
-        String title = requireText(source, root, "title");
-        String statement = requireText(source, root, "statement");
-        String domain = requireText(source, root, "domain");
-        List<String> topics = topics(source, root);
-        Difficulty difficulty = requireEnum(source, root, "difficulty", Difficulty.class);
-        Form form = requireEnum(source, root, "form", Form.class);
-        Response response = response(source, requireObject(source, root, "response"));
-        Grading grading = grading(source, requireObject(source, root, "grading"));
-        List<Hint> hints = hints(source, root);
-        List<Family> family = family(source, root);
-        Stability stability = stability(source, root);
-        LocalDate reviewed = reviewed(source, root);
+        ContentJson json = new ContentJson(source, "exercise");
+        String id = json.requireText(root, "id");
+        String title = json.requireText(root, "title");
+        String statement = json.requireText(root, "statement");
+        String domain = json.requireText(root, "domain");
+        List<String> topics = json.topics(root);
+        Difficulty difficulty = json.requireEnum(root, "difficulty", Difficulty.class);
+        Form form = json.requireEnum(root, "form", Form.class);
+        Response response = response(json, json.requireObject(root, "response"));
+        Grading grading = grading(json, json.requireObject(root, "grading"));
+        List<Hint> hints = hints(json, root);
         return new Exercise(
                 id, title, statement, domain, topics, difficulty, form, response, grading, hints,
-                family, stability, reviewed);
+                json.family(root), json.stability(root), json.reviewed(root));
     }
 
-    private static List<Family> family(String source, JsonNode root) {
-        JsonNode node = root.get("family");
-        if (node == null || node.isNull()) {
-            return List.of();
-        }
-        if (!node.isArray()) {
-            throw malformed(source, "'family' must be an array of role-family names");
-        }
-        List<Family> family = new ArrayList<>();
-        for (JsonNode element : node) {
-            if (!element.isTextual()) {
-                throw malformed(source, "'family' must contain only strings");
-            }
-            String value = element.asText();
-            try {
-                family.add(Family.valueOf(value));
-            } catch (IllegalArgumentException e) {
-                throw malformed(source, "'family' has unknown value '" + value + "'");
-            }
-        }
-        return family;
-    }
-
-    private static Stability stability(String source, JsonNode root) {
-        JsonNode node = root.get("stability");
-        if (node == null || node.isNull()) {
-            return Stability.STABLE;
-        }
-        return requireEnum(source, root, "stability", Stability.class);
-    }
-
-    private static LocalDate reviewed(String source, JsonNode root) {
-        JsonNode node = root.get("reviewed");
-        if (node == null || node.isNull()) {
-            return null;
-        }
-        if (!node.isTextual()) {
-            throw malformed(source, "'reviewed' must be an ISO-8601 date string (YYYY-MM-DD)");
-        }
-        try {
-            return LocalDate.parse(node.asText());
-        } catch (DateTimeParseException e) {
-            throw malformed(
-                    source, "'reviewed' must be an ISO-8601 date (YYYY-MM-DD): '" + node.asText() + "'");
-        }
-    }
-
-    private static List<Hint> hints(String source, JsonNode root) {
+    private static List<Hint> hints(ContentJson json, JsonNode root) {
         JsonNode node = root.get("hints");
         if (node == null || node.isNull()) {
             return List.of();
         }
         if (!node.isArray()) {
-            throw malformed(source, "'hints' must be an array of { name, body } rungs");
+            throw json.malformed("'hints' must be an array of { name, body } rungs");
         }
         List<Hint> hints = new ArrayList<>();
         for (JsonNode rung : node) {
             if (!rung.isObject()) {
-                throw malformed(source, "each hint must be an object with 'name' and 'body'");
+                throw json.malformed("each hint must be an object with 'name' and 'body'");
             }
-            hints.add(new Hint(requireText(source, rung, "name"), requireText(source, rung, "body")));
+            hints.add(new Hint(json.requireText(rung, "name"), json.requireText(rung, "body")));
         }
         return hints;
     }
 
-    private static List<String> topics(String source, JsonNode root) {
-        JsonNode node = root.get("topics");
-        if (node == null || node.isNull()) {
-            return List.of();
-        }
-        if (!node.isArray()) {
-            throw malformed(source, "'topics' must be an array of strings");
-        }
-        List<String> topics = new ArrayList<>();
-        for (JsonNode topic : node) {
-            if (!topic.isTextual()) {
-                throw malformed(source, "'topics' must contain only strings");
-            }
-            topics.add(topic.asText());
-        }
-        return topics;
-    }
-
-    private static Response response(String source, JsonNode node) {
-        String kind = requireText(source, node, "kind");
+    private static Response response(ContentJson json, JsonNode node) {
+        String kind = json.requireText(node, "kind");
         return switch (kind) {
-            case "code" -> new Response.Code(signature(source, requireObject(source, node, "signature")));
-            case "choice" -> new Response.Choice(stringArray(source, node, "options"));
+            case "code" -> new Response.Code(signature(json, json.requireObject(node, "signature")));
+            case "choice" -> new Response.Choice(stringArray(json, node, "options"));
             case "freeText" -> new Response.FreeText();
-            default -> throw malformed(source, "unknown response kind '" + kind + "'");
+            default -> throw json.malformed("unknown response kind '" + kind + "'");
         };
     }
 
-    private static Signature signature(String source, JsonNode node) {
-        String method = requireText(source, node, "method");
-        JsonNode params = requireField(source, node, "parameters");
+    private static Signature signature(ContentJson json, JsonNode node) {
+        String method = json.requireText(node, "method");
+        JsonNode params = json.requireField(node, "parameters");
         if (!params.isArray()) {
-            throw malformed(source, "'signature.parameters' must be an array");
+            throw json.malformed("'signature.parameters' must be an array");
         }
         List<Parameter> parameters = new ArrayList<>();
         for (JsonNode param : params) {
             parameters.add(new Parameter(
-                    requireText(source, param, "name"),
-                    requireEnum(source, param, "type", DataType.class)));
+                    json.requireText(param, "name"),
+                    json.requireEnum(param, "type", DataType.class)));
         }
-        return new Signature(method, parameters, requireEnum(source, node, "returns", DataType.class));
+        return new Signature(method, parameters, json.requireEnum(node, "returns", DataType.class));
     }
 
-    private static Grading grading(String source, JsonNode node) {
-        String kind = requireText(source, node, "kind");
+    private static Grading grading(ContentJson json, JsonNode node) {
+        String kind = json.requireText(node, "kind");
         return switch (kind) {
-            case "testCases" -> new Grading.TestCases(comparison(source, node), cases(source, node));
+            case "testCases" -> new Grading.TestCases(comparison(json, node), cases(json, node));
             case "answerKey" -> new Grading.AnswerKey(
-                    requireField(source, node, "expected"), comparison(source, node));
-            case "selfCheck" -> new Grading.SelfCheck(requireText(source, node, "modelAnswer"));
-            default -> throw malformed(source, "unknown grading kind '" + kind + "'");
+                    json.requireField(node, "expected"), comparison(json, node));
+            case "selfCheck" -> new Grading.SelfCheck(json.requireText(node, "modelAnswer"));
+            default -> throw json.malformed("unknown grading kind '" + kind + "'");
         };
     }
 
-    private static List<TestCase> cases(String source, JsonNode node) {
-        JsonNode cases = requireField(source, node, "cases");
+    private static List<TestCase> cases(ContentJson json, JsonNode node) {
+        JsonNode cases = json.requireField(node, "cases");
         if (!cases.isArray() || cases.isEmpty()) {
-            throw malformed(source, "'grading.cases' must be a non-empty array");
+            throw json.malformed("'grading.cases' must be a non-empty array");
         }
         List<TestCase> result = new ArrayList<>();
         for (JsonNode testCase : cases) {
-            JsonNode input = requireField(source, testCase, "input");
+            JsonNode input = json.requireField(testCase, "input");
             if (!input.isArray()) {
-                throw malformed(source, "each case's 'input' must be a JSON array of arguments");
+                throw json.malformed("each case's 'input' must be a JSON array of arguments");
             }
-            result.add(new TestCase(input, requireField(source, testCase, "expected")));
+            result.add(new TestCase(input, json.requireField(testCase, "expected")));
         }
         return result;
     }
 
-    private static Comparison comparison(String source, JsonNode node) {
+    private static Comparison comparison(ContentJson json, JsonNode node) {
         JsonNode value = node.get("comparison");
         if (value == null || value.isNull()) {
             return Comparison.exact();
         }
         if (!value.isTextual()) {
-            throw malformed(source, "'comparison' must be a string");
+            throw json.malformed("'comparison' must be a string");
         }
         return switch (value.asText()) {
             case "exact" -> Comparison.exact();
             case "orderInsensitiveSequence" -> Comparison.orderInsensitiveSequence();
             case "setEquality" -> Comparison.setEquality();
-            default -> throw malformed(source, "unknown comparison '" + value.asText() + "'");
+            default -> throw json.malformed("unknown comparison '" + value.asText() + "'");
         };
     }
 
-    private static List<String> stringArray(String source, JsonNode node, String field) {
-        JsonNode value = requireField(source, node, field);
+    private static List<String> stringArray(ContentJson json, JsonNode node, String field) {
+        JsonNode value = json.requireField(node, field);
         if (!value.isArray() || value.isEmpty()) {
-            throw malformed(source, "'" + field + "' must be a non-empty array of strings");
+            throw json.malformed("'" + field + "' must be a non-empty array of strings");
         }
         List<String> result = new ArrayList<>();
         for (JsonNode element : value) {
             if (!element.isTextual()) {
-                throw malformed(source, "'" + field + "' must contain only strings");
+                throw json.malformed("'" + field + "' must contain only strings");
             }
             result.add(element.asText());
         }
         return result;
-    }
-
-    private static <E extends Enum<E>> E requireEnum(
-            String source, JsonNode node, String field, Class<E> type) {
-        String value = requireText(source, node, field);
-        try {
-            return Enum.valueOf(type, value);
-        } catch (IllegalArgumentException e) {
-            throw malformed(source, "'" + field + "' has unknown value '" + value + "'");
-        }
-    }
-
-    private static String requireText(String source, JsonNode node, String field) {
-        JsonNode value = requireField(source, node, field);
-        if (!value.isTextual() || value.asText().isBlank()) {
-            throw malformed(source, "'" + field + "' must be a non-empty string");
-        }
-        return value.asText();
-    }
-
-    private static JsonNode requireObject(String source, JsonNode node, String field) {
-        JsonNode value = requireField(source, node, field);
-        if (!value.isObject()) {
-            throw malformed(source, "'" + field + "' must be an object");
-        }
-        return value;
-    }
-
-    private static JsonNode requireField(String source, JsonNode node, String field) {
-        JsonNode value = node == null ? null : node.get(field);
-        if (value == null || value.isNull()) {
-            throw malformed(source, "missing required field '" + field + "'");
-        }
-        return value;
-    }
-
-    private static ContentException malformed(String source, String detail) {
-        return new ContentException("Malformed exercise content in " + source + ": " + detail);
     }
 }

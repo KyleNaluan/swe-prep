@@ -16,6 +16,11 @@ import java.util.List;
  * out of the exercise is what lets a concept question and a coding problem share
  * one model, one loader and one seam.
  *
+ * <p>An exercise is one kind of {@link Content}: it is <em>attempted</em>, so its
+ * {@link #response()} and {@link #grading()} are always present, unlike a {@link
+ * Lesson}, which is only read (issue #46). {@code Exercise} implements {@code
+ * Content} additively - it already carried every accessor the supertype names.
+ *
  * @param id         stable identifier, unique across the content set
  * @param title      short title shown above the prompt
  * @param statement  the prompt, as Markdown-friendly plain text
@@ -49,7 +54,7 @@ public record Exercise(
         List<Hint> hints,
         List<Family> family,
         Stability stability,
-        LocalDate reviewed) {
+        LocalDate reviewed) implements Content {
 
     public Exercise {
         topics = List.copyOf(topics);
