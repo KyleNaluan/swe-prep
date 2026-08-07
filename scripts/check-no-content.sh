@@ -25,21 +25,33 @@ if ! git check-ignore -q content/probe.json; then
   fail=1
 fi
 
-# 3. No exercise-shaped JSON committed anywhere: the content format is an object
-#    carrying a "statement" together with a "grading" spec. Any tracked JSON with
-#    both is problem content that has leaked out of the private repo.
-suspects=""
+# 3. No content-shaped JSON committed anywhere. Two shapes leak from the private
+#    repo (issue #46): an exercise is an object carrying a "statement" together
+#    with a "grading" spec; a lesson has no "grading" but carries a
+#    "kind":"lesson" discriminator, or a "statement" together with its "checks".
+exercise_suspects=""
+lesson_suspects=""
 while IFS= read -r file; do
   [ -n "$file" ] || continue
-  if grep -lq '"statement"' -- "$file" 2>/dev/null \
-      && grep -lq '"grading"' -- "$file" 2>/dev/null; then
-    suspects="${suspects}${file}"$'\n'
+  has_statement=0
+  grep -lq '"statement"' -- "$file" 2>/dev/null && has_statement=1
+  if [ "$has_statement" -eq 1 ] && grep -lq '"grading"' -- "$file" 2>/dev/null; then
+    exercise_suspects="${exercise_suspects}${file}"$'\n'
+  elif grep -Elq '"kind"[[:space:]]*:[[:space:]]*"lesson"' -- "$file" 2>/dev/null \
+      || { [ "$has_statement" -eq 1 ] && grep -lq '"checks"' -- "$file" 2>/dev/null; }; then
+    lesson_suspects="${lesson_suspects}${file}"$'\n'
   fi
 done < <(git ls-files -- '*.json')
 
-if [ -n "$suspects" ]; then
+if [ -n "$exercise_suspects" ]; then
   echo "ERROR: files look like committed exercise content (have both \"statement\" and \"grading\"):" >&2
-  printf '%s' "$suspects" | sed 's/^/    /' >&2
+  printf '%s' "$exercise_suspects" | sed 's/^/    /' >&2
+  fail=1
+fi
+
+if [ -n "$lesson_suspects" ]; then
+  echo "ERROR: files look like committed lesson content (have \"kind\":\"lesson\", or \"statement\" and \"checks\"):" >&2
+  printf '%s' "$lesson_suspects" | sed 's/^/    /' >&2
   fail=1
 fi
 

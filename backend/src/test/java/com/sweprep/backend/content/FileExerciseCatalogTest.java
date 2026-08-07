@@ -4,11 +4,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sweprep.backend.exercise.Content;
+import com.sweprep.backend.exercise.ContentCatalog;
 import com.sweprep.backend.exercise.Exercise;
 import com.sweprep.backend.exercise.ExerciseCatalog;
 import com.sweprep.backend.exercise.Family;
 import com.sweprep.backend.exercise.Grading;
 import com.sweprep.backend.exercise.Hint;
+import com.sweprep.backend.exercise.Lesson;
 import com.sweprep.backend.exercise.Response;
 import com.sweprep.backend.exercise.Stability;
 import java.io.IOException;
@@ -66,7 +69,34 @@ class FileExerciseCatalogTest {
             }
             """;
 
-    private ExerciseCatalog catalog(Path dir) {
+    private static final String LESSON =
+            """
+            {
+              "kind": "lesson",
+              "id": "concept-message-queue",
+              "title": "Message queues, and when to reach for one",
+              "statement": "A message queue decouples a producer from a consumer.",
+              "domain": "fundamentals", "topics": ["messaging", "architecture"],
+              "difficulty": "EASY",
+              "checks": ["mq-when-to-use", "mq-vs-direct-call"],
+              "family": ["BACKEND"], "stability": "VOLATILE", "reviewed": "2026-08-07"
+            }
+            """;
+
+    private static final String LESSON_NO_TAGS =
+            """
+            {
+              "kind": "lesson",
+              "id": "concept-message-queue",
+              "title": "Message queues, and when to reach for one",
+              "statement": "A message queue decouples a producer from a consumer.",
+              "domain": "fundamentals", "topics": ["messaging", "architecture"],
+              "difficulty": "EASY",
+              "checks": ["mq-when-to-use", "mq-vs-direct-call"]
+            }
+            """;
+
+    private FileExerciseCatalog catalog(Path dir) {
         return new FileExerciseCatalog(new ContentProperties(dir.toString()), mapper);
     }
 
@@ -230,7 +260,7 @@ class FileExerciseCatalogTest {
     void anEmptyDirectoryIsAClearError(@TempDir Path dir) {
         assertThatThrownBy(catalog(dir)::all)
                 .isInstanceOf(ContentException.class)
-                .hasMessageContaining("No exercise");
+                .hasMessageContaining("No content");
     }
 
     @Test
@@ -270,7 +300,7 @@ class FileExerciseCatalogTest {
 
         assertThatThrownBy(catalog(dir)::all)
                 .isInstanceOf(ContentException.class)
-                .hasMessageContaining("Duplicate exercise id")
+                .hasMessageContaining("Duplicate content id")
                 .hasMessageContaining("echo-demo");
     }
 
@@ -287,5 +317,88 @@ class FileExerciseCatalogTest {
         write(contentDir, "echo.json", CODE_EXERCISE);
 
         assertThat(catalog.all()).extracting(Exercise::id).containsExactly("echo-demo");
+    }
+
+    @Test
+    void loadsALessonByItsKindDiscriminatorWithChecksAndTags(@TempDir Path dir) throws IOException {
+        write(dir, "mq.json", LESSON);
+
+        Content loaded = catalog(dir).contentById("concept-message-queue").orElseThrow();
+
+        assertThat(loaded).isInstanceOfSatisfying(Lesson.class, lesson -> {
+            assertThat(lesson.statement())
+                    .isEqualTo("A message queue decouples a producer from a consumer.");
+            assertThat(lesson.checks()).containsExactly("mq-when-to-use", "mq-vs-direct-call");
+            assertThat(lesson.family()).containsExactly(Family.BACKEND);
+            assertThat(lesson.stability()).isEqualTo(Stability.VOLATILE);
+            assertThat(lesson.reviewed()).isEqualTo(LocalDate.of(2026, 8, 7));
+        });
+    }
+
+    @Test
+    void aLessonIsNeverServedThroughTheExerciseView(@TempDir Path dir) throws IOException {
+        write(dir, "mq.json", LESSON);
+        write(dir, "pick.json", CHOICE_EXERCISE);
+
+        FileExerciseCatalog catalog = catalog(dir);
+
+        // The wide content view sees both kinds...
+        assertThat(catalog.allContent()).extracting(Content::id)
+                .containsExactlyInAnyOrder("concept-message-queue", "pick-demo");
+        // ...but the exercise view - the seam that attempts and grades - sees only the exercise,
+        // so a lesson can never be started, graded, or produce a verdict.
+        assertThat(catalog.all()).extracting(Exercise::id).containsExactly("pick-demo");
+        assertThat(catalog.byId("concept-message-queue")).isEmpty();
+    }
+
+    @Test
+    void aLessonWithNoContentTagsDefaultsToStableAndUntagged(@TempDir Path dir) throws IOException {
+        write(dir, "mq.json", LESSON_NO_TAGS);
+
+        Lesson loaded = (Lesson) catalog(dir).contentById("concept-message-queue").orElseThrow();
+
+        assertThat(loaded.family()).isEmpty();
+        assertThat(loaded.stability()).isEqualTo(Stability.STABLE);
+        assertThat(loaded.reviewed()).isNull();
+    }
+
+    @Test
+    void aMalformedLessonNamesFileAndFieldAsAnExerciseDoes(@TempDir Path dir) throws IOException {
+        write(dir, "no-statement.json", LESSON.replace("\"statement\"", "\"nope\""));
+
+        assertThatThrownBy(catalog(dir)::allContent)
+                .isInstanceOf(ContentException.class)
+                .hasMessageContaining("no-statement.json")
+                .hasMessageContaining("lesson")
+                .hasMessageContaining("statement");
+    }
+
+    @Test
+    void aLessonMissingItsChecksNamesFileAndField(@TempDir Path dir) throws IOException {
+        write(dir, "no-checks.json", LESSON.replace("\"checks\"", "\"nope\""));
+
+        assertThatThrownBy(catalog(dir)::allContent)
+                .isInstanceOf(ContentException.class)
+                .hasMessageContaining("no-checks.json")
+                .hasMessageContaining("checks");
+    }
+
+    @Test
+    void anUnknownKindNamesFileAndField(@TempDir Path dir) throws IOException {
+        write(dir, "quiz.json", LESSON.replace("\"lesson\"", "\"quiz\""));
+
+        assertThatThrownBy(catalog(dir)::allContent)
+                .isInstanceOf(ContentException.class)
+                .hasMessageContaining("quiz.json")
+                .hasMessageContaining("kind")
+                .hasMessageContaining("quiz");
+    }
+
+    @Test
+    void anExerciseFileWithNoKindStillLoadsAsAnExercise(@TempDir Path dir) throws IOException {
+        // CODE_EXERCISE carries no "kind" field; the default keeps it loading unchanged.
+        write(dir, "echo.json", CODE_EXERCISE);
+
+        assertThat(catalog(dir).contentById("echo-demo")).get().isInstanceOf(Exercise.class);
     }
 }
