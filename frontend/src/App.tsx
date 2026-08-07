@@ -1,12 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Editor from '@monaco-editor/react'
 import './App.css'
-
-// Empty by default: the dev server proxies /api to the backend (vite.config.ts) so every
-// call below is same-origin, whether the page was opened as localhost or a tailnet
-// address. That makes CORS a non-issue for the app's own calls in dev (issue #34). Set
-// VITE_API_BASE_URL to call a backend directly, bypassing the proxy.
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? ''
+import { apiFetch, errorMessage } from './api'
+import Warmup from './Warmup'
 
 type Summary = {
   id: string
@@ -109,38 +105,39 @@ type RunState =
   | { phase: 'done'; verdict: Verdict }
   | { phase: 'error'; message: string }
 
-// The content endpoints answer a failure with a { error } body (see the backend's
-// ContentErrorHandler); surface that message rather than a bare status code.
-async function errorMessage(response: Response): Promise<string> {
-  try {
-    const body = (await response.json()) as { error?: string }
-    if (body && typeof body.error === 'string') return body.error
-  } catch {
-    // fall through to the status
-  }
-  return `backend returned ${response.status}`
-}
-
-// A wrapper around fetch that names the cause when the request never got an HTTP
-// response at all. Browsers reject a fetch with a bare "TypeError: Failed to fetch" for
-// several distinct failures - the backend is down, the network is unreachable, or the
-// browser silently blocked the response as cross-origin - and deliberately do not say
-// which, so that message alone is not actionable. This is the failure mode issue #34
-// tracked: the page loaded fine and every call went nowhere with nothing explaining why.
-async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
-  const url = `${API_BASE_URL}${path}`
-  try {
-    return await fetch(url, init)
-  } catch {
-    throw new Error(
-      `Could not reach the backend at ${url}. Check that it is running, and, if this page ` +
-        `was opened from a different host or port than usual, that this origin is allowed ` +
-        `by the backend's CORS config (sweprep.web.allowed-origins).`,
-    )
-  }
-}
+// The two surfaces the app offers: the daily warm-up (the required core, issue #18) and
+// the free-practice editor. Warm-up leads, since it is what earns the streak.
+type Mode = 'warmup' | 'practice'
 
 function App() {
+  const [mode, setMode] = useState<Mode>('warmup')
+
+  return (
+    <main className="workspace">
+      <nav className="mode-tabs" aria-label="Sections">
+        <button
+          type="button"
+          className={mode === 'warmup' ? 'active' : ''}
+          aria-pressed={mode === 'warmup'}
+          onClick={() => setMode('warmup')}
+        >
+          Warm-up
+        </button>
+        <button
+          type="button"
+          className={mode === 'practice' ? 'active' : ''}
+          aria-pressed={mode === 'practice'}
+          onClick={() => setMode('practice')}
+        >
+          Practice
+        </button>
+      </nav>
+      {mode === 'warmup' ? <Warmup /> : <Practice />}
+    </main>
+  )
+}
+
+function Practice() {
   const [catalog, setCatalog] = useState<Summary[] | null>(null)
   const [catalogError, setCatalogError] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -393,24 +390,24 @@ function App() {
 
   if (catalogError) {
     return (
-      <main className="workspace">
+      <>
         <h1>swe-prep</h1>
         <p className="status down">Could not load exercises: {catalogError}</p>
-      </main>
+      </>
     )
   }
 
   if (!catalog) {
     return (
-      <main className="workspace">
+      <>
         <h1>swe-prep</h1>
         <p className="status loading">Loading exercises...</p>
-      </main>
+      </>
     )
   }
 
   return (
-    <main className="workspace">
+    <>
       <div className="picker">
         <label htmlFor="exercise-select">Exercise</label>
         <select
@@ -539,7 +536,7 @@ function App() {
       )}
 
       <History attempts={history} />
-    </main>
+    </>
   )
 }
 

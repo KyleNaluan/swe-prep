@@ -54,9 +54,20 @@ const CHOICE_EXERCISE = {
 // Routes the app's fetches to canned responses. `run` is the verdict returned by
 // posting a submission for whichever attempt is posted to. Starting an attempt and
 // listing history are stubbed so the lazy-start + history flow (issue #15) resolves.
+// The app opens on the warm-up (issue #18); these editor tests are about the Practice
+// surface, so they answer the warm-up fetch with an empty set and switch to the Practice
+// tab first.
+async function gotoPractice() {
+  fireEvent.click(screen.getByRole('button', { name: 'Practice' }))
+  await screen.findByLabelText('Exercise')
+}
+
 function mockFetch(run: unknown, runOk = true) {
   return vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
     const href = String(url)
+    if (href.endsWith('/api/reps/warmup')) {
+      return { ok: true, json: async () => [] } as Response
+    }
     if (href.endsWith('/api/exercises')) {
       return { ok: true, json: async () => CATALOG } as Response
     }
@@ -97,6 +108,7 @@ describe('App', () => {
     vi.stubGlobal('fetch', mockFetch({}))
 
     render(<App />)
+    await gotoPractice()
 
     expect(await screen.findByRole('heading', { name: 'Two Sum' })).toBeInTheDocument()
     expect(screen.getByText(/two numbers that add up/i)).toBeInTheDocument()
@@ -107,6 +119,7 @@ describe('App', () => {
     vi.stubGlobal('fetch', mockFetch({ outcome: 'FAILED', passed: 3, total: 4, detail: '' }))
 
     render(<App />)
+    await gotoPractice()
     await screen.findByRole('heading', { name: 'Two Sum' })
 
     fireEvent.click(screen.getByRole('button', { name: 'Run' }))
@@ -126,6 +139,7 @@ describe('App', () => {
     )
 
     render(<App />)
+    await gotoPractice()
     await screen.findByRole('heading', { name: 'Two Sum' })
 
     fireEvent.click(screen.getByRole('button', { name: 'Run' }))
@@ -138,6 +152,7 @@ describe('App', () => {
     vi.stubGlobal('fetch', mockFetch({ outcome: 'PASSED', passed: 1, total: 1, detail: '' }))
 
     render(<App />)
+    await gotoPractice()
     await screen.findByRole('heading', { name: 'Two Sum' })
 
     fireEvent.change(screen.getByLabelText('Exercise'), { target: { value: 'hashmap-lookup' } })
@@ -172,6 +187,7 @@ describe('App', () => {
       'fetch',
       vi.fn(async (url: string | URL | Request) => {
         const href = String(url)
+        if (href.endsWith('/api/reps/warmup')) return { ok: true, json: async () => [] } as Response
         if (href.endsWith('/api/exercises')) return { ok: true, json: async () => CATALOG } as Response
         if (href.endsWith('/api/exercises/two-sum'))
           return { ok: true, json: async () => CODE_EXERCISE } as Response
@@ -181,6 +197,7 @@ describe('App', () => {
     )
 
     render(<App />)
+    await gotoPractice()
 
     expect(await screen.findByRole('heading', { name: 'History' })).toBeInTheDocument()
     expect(screen.getByRole('cell', { name: 'abandoned' })).toBeInTheDocument()
@@ -193,6 +210,7 @@ describe('App', () => {
       'fetch',
       vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
         const href = String(url)
+        if (href.endsWith('/api/reps/warmup')) return { ok: true, json: async () => [] } as Response
         if (href.endsWith('/api/exercises')) return { ok: true, json: async () => CATALOG } as Response
         if (href.endsWith('/api/exercises/two-sum'))
           return { ok: true, json: async () => exerciseWithHints } as Response
@@ -216,6 +234,7 @@ describe('App', () => {
     )
 
     render(<App />)
+    await gotoPractice()
     await screen.findByRole('heading', { name: 'Two Sum' })
 
     // The rung body is not on the page until the hint is explicitly taken.
@@ -231,6 +250,7 @@ describe('App', () => {
       'fetch',
       vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
         const href = String(url)
+        if (href.endsWith('/api/reps/warmup')) return { ok: true, json: async () => [] } as Response
         if (href.endsWith('/api/exercises')) return { ok: true, json: async () => CATALOG } as Response
         if (href.endsWith('/api/exercises/two-sum'))
           return { ok: true, json: async () => CODE_EXERCISE } as Response
@@ -254,6 +274,7 @@ describe('App', () => {
     )
 
     render(<App />)
+    await gotoPractice()
     await screen.findByRole('heading', { name: 'Two Sum' })
 
     fireEvent.click(screen.getByRole('button', { name: 'Run' }))
@@ -280,6 +301,7 @@ describe('App', () => {
       'fetch',
       vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
         const href = String(url)
+        if (href.endsWith('/api/reps/warmup')) return { ok: true, json: async () => [] } as Response
         if (href.endsWith('/api/exercises')) return { ok: true, json: async () => CATALOG } as Response
         if (href.endsWith('/api/exercises/two-sum'))
           return { ok: true, json: async () => CODE_EXERCISE } as Response
@@ -306,6 +328,7 @@ describe('App', () => {
     )
 
     render(<App />)
+    await gotoPractice()
     await screen.findByRole('heading', { name: 'Two Sum' })
     fireEvent.change(screen.getByLabelText('Exercise'), { target: { value: 'hashmap-lookup' } })
     await screen.findByRole('heading', { name: 'Hash Map Lookup' })
@@ -324,6 +347,7 @@ describe('App', () => {
       'fetch',
       vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
         const href = String(url)
+        if (href.endsWith('/api/reps/warmup')) return { ok: true, json: async () => [] } as Response
         if (href.endsWith('/api/exercises')) return { ok: true, json: async () => CATALOG } as Response
         if (href.endsWith('/api/exercises/two-sum'))
           return { ok: true, json: async () => CODE_EXERCISE } as Response
@@ -351,6 +375,7 @@ describe('App', () => {
     )
 
     render(<App />)
+    await gotoPractice()
     await screen.findByRole('heading', { name: 'Two Sum' })
     fireEvent.change(screen.getByLabelText('Exercise'), { target: { value: 'hashmap-lookup' } })
     await screen.findByRole('heading', { name: 'Hash Map Lookup' })

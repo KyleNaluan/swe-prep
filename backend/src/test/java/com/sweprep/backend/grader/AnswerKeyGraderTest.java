@@ -68,4 +68,27 @@ class AnswerKeyGraderTest {
         assertThat(grader.grade(concept, "").outcome()).isEqualTo(Verdict.Outcome.FAILED);
         assertThat(grader.grade(concept, null).outcome()).isEqualTo(Verdict.Outcome.FAILED);
     }
+
+    @Test
+    void predictOutputFreeTextIsMatchedAfterNormalisation() {
+        Exercise predict = Fixtures.predictOutputRep();
+
+        // The exact value passes, and trivial whitespace differences - leading, trailing,
+        // or a collapsed internal run - are normalised away rather than failed (issue #18).
+        assertThat(grader.grade(predict, "cba!").outcome()).isEqualTo(Verdict.Outcome.PASSED);
+        assertThat(grader.grade(predict, "  cba!  ").outcome()).isEqualTo(Verdict.Outcome.PASSED);
+        // A genuinely different value is still wrong.
+        assertThat(grader.grade(predict, "abc!").outcome()).isEqualTo(Verdict.Outcome.FAILED);
+    }
+
+    @Test
+    void freeTextNormalisationCollapsesInternalWhitespaceOnBothSides() {
+        // A predict-output answer key whose value carries internal spaces still matches a
+        // submission spaced differently, because both sides are normalised.
+        Exercise spaced = Fixtures.freeTextWithExpected("race  car");
+
+        assertThat(grader.grade(spaced, "race car").outcome()).isEqualTo(Verdict.Outcome.PASSED);
+        assertThat(grader.grade(spaced, "race\tcar").outcome()).isEqualTo(Verdict.Outcome.PASSED);
+        assertThat(grader.grade(spaced, "racecar").outcome()).isEqualTo(Verdict.Outcome.FAILED);
+    }
 }

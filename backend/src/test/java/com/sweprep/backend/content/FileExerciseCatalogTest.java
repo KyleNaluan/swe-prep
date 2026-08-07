@@ -243,6 +243,24 @@ class FileExerciseCatalogTest {
     }
 
     @Test
+    void parsesADerivedFromGateWhenPresentAndDefaultsToNull(@TempDir Path dir) throws IOException {
+        // A derived rep names the problem it is gated on (issue #18); a rep without the
+        // field is available cold.
+        String derived = CHOICE_EXERCISE.replaceFirst(
+                "\\}\\s*$",
+                """
+                ,
+                  "derivedFrom": "two-sum"
+                }
+                """);
+        write(dir, "derived.json", derived);
+        write(dir, "cold.json", CODE_EXERCISE);
+
+        assertThat(catalog(dir).byId("pick-demo").orElseThrow().derivedFrom()).isEqualTo("two-sum");
+        assertThat(catalog(dir).byId("echo-demo").orElseThrow().derivedFrom()).isNull();
+    }
+
+    @Test
     void aBlankExplanationNamesFileAndField(@TempDir Path dir) throws IOException {
         String blankExplanation = CHOICE_EXERCISE.replaceFirst(
                 "\\}\\s*$",

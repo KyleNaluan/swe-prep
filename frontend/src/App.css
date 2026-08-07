@@ -4,6 +4,61 @@
   padding: 0 1.25rem;
 }
 
+.mode-tabs {
+  display: flex;
+  gap: 0.4rem;
+  margin-bottom: 1.75rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+.mode-tabs button {
+  padding: 0.5rem 1rem;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: #64748b;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.mode-tabs button.active {
+  color: #6366f1;
+  border-bottom-color: #6366f1;
+}
+
+.warmup-progress {
+  margin-bottom: 1.25rem;
+}
+
+.warmup-count {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.warmup-done h1,
+.warmup header h1 {
+  margin: 0 0 0.5rem;
+  font-size: 1.6rem;
+}
+
+.freetext {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.freetext label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 .picker {
   display: flex;
   align-items: center;

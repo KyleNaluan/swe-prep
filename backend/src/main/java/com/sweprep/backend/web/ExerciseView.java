@@ -1,6 +1,7 @@
 package com.sweprep.backend.web;
 
 import com.sweprep.backend.exercise.Exercise;
+import com.sweprep.backend.exercise.Grading;
 import com.sweprep.backend.exercise.Hint;
 import com.sweprep.backend.exercise.Response;
 import com.sweprep.backend.language.LanguageAdapter;
@@ -47,21 +48,28 @@ public record ExerciseView(
                 exercise.domain(),
                 exercise.difficulty().name(),
                 exercise.form().name(),
-                responseView(exercise.response(), adapter),
+                responseView(exercise, adapter),
                 exercise.hints().stream().map(Hint::name).toList(),
                 exercise.explanation() != null);
     }
 
-    private static ResponseView responseView(Response response, LanguageAdapter adapter) {
-        return switch (response) {
+    private static ResponseView responseView(Exercise exercise, LanguageAdapter adapter) {
+        return switch (exercise.response()) {
             case Response.Code code ->
                     ResponseView.code(adapter.languageId(), adapter.generateStub(code.signature()));
             case Response.Choice choice -> ResponseView.choice(choice.options());
-            // Response.FreeText is modeled (design revision t3, T1) but not yet rendered:
-            // the produce-then-reveal editor view and self-rating flow are a later ticket
-            // (T5). No free-text content exists until then, so this path is unreachable.
-            case Response.FreeText ignored -> throw new UnsupportedOperationException(
-                    "Free-text responses are not rendered yet (design revision t3, T5)");
+            // A free-text box renders for a "predict the output" rep (issue #18), whose
+            // typed value is machine-graded against an answer key. A self-check free-text
+            // item shares the response type but its produce-then-reveal editor view and
+            // self-rating flow are a later ticket (T5), so that pairing stays unrendered.
+            case Response.FreeText ignored -> exercise.grading() instanceof Grading.SelfCheck
+                    ? throwSelfCheckNotRendered()
+                    : ResponseView.freeText();
         };
+    }
+
+    private static ResponseView throwSelfCheckNotRendered() {
+        throw new UnsupportedOperationException(
+                "Self-check free-text responses are not rendered yet (design revision t3, T5)");
     }
 }
