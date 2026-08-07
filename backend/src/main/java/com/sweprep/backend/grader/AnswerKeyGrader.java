@@ -38,22 +38,28 @@ public class AnswerKeyGrader implements Grader {
         if (submission == null || submission.isBlank()) {
             return Verdict.of(0, 1);
         }
-        boolean correct = key.comparison().matches(key.expected(), parse(submission.strip()));
+        String stripped = submission.strip();
+        JsonNode asText = TextNode.valueOf(stripped);
+        JsonNode asJson = parse(stripped);
+        boolean correct = key.comparison().matches(key.expected(), asText)
+                || (asJson != null && key.comparison().matches(key.expected(), asJson));
         return Verdict.of(correct ? 1 : 0, 1);
     }
 
     /**
-     * A numeric or structured answer key ("predict-output") is graded through the
-     * exercise's {@link com.sweprep.backend.exercise.Comparison} just like a test
-     * case, so the submission is parsed as JSON. A plain multiple-choice option is
-     * not valid JSON, so it falls back to a JSON string value, preserving exact
-     * matching against string answer keys.
+     * The submission parsed as JSON, or {@code null} when it is not valid JSON (a
+     * plain multiple-choice option such as {@code "O(1) average, because..."}). A
+     * numeric or structured answer key ("predict-output") is graded through this
+     * parsed form under the exercise's {@link com.sweprep.backend.exercise.Comparison}
+     * just like a test case, while an option that happens to look like JSON (e.g.
+     * {@code "true"} or {@code "1"}) still matches a string answer key through its
+     * raw-text form.
      */
     private JsonNode parse(String submission) {
         try {
             return mapper.readTree(submission);
         } catch (Exception e) {
-            return TextNode.valueOf(submission);
+            return null;
         }
     }
 }

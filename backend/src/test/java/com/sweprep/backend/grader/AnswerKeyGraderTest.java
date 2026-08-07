@@ -56,6 +56,14 @@ class AnswerKeyGraderTest {
     }
 
     @Test
+    void aJsonLookingOptionStillMatchesAStringAnswerKey() {
+        Exercise booleanChoice = Fixtures.booleanLookingChoice();
+
+        assertThat(grader.grade(booleanChoice, "true").outcome()).isEqualTo(Verdict.Outcome.PASSED);
+        assertThat(grader.grade(booleanChoice, "false").outcome()).isEqualTo(Verdict.Outcome.FAILED);
+    }
+
+    @Test
     void aBlankOrMissingAnswerFails() {
         assertThat(grader.grade(concept, "").outcome()).isEqualTo(Verdict.Outcome.FAILED);
         assertThat(grader.grade(concept, null).outcome()).isEqualTo(Verdict.Outcome.FAILED);
