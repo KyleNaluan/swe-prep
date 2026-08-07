@@ -4,6 +4,31 @@
   padding: 0 1.25rem;
 }
 
+.picker {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 1.5rem;
+}
+
+.picker label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.picker select {
+  flex: 1;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid rgba(148, 163, 184, 0.5);
+  border-radius: 0.5rem;
+  background: transparent;
+  color: inherit;
+  font-size: 0.95rem;
+}
+
 .workspace header {
   display: flex;
   align-items: baseline;
@@ -40,6 +65,36 @@
   border: 1px solid rgba(148, 163, 184, 0.4);
   border-radius: 0.5rem;
   overflow: hidden;
+}
+
+.choices {
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  border-radius: 0.5rem;
+  padding: 1rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.choices legend {
+  padding: 0 0.4rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.choice input {
+  margin-top: 0.3rem;
 }
 
 .actions {

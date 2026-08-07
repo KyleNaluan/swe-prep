@@ -14,6 +14,7 @@ package com.sweprep.backend.exercise;
 public enum DataType {
     INT,
     INT_ARRAY,
+    INT_MATRIX,
     BOOLEAN,
     STRING
 }

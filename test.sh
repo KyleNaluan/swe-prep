@@ -5,6 +5,9 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
+echo "== no committed content =="
+./scripts/check-no-content.sh
+
 echo "== backend =="
 (cd backend && ./mvnw test)
 

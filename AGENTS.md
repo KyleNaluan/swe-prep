@@ -40,18 +40,20 @@ Two invariants from the map are the ones most likely to be violated by someone w
 
 ## Execution: exercise to verdict
 
-The seam that runs a submission lives under `backend/src/main/java/com/sweprep/backend/` in four packages: `exercise` (language-neutral model), `language` (adapters), `runner` (execution) and `grader` (pass/fail), wired to the editor by `web`.
-The first concrete instances are `JavaLanguageAdapter`, `LocalJavaRunner` and `TestCaseGrader`; issue #13 established their shape.
+The seam that runs a submission lives under `backend/src/main/java/com/sweprep/backend/` in five packages: `exercise` (language-neutral model), `content` (loading), `language` (adapters), `runner` (execution) and `grader` (pass/fail), wired to the editor by `web`.
+Issue #13 established the runner/adapter shape; issue #14 made the domain model real and turned on content loading.
+
+An `Exercise` (issue #14) carries prompt, `domain`, `topics`, `Difficulty`, a `Form` (`REP` vs `CHALLENGE`, an attribute never a subtype), a `Response` spec (how it is answered) and a `Grading` spec (how it is judged). `Response` and `Grading` are independent sealed interfaces: `Response.Code` carries a `Signature`, `Response.Choice` a list of options; `Grading.TestCases` carries cases + a `Comparison`, `Grading.AnswerKey` a fixed expected value. A coding problem is Code+TestCases; a concept question is Choice+AnswerKey - but a code response judged by an answer key (predict-output) is valid, which is why the two are not one choice. `AnswerKeyGrader` compares the submitted answer against the expected value under the exercise's `Comparison`, trying both the raw text and, when the submission is valid JSON, its parsed form, so string, numeric, and structured answer keys all grade correctly and a multiple-choice option that looks like JSON (`true`, `1`) is never mis-graded against a string answer key.
 
 Contracts, kept deliberately apart (see the map, issue #6):
 
 - `LanguageAdapter` generates both the editor stub and the harness from a `Signature`; neither is hand-written per problem.
 - `Runner` only compiles and executes (`ExecutionRequest` to `ExecutionResult`) and knows nothing about test cases or verdicts.
-- `Grader` writes the cases, invokes the runner, and interprets the outcome into a `Verdict`. `COMPILE_ERROR`, `TIMEOUT`, a test failure and an `ERROR` (ran but reported no result) are distinct outcomes.
+- `Grader` is polymorphic over the grading spec: each declares `supports(Exercise)` and `GraderRegistry` routes each exercise to the one that handles it. `TestCaseGrader` runs code; `AnswerKeyGrader` compares a submitted answer to a fixed value and has **no `Runner` dependency at all** - the demonstration (issue #14) that grader and runner are separate pieces. `COMPILE_ERROR`, `TIMEOUT`, a test failure and an `ERROR` (ran but reported no result) are distinct outcomes.
 
 Comparison is the grader's job, not the harness's (issue #31). The harness only records each case's raw return value; the grader compares it to the expected value under the exercise's declared rule.
 
-- An exercise declares a `Comparison` (`exercise` package): a sealed interface with `exact`, `orderInsensitiveSequence` and `setEquality`, defaulting to `exact`. A problem-specific rule is added by adding one more permitted implementation, not by redesigning - so extend it there rather than reaching for per-content workarounds. Two Sum declares `orderInsensitiveSequence` instead of pinning an order in its statement.
+- A grading spec declares a `Comparison` (`exercise` package): a sealed interface with `exact`, `orderInsensitiveSequence` and `setEquality`, defaulting to `exact`. A problem-specific rule is added by adding one more permitted implementation, not by redesigning - so extend it there rather than reaching for per-content workarounds. Two Sum declares `orderInsensitiveSequence` instead of pinning an order in its statement; 3Sum declares `setEquality` (with each triplet still stated ascending, so its elements compare exactly).
 - All rules share `JsonEquality.equal`, which compares numbers by magnitude (`decimalValue().compareTo`), so `5`, `5.0` and a wider int type are one answer. Never compare answers with Jackson's `JsonNode.equals` - it keys on the concrete node type and fails numerically-equal answers.
 
 Sharp edges worth knowing before touching this:
@@ -59,6 +61,15 @@ Sharp edges worth knowing before touching this:
 - The harness classpath is resolved from the `CodeSource` of the Jackson classes it imports, not from `java.class.path`, because Surefire may hand the JVM a booter jar instead of the real dependency jars. See `JavaLanguageAdapter.jacksonClasspath`.
 - The harness writes each case's result to a dedicated file (an `ExecutionRequest.outputFiles` entry the runner reads back), never to the submission's own stdout. This is deliberate: stdout is capped at 1MB (`LocalJavaRunner.MAX_CAPTURED_BYTES`, keep it) to stop a runaway print loop exhausting the backend heap, and putting the result on that same channel let a noisy-but-correct solution truncate away its own result.
 - The execution timeout is `sweprep.grader.timeout` (default `PT10S`); the local runner is unsandboxed by design (single user, issue #2's swap point).
+
+## Content: private, loaded from a local path
+
+Problem content lives only in the separate private repo `swe-prep-content`, never here (public-engine/private-content, issues #4/#14).
+`FileExerciseCatalog` (`content` package) reads every top-level `*.json` in `sweprep.content.path` (default `../content`, gitignored `/content/`; override with `SWEPREP_CONTENT_PATH`), parsing each with the hand-rolled `ExerciseParser` so every failure names the file and field. See `swe-prep-content/README.md` for the on-disk format.
+
+- Loading is lazy and cached; a *failed* load is not cached, so cloning content after boot works without a restart. Missing path, malformed file, duplicate id, etc. all surface as `ContentException`, mapped to a 500-with-message by `ContentErrorHandler` so the editor shows a clear error.
+- **Never commit problem content here.** `scripts/check-no-content.sh` fails CI and `./test.sh` if any is (tracked `content/`, un-ignored `content/`, or any tracked JSON carrying both `"statement"` and `"grading"`). Backend tests use synthetic fixtures (`testsupport/Fixtures`, temp-dir JSON); the real seeded set is only exercised by `RealContentSmokeTest`, which *skips* when no local clone is present.
+- Person-owned tables carry a `user_id` and exactly one user is seeded (migration `V2__app_user.sql`); `app_user` is the person table its own PK is that id. Persisting attempts is #15, not this ticket.
 
 ## Maintaining this file
 

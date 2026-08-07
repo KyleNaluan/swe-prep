@@ -10,6 +10,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Enforce the public-engine/private-content rule (issue #4/#14): fail the
+      # build if any problem statement, test data or reference solution has been
+      # committed to this public repo. Runs before anything expensive.
+      - name: Assert no private content is committed
+        run: ./scripts/check-no-content.sh
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
