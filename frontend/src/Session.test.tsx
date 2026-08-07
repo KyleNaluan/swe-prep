@@ -196,4 +196,42 @@ describe('Session (daily loop, issue #19)', () => {
     // Only finishing the warm-up completes the day - browsing exercises never does.
     await waitFor(() => expect(calls.completeWarmup).toBe(0))
   })
+
+  it('with a non-empty warm-up, solving a main exercise does not complete the day', async () => {
+    const calls = { completeWarmup: 0, abandons: [] as string[] }
+    vi.stubGlobal('fetch', mockFetch(calls))
+    render(<Session />)
+    await screen.findByRole('heading', { name: 'Rep One' })
+
+    // Skip the warm-up and solve a main directly - the main is optional and must not carry
+    // the weight of completing the day when the warm-up is still there to be run.
+    fireEvent.click(screen.getByRole('button', { name: 'Practice' }))
+    await screen.findByRole('heading', { name: 'Concept Main' })
+    fireEvent.click(screen.getByLabelText('Speeds reads'))
+    fireEvent.click(screen.getByRole('button', { name: 'Submit' }))
+
+    expect(await screen.findByText('Correct')).toBeInTheDocument()
+    await waitFor(() => expect(calls.completeWarmup).toBe(0))
+  })
+
+  it('completes the day off a single Practice exercise when the warm-up set is empty', async () => {
+    const calls = { completeWarmup: 0, abandons: [] as string[] }
+    vi.stubGlobal('fetch', mockFetch(calls, { warmup: [] }))
+    render(<Session />)
+
+    // An empty warm-up shows the fallback plainly and completes nothing on its own.
+    expect(await screen.findByRole('heading', { name: /nothing to warm up/i })).toBeInTheDocument()
+    expect(
+      screen.getByText(/completing any one exercise in Practice finishes your day/i),
+    ).toBeInTheDocument()
+    await waitFor(() => expect(calls.completeWarmup).toBe(0))
+
+    // Solving one Practice exercise is now the path that banks the day.
+    fireEvent.click(screen.getByRole('button', { name: 'Practice' }))
+    await screen.findByRole('heading', { name: 'Concept Main' })
+    fireEvent.click(screen.getByLabelText('Speeds reads'))
+    fireEvent.click(screen.getByRole('button', { name: 'Submit' }))
+
+    await waitFor(() => expect(calls.completeWarmup).toBe(1))
+  })
 })

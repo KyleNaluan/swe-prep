@@ -62,10 +62,12 @@ type Phase =
 // When embedded in the daily session loop the parent is told the moment the set is
 // finished, so it can complete the day and show the day-complete landing (issue #19).
 // The prop is optional so the runner still works standalone (it then shows its own
-// built-in done screen).
-type WarmupProps = { onComplete?: (correctCount: number) => void }
+// built-in done screen). `onEmpty` fires when the set comes back empty, so the session
+// can fall back to completing the day off a single Practice exercise instead - an empty
+// warm-up must never leave the day impossible to finish.
+type WarmupProps = { onComplete?: (correctCount: number) => void; onEmpty?: () => void }
 
-function Warmup({ onComplete }: WarmupProps = {}) {
+function Warmup({ onComplete, onEmpty }: WarmupProps = {}) {
   const [phase, setPhase] = useState<Phase>({ name: 'loading' })
   // The working queue of rep ids. A wrong answer appends its rep, so the queue can grow
   // past the original set; `pos` walks it and the set ends when `pos` runs off the end.
@@ -119,6 +121,7 @@ function Warmup({ onComplete }: WarmupProps = {}) {
         if (cancelled) return
         if (set.length === 0) {
           setPhase({ name: 'empty' })
+          onEmpty?.()
           return
         }
         setQueue(set.map((s) => s.id))
@@ -131,7 +134,7 @@ function Warmup({ onComplete }: WarmupProps = {}) {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [onEmpty])
 
   const currentId = phase.name === 'active' ? queue[pos] : undefined
 
@@ -269,6 +272,12 @@ function Warmup({ onComplete }: WarmupProps = {}) {
           Pattern-identification reps are available cold, so once content is loaded this set
           fills on its own.
         </p>
+        {onComplete && (
+          <p className="hints-note">
+            With no warm-up to run today, completing any one exercise in Practice finishes
+            your day.
+          </p>
+        )}
       </section>
     )
   }
