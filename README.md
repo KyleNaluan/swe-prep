@@ -54,8 +54,8 @@ Prerequisites: Java 21 on `PATH`, Docker running, Node 24.
    npm run dev
    ```
 
-5. Open `http://localhost:5173`. The app opens straight on the daily warm-up, with a
-   Today/Practice tab to switch surfaces. The warm-up (issue #18) walks an
+5. Open `http://localhost:5173`. The app opens straight on the daily warm-up, with
+   Today/Practice/Learn tabs to switch surfaces. The warm-up (issue #18) walks an
    interleaved set of ~8 quick reps one at a time - multiple-choice or a short
    predict-the-output box - driving the same attempt flow every exercise uses; a
    wrong answer shows the check's explanation at once and re-queues that rep later
@@ -77,7 +77,13 @@ Prerequisites: Java 21 on `PATH`, Docker running, Node 24.
    automatically on a wrong answer, and offers it one click away once the sitting has
    ended; asking is recorded but never affects your score - it is not a hint. Runtime is
    shown next to the verdict for interest only, never as part of pass/fail. A concept exercise shows multiple-choice options and is
-   graded with no code execution at all. Each sitting and every press of Run is
+   graded with no code execution at all. An "explain it in your own words" exercise
+   (issue #41) is different again: it takes free text, then reveals a model answer for
+   you to self-rate against - production practice that is deliberately never machine-graded,
+   so it lives only in the optional tiers, never the required warm-up. The Learn tab
+   (issue #46) is the reading surface: a lesson is read, never attempted, and its
+   embedded self-explanation prompts each ask you to answer in your own words before
+   revealing a model answer. Each sitting and every press of Run is
    recorded as durable practice history, shown in a History panel below the editor
    (with the hints taken) and surviving a restart; a Give up button abandons an
    unsolved sitting.
