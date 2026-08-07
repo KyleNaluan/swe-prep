@@ -212,14 +212,24 @@ public class AttemptService {
      * away when correct" path: unlike the automatic disclosure on a wrong answer it is a
      * request, so it is recorded - but deliberately in {@code explanation_requested},
      * not in the hint count, since asking why a correct answer is correct is not asking
-     * for help to solve. It is never penalised and never ends the sitting, and it works
-     * whatever the outcome, since a correct sitting is already {@code SOLVED}. Returns
-     * the explanation, which is {@code null} when the check carries none (the request is
+     * for help to solve. It is never penalised and never ends the sitting.
+     *
+     * <p>Withhold-by-default is a training decision the API - not just the editor -
+     * enforces, so the request is only honoured from a terminal attempt: {@code SOLVED}
+     * (the "when correct" path) or {@code ABANDONED} (giving up then reading why is
+     * legitimate, and is already recorded as abandonment, not as confidence). An
+     * {@code IN_PROGRESS} attempt is rejected with {@link IllegalAttemptStateException},
+     * so a solver can never read the explanation before answering. Returns the
+     * explanation, which is {@code null} when the check carries none (the request is
      * still recorded, since the solver did ask).
      */
     @Transactional
     public ExplanationResult requestExplanation(UUID attemptId) {
         Attempt attempt = requireOwned(attemptId);
+        if (attempt.outcome() == AttemptOutcome.IN_PROGRESS) {
+            throw new IllegalAttemptStateException(
+                    "Attempt " + attemptId + " is still in progress; its explanation is withheld until it ends");
+        }
         Exercise exercise = catalog
                 .byId(attempt.exerciseId())
                 .orElseThrow(() -> new AttemptNotFoundException(
