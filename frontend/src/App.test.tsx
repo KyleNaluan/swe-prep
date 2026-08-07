@@ -68,6 +68,12 @@ function mockFetch(run: unknown, runOk = true) {
     if (href.endsWith('/api/reps/warmup')) {
       return { ok: true, json: async () => [] } as Response
     }
+    if (href.endsWith('/api/session')) {
+      return {
+        ok: true,
+        json: async () => ({ dayComplete: false, completedAt: null, streak: 0 }),
+      } as Response
+    }
     if (href.endsWith('/api/exercises')) {
       return { ok: true, json: async () => CATALOG } as Response
     }
@@ -188,6 +194,7 @@ describe('App', () => {
       vi.fn(async (url: string | URL | Request) => {
         const href = String(url)
         if (href.endsWith('/api/reps/warmup')) return { ok: true, json: async () => [] } as Response
+        if (href.endsWith('/api/session')) return { ok: true, json: async () => ({ dayComplete: false, completedAt: null, streak: 0 }) } as Response
         if (href.endsWith('/api/exercises')) return { ok: true, json: async () => CATALOG } as Response
         if (href.endsWith('/api/exercises/two-sum'))
           return { ok: true, json: async () => CODE_EXERCISE } as Response
@@ -211,6 +218,7 @@ describe('App', () => {
       vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
         const href = String(url)
         if (href.endsWith('/api/reps/warmup')) return { ok: true, json: async () => [] } as Response
+        if (href.endsWith('/api/session')) return { ok: true, json: async () => ({ dayComplete: false, completedAt: null, streak: 0 }) } as Response
         if (href.endsWith('/api/exercises')) return { ok: true, json: async () => CATALOG } as Response
         if (href.endsWith('/api/exercises/two-sum'))
           return { ok: true, json: async () => exerciseWithHints } as Response
@@ -251,6 +259,7 @@ describe('App', () => {
       vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
         const href = String(url)
         if (href.endsWith('/api/reps/warmup')) return { ok: true, json: async () => [] } as Response
+        if (href.endsWith('/api/session')) return { ok: true, json: async () => ({ dayComplete: false, completedAt: null, streak: 0 }) } as Response
         if (href.endsWith('/api/exercises')) return { ok: true, json: async () => CATALOG } as Response
         if (href.endsWith('/api/exercises/two-sum'))
           return { ok: true, json: async () => CODE_EXERCISE } as Response
@@ -302,6 +311,7 @@ describe('App', () => {
       vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
         const href = String(url)
         if (href.endsWith('/api/reps/warmup')) return { ok: true, json: async () => [] } as Response
+        if (href.endsWith('/api/session')) return { ok: true, json: async () => ({ dayComplete: false, completedAt: null, streak: 0 }) } as Response
         if (href.endsWith('/api/exercises')) return { ok: true, json: async () => CATALOG } as Response
         if (href.endsWith('/api/exercises/two-sum'))
           return { ok: true, json: async () => CODE_EXERCISE } as Response
@@ -348,6 +358,7 @@ describe('App', () => {
       vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
         const href = String(url)
         if (href.endsWith('/api/reps/warmup')) return { ok: true, json: async () => [] } as Response
+        if (href.endsWith('/api/session')) return { ok: true, json: async () => ({ dayComplete: false, completedAt: null, streak: 0 }) } as Response
         if (href.endsWith('/api/exercises')) return { ok: true, json: async () => CATALOG } as Response
         if (href.endsWith('/api/exercises/two-sum'))
           return { ok: true, json: async () => CODE_EXERCISE } as Response
