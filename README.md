@@ -56,7 +56,9 @@ Prerequisites: Java 21 on `PATH`, Docker running, Node 24.
    exercise opens in a Monaco editor: write a solution and press Run to have the
    backend compile and execute it against the test cases and report
    `N of M tests passed`. A concept exercise shows multiple-choice options and is
-   graded with no code execution at all.
+   graded with no code execution at all. Each sitting and every press of Run is
+   recorded as durable practice history, shown in a History panel below the editor
+   and surviving a restart; a Give up button abandons an unsolved sitting.
 
 If Postgres isn't reachable, the backend fails to start rather than coming up in
 a degraded state. If the content path is missing or a file is malformed, the app

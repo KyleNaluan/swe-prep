@@ -1,5 +1,6 @@
 package com.sweprep.backend.web;
 
+import com.sweprep.backend.attempt.Submission;
 import com.sweprep.backend.grader.Verdict;
 
 /**
@@ -15,5 +16,14 @@ public record RunResponse(String outcome, int passed, int total, String detail) 
     static RunResponse of(Verdict verdict) {
         return new RunResponse(
                 verdict.outcome().name(), verdict.passed(), verdict.total(), verdict.detail());
+    }
+
+    /** The same verdict shape, read from a persisted submission. */
+    static RunResponse of(Submission submission) {
+        return new RunResponse(
+                submission.outcome().name(),
+                submission.passed(),
+                submission.total(),
+                submission.detail());
     }
 }
