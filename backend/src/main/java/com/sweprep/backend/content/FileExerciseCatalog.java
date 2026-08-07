@@ -3,6 +3,8 @@ package com.sweprep.backend.content;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sweprep.backend.exercise.Content;
+import com.sweprep.backend.exercise.ContentCatalog;
 import com.sweprep.backend.exercise.Exercise;
 import com.sweprep.backend.exercise.ExerciseCatalog;
 import java.io.IOException;
@@ -16,9 +18,17 @@ import java.util.stream.Stream;
 import org.springframework.stereotype.Component;
 
 /**
- * Reads the exercise set from a local content directory - a clone of the private
+ * Reads the content set from a local content directory - a clone of the private
  * content repo, at a gitignored path (issue #14). Every {@code *.json} file in the
- * directory is one {@link Exercise}, parsed by {@link ExerciseParser}.
+ * directory is one {@link Content} item, parsed by {@link ContentParser}, which
+ * reads the top-level {@code kind} discriminator (default {@code "exercise"}) and
+ * builds an {@link Exercise} or a {@link com.sweprep.backend.exercise.Lesson}
+ * accordingly (issue #46).
+ *
+ * <p>This one bean satisfies two seams. {@link ContentCatalog} is the wide view over
+ * every loaded item of either kind; {@link ExerciseCatalog} is the narrow view onto
+ * just the exercises, for the consumers that attempt and grade - a lesson is read,
+ * never attempted, so it never reaches them.
  *
  * <p>Loading is lazy and cached: the first request triggers a read, and a
  * successful read is held for the process lifetime. A <em>failed</em> read is not
@@ -28,11 +38,11 @@ import org.springframework.stereotype.Component;
  * {@link ContentException} whose message names the cause plainly.
  */
 @Component
-public class FileExerciseCatalog implements ExerciseCatalog {
+public class FileExerciseCatalog implements ContentCatalog, ExerciseCatalog {
 
     private final Path contentDir;
     private final ObjectMapper mapper;
-    private volatile Map<String, Exercise> byId;
+    private volatile Map<String, Content> byId;
 
     public FileExerciseCatalog(ContentProperties properties, ObjectMapper mapper) {
         this.contentDir = Path.of(properties.path());
@@ -40,17 +50,32 @@ public class FileExerciseCatalog implements ExerciseCatalog {
     }
 
     @Override
-    public List<Exercise> all() {
+    public List<Content> allContent() {
         return List.copyOf(loaded().values());
     }
 
     @Override
-    public Optional<Exercise> byId(String id) {
+    public Optional<Content> contentById(String id) {
         return Optional.ofNullable(loaded().get(id));
     }
 
-    private Map<String, Exercise> loaded() {
-        Map<String, Exercise> local = byId;
+    @Override
+    public List<Exercise> all() {
+        return loaded().values().stream()
+                .filter(Exercise.class::isInstance)
+                .map(Exercise.class::cast)
+                .toList();
+    }
+
+    @Override
+    public Optional<Exercise> byId(String id) {
+        return contentById(id)
+                .filter(Exercise.class::isInstance)
+                .map(Exercise.class::cast);
+    }
+
+    private Map<String, Content> loaded() {
+        Map<String, Content> local = byId;
         if (local != null) {
             return local;
         }
@@ -62,7 +87,7 @@ public class FileExerciseCatalog implements ExerciseCatalog {
         }
     }
 
-    private Map<String, Exercise> load() {
+    private Map<String, Content> load() {
         if (!Files.exists(contentDir)) {
             throw new ContentException(
                     "Content directory not found: " + contentDir.toAbsolutePath()
@@ -77,20 +102,20 @@ public class FileExerciseCatalog implements ExerciseCatalog {
         List<Path> files = jsonFiles();
         if (files.isEmpty()) {
             throw new ContentException(
-                    "No exercise *.json files found in content directory: "
+                    "No content *.json files found in content directory: "
                             + contentDir.toAbsolutePath());
         }
 
-        Map<String, Exercise> exercises = new LinkedHashMap<>();
+        Map<String, Content> content = new LinkedHashMap<>();
         for (Path file : files) {
-            Exercise exercise = parse(file);
-            Exercise clash = exercises.put(exercise.id(), exercise);
+            Content item = parse(file);
+            Content clash = content.put(item.id(), item);
             if (clash != null) {
                 throw new ContentException(
-                        "Duplicate exercise id '" + exercise.id() + "' in " + file.getFileName());
+                        "Duplicate content id '" + item.id() + "' in " + file.getFileName());
             }
         }
-        return exercises;
+        return content;
     }
 
     private List<Path> jsonFiles() {
@@ -106,7 +131,7 @@ public class FileExerciseCatalog implements ExerciseCatalog {
         }
     }
 
-    private Exercise parse(Path file) {
+    private Content parse(Path file) {
         String text;
         try {
             text = Files.readString(file);
@@ -118,8 +143,8 @@ public class FileExerciseCatalog implements ExerciseCatalog {
             root = mapper.readTree(text);
         } catch (JsonProcessingException e) {
             throw new ContentException(
-                    "Malformed exercise content in " + file.getFileName() + ": not valid JSON", e);
+                    "Malformed content in " + file.getFileName() + ": not valid JSON", e);
         }
-        return ExerciseParser.parse(file.getFileName().toString(), root);
+        return ContentParser.parse(file.getFileName().toString(), root);
     }
 }
