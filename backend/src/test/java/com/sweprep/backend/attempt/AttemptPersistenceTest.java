@@ -144,6 +144,20 @@ class AttemptPersistenceTest {
     }
 
     @Test
+    void abandoningASolvedAttemptIsRejectedAndLeavesItSolved() {
+        Attempt started = service.start("concept-demo");
+        service.submit(started.id(), "B");
+
+        UUID id = started.id();
+        assertThatThrownBy(() -> service.abandon(id))
+                .isInstanceOf(IllegalAttemptStateException.class);
+
+        // A racing abandon can never clobber a sitting that has been solved.
+        assertThat(attempts.findById(id).orElseThrow().outcome())
+                .isEqualTo(AttemptOutcome.SOLVED);
+    }
+
+    @Test
     void submittingToAnEndedAttemptIsRejected() {
         Attempt started = service.start("concept-demo");
         service.abandon(started.id());

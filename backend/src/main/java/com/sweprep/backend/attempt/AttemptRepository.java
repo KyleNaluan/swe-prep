@@ -93,6 +93,19 @@ public class AttemptRepository {
                 .optional();
     }
 
+    /**
+     * Reads an attempt for a state-changing operation, taking a row lock so concurrent
+     * mutations of the same attempt serialise. A racing abandon can then never clobber a
+     * sitting another transaction has already solved: it blocks, re-reads the committed
+     * outcome, and is rejected as already ended rather than overwriting it.
+     */
+    public Optional<Attempt> findByIdForUpdate(UUID id) {
+        return jdbc.sql("SELECT * FROM attempt WHERE id = :id FOR UPDATE")
+                .param("id", id)
+                .query(MAPPER)
+                .optional();
+    }
+
     /** Every attempt for one user, newest first - the history query. */
     public List<Attempt> findByUser(UUID userId) {
         return jdbc.sql("SELECT * FROM attempt WHERE user_id = :userId ORDER BY started_at DESC")

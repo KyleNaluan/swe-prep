@@ -52,21 +52,11 @@ public class AttemptController {
 
     @PostMapping("/{id}/abandon")
     public AttemptView abandon(@PathVariable UUID id) {
-        return withCount(attempts.abandon(id).id());
+        return AttemptView.of(attempts.abandon(id));
     }
 
     @PostMapping("/{id}/reveal")
     public AttemptView reveal(@PathVariable UUID id) {
-        return withCount(attempts.recordFailingCaseReveal(id).id());
-    }
-
-    // Return the attempt with its live submission count after a state change, so the
-    // editor can update its history row without a second round trip.
-    private AttemptView withCount(UUID attemptId) {
-        return attempts.history().stream()
-                .filter(a -> a.attempt().id().equals(attemptId))
-                .findFirst()
-                .map(AttemptView::of)
-                .orElseThrow();
+        return AttemptView.of(attempts.recordFailingCaseReveal(id));
     }
 }
