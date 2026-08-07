@@ -69,6 +69,7 @@ function Warmup() {
 
   const [rep, setRep] = useState<Rep | null>(null)
   const [repError, setRepError] = useState<string | null>(null)
+  const [submitError, setSubmitError] = useState<string | null>(null)
   const [choice, setChoice] = useState<string | null>(null)
   const [text, setText] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -136,6 +137,7 @@ function Warmup() {
     let cancelled = false
     setRep(null)
     setRepError(null)
+    setSubmitError(null)
     setChoice(null)
     setText('')
     setAnswered(null)
@@ -174,6 +176,7 @@ function Warmup() {
     if (!rep) return
     const submission = rep.response.kind === 'choice' ? (choice ?? '') : text
     setSubmitting(true)
+    setSubmitError(null)
     try {
       const attemptId = await ensureAttempt(rep.id)
       const response = await apiFetch(`/api/attempts/${attemptId}/submissions`, {
@@ -194,7 +197,7 @@ function Warmup() {
       // one keystroke away below.
       setAnswered({ correct, explanation: correct ? null : (verdict.explanation ?? null) })
     } catch (error: unknown) {
-      setRepError(message(error))
+      setSubmitError(message(error))
     } finally {
       setSubmitting(false)
     }
@@ -276,7 +279,16 @@ function Warmup() {
         </span>
       </div>
 
-      {repError && <p className="status down">Could not load this rep: {repError}</p>}
+      {repError && (
+        <div className="rep-load-error">
+          <p className="status down">Could not load this rep: {repError}</p>
+          <div className="actions">
+            <button type="button" onClick={handleNext}>
+              {pos + 1 >= queue.length ? 'Finish warm-up' : 'Skip rep'}
+            </button>
+          </div>
+        </div>
+      )}
       {!rep && !repError && <p className="status loading">Loading rep...</p>}
 
       {rep && (
@@ -297,19 +309,22 @@ function Warmup() {
           />
 
           {answered === null ? (
-            <div className="actions">
-              <button
-                type="button"
-                onClick={handleSubmit}
-                disabled={
-                  submitting ||
-                  (rep.response.kind === 'choice' && choice === null) ||
-                  (rep.response.kind === 'freeText' && text.trim() === '')
-                }
-              >
-                {submitting ? 'Checking...' : 'Submit'}
-              </button>
-            </div>
+            <>
+              {submitError && <p className="status down">Could not submit: {submitError}</p>}
+              <div className="actions">
+                <button
+                  type="button"
+                  onClick={handleSubmit}
+                  disabled={
+                    submitting ||
+                    (rep.response.kind === 'choice' && choice === null) ||
+                    (rep.response.kind === 'freeText' && text.trim() === '')
+                  }
+                >
+                  {submitting ? 'Checking...' : 'Submit'}
+                </button>
+              </div>
+            </>
           ) : (
             <RepFeedback
               answered={answered}
