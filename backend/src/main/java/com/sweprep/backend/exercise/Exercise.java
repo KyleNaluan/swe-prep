@@ -1,5 +1,6 @@
 package com.sweprep.backend.exercise;
 
+import java.time.LocalDate;
 import java.util.List;
 
 /**
@@ -27,6 +28,13 @@ import java.util.List;
  * @param grading    how the answer is judged
  * @param hints      the ordered hint ladder (issue #16), least revealing rung first;
  *                   empty when the exercise offers no hints
+ * @param family     the role families this content serves (design revision t3,
+ *                   section 2), the tag the family filter selects on; empty when
+ *                   untagged, and a list because one concept can serve several roles
+ * @param stability  how durable the subject matter is (design revision t3, section
+ *                   3.4); {@link Stability#STABLE} unless the content rots
+ * @param reviewed   the date {@link Stability#VOLATILE} content was last
+ *                   re-verified; {@code null} for stable content, which needs none
  */
 public record Exercise(
         String id,
@@ -38,10 +46,37 @@ public record Exercise(
         Form form,
         Response response,
         Grading grading,
-        List<Hint> hints) {
+        List<Hint> hints,
+        List<Family> family,
+        Stability stability,
+        LocalDate reviewed) {
 
     public Exercise {
         topics = List.copyOf(topics);
         hints = List.copyOf(hints);
+        family = List.copyOf(family);
+        stability = stability == null ? Stability.STABLE : stability;
+    }
+
+    /**
+     * Convenience constructor for an exercise with no content-level family or
+     * stability tags: an empty family, {@link Stability#STABLE}, and no review date.
+     * These are additive metadata (design revision t3); an untagged exercise is a
+     * stable one with no family.
+     */
+    public Exercise(
+            String id,
+            String title,
+            String statement,
+            String domain,
+            List<String> topics,
+            Difficulty difficulty,
+            Form form,
+            Response response,
+            Grading grading,
+            List<Hint> hints) {
+        this(
+                id, title, statement, domain, topics, difficulty, form, response, grading, hints,
+                List.of(), Stability.STABLE, null);
     }
 }

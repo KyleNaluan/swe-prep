@@ -6,10 +6,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sweprep.backend.exercise.Exercise;
 import com.sweprep.backend.exercise.ExerciseCatalog;
+import com.sweprep.backend.exercise.Family;
 import com.sweprep.backend.exercise.Grading;
 import com.sweprep.backend.exercise.Hint;
 import com.sweprep.backend.exercise.Response;
+import com.sweprep.backend.exercise.Stability;
 import java.io.IOException;
+import java.time.LocalDate;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
@@ -51,6 +54,18 @@ class FileExerciseCatalogTest {
             }
             """;
 
+    private static final String EXPLAIN_EXERCISE =
+            """
+            {
+              "id": "explain-demo", "title": "Explain", "statement": "Explain it.",
+              "domain": "fundamentals", "topics": ["demo"],
+              "difficulty": "EASY", "form": "REP",
+              "response": { "kind": "freeText" },
+              "grading": { "kind": "selfCheck", "modelAnswer": "The model answer." },
+              "family": ["AIML"], "stability": "VOLATILE", "reviewed": "2026-08-07"
+            }
+            """;
+
     private ExerciseCatalog catalog(Path dir) {
         return new FileExerciseCatalog(new ContentProperties(dir.toString()), mapper);
     }
@@ -73,6 +88,78 @@ class FileExerciseCatalogTest {
         assertThat(catalog.byId("pick-demo")).get()
                 .extracting(Exercise::grading).isInstanceOf(Grading.AnswerKey.class);
         assertThat(catalog.byId("missing")).isEmpty();
+    }
+
+    @Test
+    void loadsAFreeTextSelfCheckExerciseWithItsContentTags(@TempDir Path dir) throws IOException {
+        write(dir, "explain.json", EXPLAIN_EXERCISE);
+
+        Exercise loaded = catalog(dir).byId("explain-demo").orElseThrow();
+
+        assertThat(loaded.response()).isInstanceOf(Response.FreeText.class);
+        assertThat(loaded.grading()).isInstanceOfSatisfying(
+                Grading.SelfCheck.class,
+                selfCheck -> assertThat(selfCheck.modelAnswer()).isEqualTo("The model answer."));
+        assertThat(loaded.family()).containsExactly(Family.AIML);
+        assertThat(loaded.stability()).isEqualTo(Stability.VOLATILE);
+        assertThat(loaded.reviewed()).isEqualTo(LocalDate.of(2026, 8, 7));
+    }
+
+    @Test
+    void anExerciseWithNoContentTagsDefaultsToStableAndUntagged(@TempDir Path dir) throws IOException {
+        write(dir, "pick.json", CHOICE_EXERCISE);
+
+        Exercise loaded = catalog(dir).byId("pick-demo").orElseThrow();
+
+        assertThat(loaded.family()).isEmpty();
+        assertThat(loaded.stability()).isEqualTo(Stability.STABLE);
+        assertThat(loaded.reviewed()).isNull();
+    }
+
+    @Test
+    void anUnknownFamilyNamesFileAndField(@TempDir Path dir) throws IOException {
+        String badFamily = CHOICE_EXERCISE.replaceFirst(
+                "\\}\\s*$",
+                """
+                ,
+                  "family": ["NONESUCH"]
+                }
+                """);
+        write(dir, "bad-family.json", badFamily);
+
+        assertThatThrownBy(catalog(dir)::all)
+                .isInstanceOf(ContentException.class)
+                .hasMessageContaining("bad-family.json")
+                .hasMessageContaining("family")
+                .hasMessageContaining("NONESUCH");
+    }
+
+    @Test
+    void aMalformedReviewedDateNamesFileAndField(@TempDir Path dir) throws IOException {
+        String badReviewed = CHOICE_EXERCISE.replaceFirst(
+                "\\}\\s*$",
+                """
+                ,
+                  "reviewed": "last tuesday"
+                }
+                """);
+        write(dir, "bad-reviewed.json", badReviewed);
+
+        assertThatThrownBy(catalog(dir)::all)
+                .isInstanceOf(ContentException.class)
+                .hasMessageContaining("bad-reviewed.json")
+                .hasMessageContaining("reviewed");
+    }
+
+    @Test
+    void aSelfCheckMissingItsModelAnswerNamesFileAndField(@TempDir Path dir) throws IOException {
+        write(dir, "no-model.json",
+                EXPLAIN_EXERCISE.replace("\"modelAnswer\": \"The model answer.\"", "\"nope\": \"x\""));
+
+        assertThatThrownBy(catalog(dir)::all)
+                .isInstanceOf(ContentException.class)
+                .hasMessageContaining("no-model.json")
+                .hasMessageContaining("modelAnswer");
     }
 
     @Test
