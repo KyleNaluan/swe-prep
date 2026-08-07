@@ -8,6 +8,7 @@ import com.sweprep.backend.language.JavaLanguageAdapter;
 import com.sweprep.backend.runner.LocalJavaRunner;
 import com.sweprep.backend.testsupport.Fixtures;
 import java.time.Duration;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -117,6 +118,59 @@ class TestCaseGraderTest {
 
         assertThat(verdict.outcome()).isEqualTo(Verdict.Outcome.COMPILE_ERROR);
         assertThat(verdict.detail()).contains("Solution.java");
+    }
+
+    @Test
+    void aVerdictCarriesTheRunTimeForDisplay() {
+        Verdict verdict = grader(Duration.ofSeconds(10)).grade(pair, Fixtures.PAIR_SOLUTION);
+
+        // Runtime is recorded for interest; a forked-JVM run takes real time, and it
+        // never changes the pass/fail decision.
+        assertThat(verdict.runtimeMillis()).isPositive();
+        assertThat(verdict.outcome()).isEqualTo(Verdict.Outcome.PASSED);
+    }
+
+    @Test
+    void firstFailingCaseDisclosesInputExpectedAndActualOnlyWhenAsked() {
+        // Drops the second element: [1,2] and [5,3] fail, [7,7] passes. The reveal
+        // hands over the first failing case with what the submission actually returned.
+        String dropsSecond =
+                """
+                class Solution {
+                    public int[] pair(int a, int b) {
+                        return new int[] {a, a};
+                    }
+                }
+                """;
+
+        Optional<FailingCase> failing =
+                grader(Duration.ofSeconds(10)).firstFailingCase(pair, dropsSecond);
+
+        assertThat(failing).isPresent();
+        assertThat(failing.get().input().toString()).isEqualTo("[1,2]");
+        assertThat(failing.get().expected().toString()).isEqualTo("[1,2]");
+        assertThat(failing.get().actual().toString()).isEqualTo("[1,1]");
+        assertThat(failing.get().note()).isNull();
+    }
+
+    @Test
+    void firstFailingCaseIsEmptyForAPassingSubmission() {
+        assertThat(grader(Duration.ofSeconds(10)).firstFailingCase(pair, Fixtures.PAIR_SOLUTION))
+                .isEmpty();
+    }
+
+    @Test
+    void firstFailingCaseIsEmptyWhenTheCodeDoesNotCompile() {
+        String willNotCompile =
+                """
+                class Solution {
+                    public int[] pair(int a, int b) {
+                        return notAVariable;
+                    }
+                }
+                """;
+
+        assertThat(grader(Duration.ofSeconds(10)).firstFailingCase(pair, willNotCompile)).isEmpty();
     }
 
     @Test

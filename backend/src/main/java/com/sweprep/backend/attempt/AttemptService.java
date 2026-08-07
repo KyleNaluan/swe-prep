@@ -2,6 +2,8 @@ package com.sweprep.backend.attempt;
 
 import com.sweprep.backend.exercise.Exercise;
 import com.sweprep.backend.exercise.ExerciseCatalog;
+import com.sweprep.backend.exercise.Hint;
+import com.sweprep.backend.grader.FailingCase;
 import com.sweprep.backend.grader.GraderRegistry;
 import com.sweprep.backend.grader.Verdict;
 import java.time.Instant;
@@ -17,9 +19,16 @@ import org.springframework.transaction.annotation.Transactional;
  * <p>The lifecycle is explicit so that abandonment is a recorded outcome rather than
  * an absence: {@link #start} opens an {@code IN_PROGRESS} attempt, {@link #submit}
  * grades and stores each press of Run (marking the attempt {@code SOLVED} the moment
- * one passes), {@link #abandon} records giving up, and {@link #recordFailingCaseReveal}
- * marks the reveal (issue #5, never penalised). Grading itself is delegated to the
- * {@link GraderRegistry}; this service only records what happened.
+ * one passes), {@link #abandon} records giving up, {@link #takeHint} climbs the hint
+ * ladder, and {@link #revealFailingCase} discloses the failing case. Grading itself is
+ * delegated to the {@link GraderRegistry}; this service only records what happened.
+ *
+ * <p>Judging withholds by default (issues #16/#5): a normal verdict tells the solver
+ * only how many cases failed, never a value. Hints and the failing-case reveal are the
+ * always-available, always-chosen, always-recorded help - and nothing here reduces a
+ * score, blocks completion, or ends a sitting. Taking a hint records the rung reached;
+ * revealing records the reveal and the one-line hypothesis typed first. Neither is
+ * penalised.
  */
 @Service
 public class AttemptService {
@@ -64,6 +73,7 @@ public class AttemptService {
                 false,
                 null,
                 null,
+                null,
                 null);
         attempts.insert(attempt);
         return attempt;
@@ -95,11 +105,12 @@ public class AttemptService {
                 verdict.outcome(),
                 verdict.passed(),
                 verdict.total(),
-                verdict.detail());
+                verdict.detail(),
+                verdict.runtimeMillis());
         submissions.insert(submission);
 
         if (verdict.outcome() == Verdict.Outcome.PASSED) {
-            attempts.update(withOutcome(attempt, AttemptOutcome.SOLVED));
+            attempts.update(attempt.withOutcome(AttemptOutcome.SOLVED, Instant.now()));
         }
         return submission;
     }
@@ -117,41 +128,69 @@ public class AttemptService {
             throw new IllegalAttemptStateException(
                     "Attempt " + attemptId + " has already ended (" + attempt.outcome() + ")");
         }
-        Attempt abandoned = withOutcome(attempt, AttemptOutcome.ABANDONED);
+        Attempt abandoned = attempt.withOutcome(AttemptOutcome.ABANDONED, Instant.now());
         attempts.update(abandoned);
         return withCount(abandoned);
     }
 
     /**
-     * Records that the failing case was revealed during an open attempt (issue #5),
-     * returning it with its live submission count. The reveal is recorded, never
-     * penalised; the actual failing-case content is the judging ticket's concern, not
-     * this one's.
+     * Discloses the failing case on an open attempt when the solver explicitly asks
+     * (issues #16/#5), recording the reveal and the one-line hypothesis they typed
+     * first. Both are recorded, never penalised, and the reveal does not end the
+     * sitting. The disclosed case is graded from the {@code submission} the solver has
+     * in the editor now; it may be {@code null} when there is nothing to show (the
+     * submission passed, did not compile, timed out, or the exercise is not judged by
+     * test cases). The hypothesis is ungraded and may be blank - skipping it is allowed.
      */
     @Transactional
-    public AttemptWithCount recordFailingCaseReveal(UUID attemptId) {
+    public RevealResult revealFailingCase(UUID attemptId, String submission, String hypothesis) {
         Attempt attempt = requireOwned(attemptId);
         if (attempt.outcome() != AttemptOutcome.IN_PROGRESS) {
             throw new IllegalAttemptStateException(
                     "Attempt " + attemptId + " has already ended (" + attempt.outcome() + ")");
         }
-        Attempt revealed = new Attempt(
-                attempt.id(),
-                attempt.userId(),
-                attempt.exerciseId(),
-                attempt.exerciseTitle(),
-                attempt.domain(),
-                attempt.form(),
-                attempt.outcome(),
-                attempt.startedAt(),
-                attempt.endedAt(),
-                attempt.hintsTaken(),
-                true,
-                attempt.complexityClaim(),
-                attempt.measuredComplexity(),
-                attempt.complexityClaimCorrect());
+        Exercise exercise = catalog
+                .byId(attempt.exerciseId())
+                .orElseThrow(() -> new AttemptNotFoundException(
+                        "Exercise '" + attempt.exerciseId() + "' is no longer available"));
+
+        FailingCase failingCase = graders.firstFailingCase(exercise, submission).orElse(null);
+        Attempt revealed = attempt.withFailingCaseRevealed(blankToNull(hypothesis));
         attempts.update(revealed);
-        return withCount(revealed);
+        return new RevealResult(withCount(revealed), failingCase);
+    }
+
+    /**
+     * Climbs one rung of the exercise's hint ladder on an open attempt (issue #16),
+     * recording the number of rungs reached. Help is always available and never
+     * penalised: taking a hint changes no score and does not end the sitting. Returns
+     * the rung just disclosed, or a result with no rung when the ladder is exhausted or
+     * the exercise offers no hints.
+     */
+    @Transactional
+    public HintResult takeHint(UUID attemptId) {
+        Attempt attempt = requireOwned(attemptId);
+        if (attempt.outcome() != AttemptOutcome.IN_PROGRESS) {
+            throw new IllegalAttemptStateException(
+                    "Attempt " + attemptId + " has already ended (" + attempt.outcome() + ")");
+        }
+        Exercise exercise = catalog
+                .byId(attempt.exerciseId())
+                .orElseThrow(() -> new AttemptNotFoundException(
+                        "Exercise '" + attempt.exerciseId() + "' is no longer available"));
+
+        List<Hint> ladder = exercise.hints();
+        int total = ladder.size();
+        int taken = attempt.hintsTaken();
+        if (taken >= total) {
+            // Ladder already exhausted (or empty): nothing further to reveal, and the
+            // count is not advanced past the rungs that exist.
+            return new HintResult(withCount(attempt), taken, total, null);
+        }
+        Hint rung = ladder.get(taken);
+        Attempt advanced = attempt.withHintsTaken(taken + 1);
+        attempts.update(advanced);
+        return new HintResult(withCount(advanced), taken + 1, total, rung);
     }
 
     /** The current user's practice history, newest first, each with its submission count. */
@@ -183,21 +222,7 @@ public class AttemptService {
         return attempt;
     }
 
-    private static Attempt withOutcome(Attempt attempt, AttemptOutcome outcome) {
-        return new Attempt(
-                attempt.id(),
-                attempt.userId(),
-                attempt.exerciseId(),
-                attempt.exerciseTitle(),
-                attempt.domain(),
-                attempt.form(),
-                outcome,
-                attempt.startedAt(),
-                Instant.now(),
-                attempt.hintsTaken(),
-                attempt.failingCaseRevealed(),
-                attempt.complexityClaim(),
-                attempt.measuredComplexity(),
-                attempt.complexityClaimCorrect());
+    private static String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value.strip();
     }
 }

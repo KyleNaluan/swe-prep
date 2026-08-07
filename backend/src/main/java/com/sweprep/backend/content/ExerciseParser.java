@@ -7,6 +7,7 @@ import com.sweprep.backend.exercise.Difficulty;
 import com.sweprep.backend.exercise.Exercise;
 import com.sweprep.backend.exercise.Form;
 import com.sweprep.backend.exercise.Grading;
+import com.sweprep.backend.exercise.Hint;
 import com.sweprep.backend.exercise.Response;
 import com.sweprep.backend.exercise.Signature;
 import com.sweprep.backend.exercise.Signature.Parameter;
@@ -30,7 +31,8 @@ import java.util.List;
  *   "response": { "kind": "code",   "signature": {...} }
  *             |  { "kind": "choice", "options": ["..."] },
  *   "grading":  { "kind": "testCases", "comparison": "...", "cases": [...] }
- *             |  { "kind": "answerKey", "comparison": "...", "expected": ... }
+ *             |  { "kind": "answerKey", "comparison": "...", "expected": ... },
+ *   "hints":    [ { "name": "Pattern", "body": "..." }, ... ]   // optional ladder
  * }
  * </pre>
  */
@@ -52,7 +54,27 @@ final class ExerciseParser {
         Form form = requireEnum(source, root, "form", Form.class);
         Response response = response(source, requireObject(source, root, "response"));
         Grading grading = grading(source, requireObject(source, root, "grading"));
-        return new Exercise(id, title, statement, domain, topics, difficulty, form, response, grading);
+        List<Hint> hints = hints(source, root);
+        return new Exercise(
+                id, title, statement, domain, topics, difficulty, form, response, grading, hints);
+    }
+
+    private static List<Hint> hints(String source, JsonNode root) {
+        JsonNode node = root.get("hints");
+        if (node == null || node.isNull()) {
+            return List.of();
+        }
+        if (!node.isArray()) {
+            throw malformed(source, "'hints' must be an array of { name, body } rungs");
+        }
+        List<Hint> hints = new ArrayList<>();
+        for (JsonNode rung : node) {
+            if (!rung.isObject()) {
+                throw malformed(source, "each hint must be an object with 'name' and 'body'");
+            }
+            hints.add(new Hint(requireText(source, rung, "name"), requireText(source, rung, "body")));
+        }
+        return hints;
     }
 
     private static List<String> topics(String source, JsonNode root) {

@@ -187,6 +187,93 @@ describe('App', () => {
     expect(screen.getByRole('cell', { name: '2' })).toBeInTheDocument()
   })
 
+  it('offers the hint ladder and shows a rung body only when taken', async () => {
+    const exerciseWithHints = { ...CODE_EXERCISE, hints: ['Pattern', 'Approach'] }
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+        const href = String(url)
+        if (href.endsWith('/api/exercises')) return { ok: true, json: async () => CATALOG } as Response
+        if (href.endsWith('/api/exercises/two-sum'))
+          return { ok: true, json: async () => exerciseWithHints } as Response
+        if (href.endsWith('/api/attempts')) {
+          if (init?.method === 'POST')
+            return { ok: true, json: async () => ({ id: 'attempt-1' }) } as Response
+          return { ok: true, json: async () => [] } as Response
+        }
+        if (href.endsWith('/hints'))
+          return {
+            ok: true,
+            json: async () => ({
+              rungsTaken: 1,
+              totalRungs: 2,
+              name: 'Pattern',
+              body: 'This is a sliding window.',
+            }),
+          } as Response
+        throw new Error(`unexpected fetch to ${href}`)
+      }) as unknown as typeof fetch,
+    )
+
+    render(<App />)
+    await screen.findByRole('heading', { name: 'Two Sum' })
+
+    // The rung body is not on the page until the hint is explicitly taken.
+    expect(screen.queryByText(/sliding window/i)).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /Reveal a hint \(Pattern\)/ }))
+
+    expect(await screen.findByText('This is a sliding window.')).toBeInTheDocument()
+  })
+
+  it('reveals the failing case after a one-line hypothesis, and withholds it by default', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+        const href = String(url)
+        if (href.endsWith('/api/exercises')) return { ok: true, json: async () => CATALOG } as Response
+        if (href.endsWith('/api/exercises/two-sum'))
+          return { ok: true, json: async () => CODE_EXERCISE } as Response
+        if (href.endsWith('/api/attempts')) {
+          if (init?.method === 'POST')
+            return { ok: true, json: async () => ({ id: 'attempt-1' }) } as Response
+          return { ok: true, json: async () => [] } as Response
+        }
+        if (href.endsWith('/submissions'))
+          return {
+            ok: true,
+            json: async () => ({ outcome: 'FAILED', passed: 1, total: 3, detail: '', runtimeMillis: 12 }),
+          } as Response
+        if (href.endsWith('/reveal'))
+          return {
+            ok: true,
+            json: async () => ({ failingCase: { input: [3], expected: 9, actual: 6 } }),
+          } as Response
+        throw new Error(`unexpected fetch to ${href}`)
+      }) as unknown as typeof fetch,
+    )
+
+    render(<App />)
+    await screen.findByRole('heading', { name: 'Two Sum' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Run' }))
+
+    // The failing verdict discloses only the count and the runtime - never the case.
+    expect(await screen.findByText(/1 of 3 tests passed/)).toBeInTheDocument()
+    expect(screen.getByText(/12 ms/)).toBeInTheDocument()
+    expect(screen.queryByText(/Expected/)).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reveal the failing case' }))
+    fireEvent.change(screen.getByLabelText(/what do you think is wrong/i), {
+      target: { value: 'off-by-one on the last index' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Show the failing case' }))
+
+    expect(await screen.findByText('Expected')).toBeInTheDocument()
+    expect(screen.getByText('9')).toBeInTheDocument()
+    expect(screen.getByText('6')).toBeInTheDocument()
+  })
+
   it('shows the backend error message when content cannot be loaded', async () => {
     vi.stubGlobal(
       'fetch',

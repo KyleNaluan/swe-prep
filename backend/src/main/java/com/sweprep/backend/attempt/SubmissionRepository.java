@@ -29,9 +29,11 @@ public class SubmissionRepository {
         jdbc.sql(
                         """
                         INSERT INTO submission (
-                            id, attempt_id, submitted_at, response, outcome, passed, total, detail)
+                            id, attempt_id, submitted_at, response, outcome, passed, total, detail,
+                            runtime_millis)
                         VALUES (
-                            :id, :attemptId, :submittedAt, :response, :outcome, :passed, :total, :detail)
+                            :id, :attemptId, :submittedAt, :response, :outcome, :passed, :total, :detail,
+                            :runtimeMillis)
                         """)
                 .param("id", submission.id())
                 .param("attemptId", submission.attemptId())
@@ -41,6 +43,7 @@ public class SubmissionRepository {
                 .param("passed", submission.passed())
                 .param("total", submission.total())
                 .param("detail", submission.detail())
+                .param("runtimeMillis", submission.runtimeMillis())
                 .update();
     }
 
@@ -95,6 +98,7 @@ public class SubmissionRepository {
                 Verdict.Outcome.valueOf(rs.getString("outcome")),
                 rs.getInt("passed"),
                 rs.getInt("total"),
-                rs.getString("detail"));
+                rs.getString("detail"),
+                rs.getLong("runtime_millis"));
     }
 }

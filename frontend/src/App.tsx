@@ -24,6 +24,9 @@ type Exercise = {
   difficulty: string
   form: string
   response: ResponseSpec
+  // Hint-ladder rung names, least revealing first. Bodies are never sent up front;
+  // each is fetched only when the solver explicitly takes that rung (issue #16).
+  hints: string[]
 }
 
 type Verdict = {
@@ -31,6 +34,32 @@ type Verdict = {
   passed: number
   total: number
   detail: string
+  // Shown for interest only; never part of the verdict (issue #16/#5).
+  runtimeMillis?: number
+}
+
+// One revealed hint rung: its name and the body disclosed when it was taken.
+type RevealedHint = { name: string; body: string }
+
+// The response from POST .../hints: the rung just disclosed (name/body absent when
+// the ladder is exhausted) and how far up the ladder we are now.
+type HintResponse = {
+  rungsTaken: number
+  totalRungs: number
+  name?: string
+  body?: string
+}
+
+// The failing case a reveal discloses: input, expected, and what the code produced.
+type FailingCase = {
+  input: unknown
+  expected: unknown
+  actual?: unknown
+  note?: string
+}
+
+type RevealResponse = {
+  failingCase?: FailingCase
 }
 
 // An attempt as the history list reads it (the backend's AttemptView).
@@ -47,6 +76,12 @@ type AttemptView = {
   hintsTaken: number
   failingCaseRevealed: boolean
 }
+
+// After this many failed submissions in a row, the app quietly offers the next hint.
+// Withholding is only a desirable difficulty while retrieval eventually succeeds, so
+// the nudge keeps a stuck solver from unproductive struggle - it is help, never a
+// reprimand, and taking it costs nothing (issue #16, pedagogy audit).
+const STUCK_NUDGE_AFTER_FAILURES = 2
 
 type RunState =
   | { phase: 'idle' }
@@ -75,6 +110,16 @@ function App() {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [run, setRun] = useState<RunState>({ phase: 'idle' })
   const [solved, setSolved] = useState(false)
+
+  // Help the solver has chosen this sitting: the hint rungs taken (in order), the
+  // disclosed failing case, and how many runs have failed in a row (for the nudge).
+  const [revealedHints, setRevealedHints] = useState<RevealedHint[]>([])
+  const [hintBusy, setHintBusy] = useState(false)
+  const [failingCase, setFailingCase] = useState<FailingCase | null>(null)
+  const [revealPrompting, setRevealPrompting] = useState(false)
+  const [hypothesis, setHypothesis] = useState('')
+  const [revealBusy, setRevealBusy] = useState(false)
+  const [consecutiveFailures, setConsecutiveFailures] = useState(0)
 
   const [history, setHistory] = useState<AttemptView[]>([])
 
@@ -142,6 +187,11 @@ function App() {
     setRun({ phase: 'idle' })
     setChoice(null)
     setSolved(false)
+    setRevealedHints([])
+    setFailingCase(null)
+    setRevealPrompting(false)
+    setHypothesis('')
+    setConsecutiveFailures(0)
     fetch(`${API_BASE_URL}/api/exercises/${selectedId}`)
       .then(async (response) => {
         if (!response.ok) throw new Error(await errorMessage(response))
@@ -149,7 +199,9 @@ function App() {
       })
       .then((loaded) => {
         if (cancelled) return
-        setExercise(loaded)
+        // Older payloads may omit the hint ladder; treat a missing one as empty so the
+        // rest of the UI can rely on it being an array.
+        setExercise({ ...loaded, hints: loaded.hints ?? [] })
         codeRef.current = loaded.response.kind === 'code' ? loaded.response.stub : ''
       })
       .catch((error: unknown) => {
@@ -181,6 +233,10 @@ function App() {
     if (!exercise) return
     const submission = exercise.response.kind === 'code' ? codeRef.current : (choice ?? '')
     setRun({ phase: 'running' })
+    // A fresh run makes any previously revealed failing case stale; drop it and any
+    // half-typed hypothesis so the reveal always reflects the current code.
+    setFailingCase(null)
+    setRevealPrompting(false)
     try {
       const attemptId = await ensureAttempt(exercise.id)
       const response = await fetch(`${API_BASE_URL}/api/attempts/${attemptId}/submissions`, {
@@ -193,6 +249,9 @@ function App() {
       if (verdict.outcome === 'PASSED') {
         if (attemptRef.current) attemptRef.current.solved = true
         setSolved(true)
+        setConsecutiveFailures(0)
+      } else {
+        setConsecutiveFailures((n) => n + 1)
       }
       setRun({ phase: 'done', verdict })
       refreshHistory()
@@ -201,10 +260,62 @@ function App() {
     }
   }
 
+  // Take the next hint rung. Recorded on the attempt, never penalised (issue #16).
+  async function handleTakeHint() {
+    if (!exercise) return
+    setHintBusy(true)
+    try {
+      const attemptId = await ensureAttempt(exercise.id)
+      const response = await fetch(`${API_BASE_URL}/api/attempts/${attemptId}/hints`, {
+        method: 'POST',
+      })
+      if (!response.ok) throw new Error(await errorMessage(response))
+      const hint = (await response.json()) as HintResponse
+      if (hint.name && hint.body) {
+        setRevealedHints((taken) => [...taken, { name: hint.name!, body: hint.body! }])
+      }
+      refreshHistory()
+    } catch {
+      // Help is best-effort; a failure here should not disrupt solving.
+    } finally {
+      setHintBusy(false)
+    }
+  }
+
+  // Reveal the failing case for the current code, recording the reveal and the
+  // one-line hypothesis typed first. Both are recorded, never penalised (issue #16).
+  async function handleReveal() {
+    if (!exercise) return
+    const submission = exercise.response.kind === 'code' ? codeRef.current : (choice ?? '')
+    setRevealBusy(true)
+    try {
+      const attemptId = await ensureAttempt(exercise.id)
+      const response = await fetch(`${API_BASE_URL}/api/attempts/${attemptId}/reveal`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ submission, hypothesis }),
+      })
+      if (!response.ok) throw new Error(await errorMessage(response))
+      const revealed = (await response.json()) as RevealResponse
+      setFailingCase(revealed.failingCase ?? { input: null, expected: null, note: 'no-case' })
+      setRevealPrompting(false)
+      refreshHistory()
+    } catch {
+      // Best-effort; leave the prompt open so the solver can retry.
+    } finally {
+      setRevealBusy(false)
+    }
+  }
+
   async function handleGiveUp() {
     await abandonActive()
     setSolved(false)
     setRun({ phase: 'idle' })
+    setRevealedHints([])
+    setFailingCase(null)
+    setRevealPrompting(false)
+    setHypothesis('')
+    setConsecutiveFailures(0)
     refreshHistory()
   }
 
@@ -315,6 +426,35 @@ function App() {
           </div>
 
           <VerdictView run={run} scored={exercise.response.kind === 'choice'} />
+
+          {!solved && (
+            <HintLadder
+              rungNames={exercise.hints}
+              revealed={revealedHints}
+              busy={hintBusy}
+              stuck={
+                consecutiveFailures >= STUCK_NUDGE_AFTER_FAILURES &&
+                revealedHints.length < exercise.hints.length
+              }
+              onTakeHint={handleTakeHint}
+            />
+          )}
+
+          {exercise.response.kind === 'code' &&
+            !solved &&
+            run.phase === 'done' &&
+            run.verdict.outcome === 'FAILED' && (
+              <RevealPanel
+                prompting={revealPrompting}
+                busy={revealBusy}
+                hypothesis={hypothesis}
+                failingCase={failingCase}
+                onHypothesisChange={setHypothesis}
+                onStart={() => setRevealPrompting(true)}
+                onConfirm={handleReveal}
+                onCancel={() => setRevealPrompting(false)}
+              />
+            )}
         </>
       )}
 
@@ -341,7 +481,12 @@ function VerdictView({ run, scored }: { run: RunState; scored: boolean }) {
           ? 'Correct'
           : 'Incorrect'
         : `${verdict.passed} of ${verdict.total} tests passed`
-      return <p className={`status ${verdict.outcome === 'PASSED' ? 'up' : 'down'}`}>{label}</p>
+      return (
+        <p className={`status ${verdict.outcome === 'PASSED' ? 'up' : 'down'}`}>
+          {label}
+          <Runtime millis={verdict.runtimeMillis} />
+        </p>
+      )
     }
     case 'COMPILE_ERROR':
       return (
@@ -362,6 +507,160 @@ function VerdictView({ run, scored }: { run: RunState; scored: boolean }) {
   }
 }
 
+// Runtime shown next to the verdict, for interest only - it is never part of the
+// verdict (issue #16/#5). Omitted when there is nothing to show (an answer-key run
+// reports 0) so it never reads as a graded quantity.
+function Runtime({ millis }: { millis?: number }) {
+  if (millis === undefined || millis <= 0) return null
+  return <span className="runtime"> · {millis} ms</span>
+}
+
+// The hint ladder (issue #16): help is always available, always chosen, always
+// recorded, and never penalised. Each rung is taken explicitly and its body arrives
+// only then. When repeated runs fail, an unobtrusive nudge offers the next rung - it
+// reads as available help, never a reprimand, and taking it costs nothing.
+function HintLadder({
+  rungNames,
+  revealed,
+  busy,
+  stuck,
+  onTakeHint,
+}: {
+  rungNames: string[]
+  revealed: RevealedHint[]
+  busy: boolean
+  stuck: boolean
+  onTakeHint: () => void
+}) {
+  if (rungNames.length === 0) return null
+  const nextRung = rungNames[revealed.length]
+  const allTaken = revealed.length >= rungNames.length
+  return (
+    <section className="hints">
+      <h2>Hints</h2>
+      <p className="hints-note">
+        Hints are here whenever you want them. Taking one is recorded, but it never
+        affects your score.
+      </p>
+      <ol className="hint-list">
+        {revealed.map((hint) => (
+          <li key={hint.name}>
+            <span className="hint-name">{hint.name}</span>
+            <span className="hint-body">{hint.body}</span>
+          </li>
+        ))}
+      </ol>
+      {!allTaken && (
+        <div className={`hint-offer${stuck ? ' nudge' : ''}`}>
+          {stuck && (
+            <p className="nudge-line">
+              Stuck? There is no penalty for a hint - the next one just names {nextRung}.
+            </p>
+          )}
+          <button type="button" className="secondary" onClick={onTakeHint} disabled={busy}>
+            {busy
+              ? 'Revealing...'
+              : revealed.length === 0
+                ? `Reveal a hint (${nextRung})`
+                : `Reveal the next hint (${nextRung})`}
+          </button>
+        </div>
+      )}
+      {allTaken && <p className="hints-note">You have taken every hint for this exercise.</p>}
+    </section>
+  )
+}
+
+// The failing-case reveal (issues #16/#5). By default a failing run says only how
+// many cases failed. Choosing to reveal first asks for a one-line hypothesis - an act
+// of generation, ungraded and skippable - then discloses the case's input, expected
+// and actual. The reveal is recorded, never penalised.
+function RevealPanel({
+  prompting,
+  busy,
+  hypothesis,
+  failingCase,
+  onHypothesisChange,
+  onStart,
+  onConfirm,
+  onCancel,
+}: {
+  prompting: boolean
+  busy: boolean
+  hypothesis: string
+  failingCase: FailingCase | null
+  onHypothesisChange: (value: string) => void
+  onStart: () => void
+  onConfirm: () => void
+  onCancel: () => void
+}) {
+  if (failingCase) {
+    if (failingCase.note === 'no-case') {
+      return (
+        <section className="reveal">
+          <p className="hints-note">
+            There was no single failing case to show - the current code did not run to a
+            comparable result. The reveal was still recorded.
+          </p>
+        </section>
+      )
+    }
+    return (
+      <section className="reveal">
+        <h2>Failing case</h2>
+        <dl className="failing-case">
+          <dt>Input</dt>
+          <dd>{JSON.stringify(failingCase.input)}</dd>
+          <dt>Expected</dt>
+          <dd>{JSON.stringify(failingCase.expected)}</dd>
+          <dt>Actual</dt>
+          <dd>
+            {failingCase.note ? failingCase.note : JSON.stringify(failingCase.actual)}
+          </dd>
+        </dl>
+      </section>
+    )
+  }
+
+  if (prompting) {
+    return (
+      <section className="reveal">
+        <label className="reveal-prompt" htmlFor="hypothesis">
+          Before you look: in one line, what do you think is wrong? (optional, ungraded)
+        </label>
+        <input
+          id="hypothesis"
+          type="text"
+          className="hypothesis"
+          value={hypothesis}
+          placeholder="e.g. it fails on an empty input"
+          onChange={(event) => onHypothesisChange(event.target.value)}
+        />
+        <div className="actions">
+          <button type="button" onClick={onConfirm} disabled={busy}>
+            {busy ? 'Revealing...' : 'Show the failing case'}
+          </button>
+          <button type="button" className="secondary" onClick={onCancel} disabled={busy}>
+            Not yet
+          </button>
+        </div>
+      </section>
+    )
+  }
+
+  return (
+    <section className="reveal">
+      <button type="button" className="secondary" onClick={onStart}>
+        Reveal the failing case
+      </button>
+      <p className="hints-note">
+        Revealing is recorded but never penalised. Reasoning it out first is the skill an
+        interview tests.
+      </p>
+    </section>
+  )
+}
+
 // A plain list of past sittings - the visible-history half of issue #15. It is
 // deliberately minimal; the schedulers (issue #8) read the record, not this view.
 function History({ attempts }: { attempts: AttemptView[] }) {
@@ -375,6 +674,7 @@ function History({ attempts }: { attempts: AttemptView[] }) {
             <th>Exercise</th>
             <th>Outcome</th>
             <th>Submissions</th>
+            <th>Hints</th>
             <th>Revealed</th>
             <th>Started</th>
           </tr>
@@ -389,6 +689,7 @@ function History({ attempts }: { attempts: AttemptView[] }) {
                 </span>
               </td>
               <td>{attempt.submissionCount}</td>
+              <td>{attempt.hintsTaken > 0 ? attempt.hintsTaken : '-'}</td>
               <td>{attempt.failingCaseRevealed ? 'yes' : '-'}</td>
               <td>{new Date(attempt.startedAt).toLocaleString()}</td>
             </tr>

@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sweprep.backend.exercise.Exercise;
 import com.sweprep.backend.exercise.ExerciseCatalog;
 import com.sweprep.backend.exercise.Grading;
+import com.sweprep.backend.exercise.Hint;
 import com.sweprep.backend.exercise.Response;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -72,6 +73,50 @@ class FileExerciseCatalogTest {
         assertThat(catalog.byId("pick-demo")).get()
                 .extracting(Exercise::grading).isInstanceOf(Grading.AnswerKey.class);
         assertThat(catalog.byId("missing")).isEmpty();
+    }
+
+    @Test
+    void parsesAnOrderedHintLadderWhenPresent(@TempDir Path dir) throws IOException {
+        String withHints = CODE_EXERCISE.replaceFirst(
+                "\\}\\s*$",
+                """
+                ,
+                  "hints": [
+                    { "name": "Pattern", "body": "It is just an echo." },
+                    { "name": "Approach", "body": "Return the argument unchanged." }
+                  ]
+                }
+                """);
+        write(dir, "echo.json", withHints);
+
+        Exercise loaded = catalog(dir).byId("echo-demo").orElseThrow();
+        assertThat(loaded.hints()).extracting(Hint::name).containsExactly("Pattern", "Approach");
+        assertThat(loaded.hints()).extracting(Hint::body)
+                .containsExactly("It is just an echo.", "Return the argument unchanged.");
+    }
+
+    @Test
+    void anExerciseWithNoHintsLoadsWithAnEmptyLadder(@TempDir Path dir) throws IOException {
+        write(dir, "echo.json", CODE_EXERCISE);
+
+        assertThat(catalog(dir).byId("echo-demo").orElseThrow().hints()).isEmpty();
+    }
+
+    @Test
+    void aMalformedHintRungNamesFileAndField(@TempDir Path dir) throws IOException {
+        String badHints = CODE_EXERCISE.replaceFirst(
+                "\\}\\s*$",
+                """
+                ,
+                  "hints": [ { "name": "Pattern" } ]
+                }
+                """);
+        write(dir, "bad-hint.json", badHints);
+
+        assertThatThrownBy(catalog(dir)::all)
+                .isInstanceOf(ContentException.class)
+                .hasMessageContaining("bad-hint.json")
+                .hasMessageContaining("body");
     }
 
     @Test
