@@ -147,10 +147,31 @@ public class LocalJavaRunner implements Runner {
                 return ExecutionResult.timeout(readQuietly(stdout), readQuietly(stderr));
             }
             return ExecutionResult.completed(
-                    process.exitValue(), readQuietly(stdout), readQuietly(stderr));
+                    process.exitValue(),
+                    readQuietly(stdout),
+                    readQuietly(stderr),
+                    readOutputFiles(workDir, request.outputFiles()));
         } finally {
             streams.shutdownNow();
         }
+    }
+
+    /**
+     * Reads back the files the program was asked to produce, from the work
+     * directory before it is deleted. A file the program never wrote is simply
+     * omitted rather than reported as empty, so a missing result is
+     * distinguishable from a deliberately empty one.
+     */
+    private static Map<String, String> readOutputFiles(Path workDir, List<String> names)
+            throws IOException {
+        Map<String, String> contents = new java.util.HashMap<>();
+        for (String name : names) {
+            Path file = workDir.resolve(name);
+            if (Files.isRegularFile(file)) {
+                contents.put(name, Files.readString(file, StandardCharsets.UTF_8));
+            }
+        }
+        return contents;
     }
 
     /**
