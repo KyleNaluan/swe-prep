@@ -17,9 +17,15 @@ import org.springframework.stereotype.Component;
 /**
  * Generates the Java stub and harness for an exercise from its language-neutral
  * {@link Signature}. The harness uses Jackson to deserialise each case's JSON
- * arguments into Java types, calls the submission, and compares the result to the
- * expected JSON as a semantic tree - so comparison is fully type-agnostic and only
- * argument binding needs per-type generated code.
+ * arguments into Java types, calls the submission, and records the raw return
+ * value of each case as a JSON node into a result file - it does not decide
+ * pass/fail. Interpreting those results against the expected values, under the
+ * exercise's comparison rule, is the grader's job. Only argument binding needs
+ * per-type generated code.
+ *
+ * <p>The result goes to a dedicated file (the harness's second argument), never
+ * to the submission's own stdout, so a submission that prints past the runner's
+ * output cap and then returns correctly cannot truncate away its own result.
  */
 @Component
 public class JavaLanguageAdapter implements LanguageAdapter {
@@ -28,9 +34,6 @@ public class JavaLanguageAdapter implements LanguageAdapter {
     public static final String SUBMISSION_CLASS = "Solution";
 
     private static final String HARNESS_CLASS = "Harness";
-
-    /** Last line the harness prints, parsed by the grader: {@code SUMMARY <passed> <total>}. */
-    public static final String SUMMARY_PREFIX = "SUMMARY ";
 
     @Override
     public String languageId() {
@@ -79,6 +82,8 @@ public class JavaLanguageAdapter implements LanguageAdapter {
         return """
                 import com.fasterxml.jackson.databind.JsonNode;
                 import com.fasterxml.jackson.databind.ObjectMapper;
+                import com.fasterxml.jackson.databind.node.ArrayNode;
+                import com.fasterxml.jackson.databind.node.ObjectNode;
                 import java.io.File;
 
                 // Generated from the exercise signature - do not edit.
@@ -86,27 +91,28 @@ public class JavaLanguageAdapter implements LanguageAdapter {
                     public static void main(String[] args) throws Exception {
                         ObjectMapper mapper = new ObjectMapper();
                         JsonNode cases = mapper.readTree(new File(args[0]));
+                        File resultFile = new File(args[1]);
                         %2$s solution = new %2$s();
-                        int passed = 0;
-                        int total = cases.size();
+                        ArrayNode results = mapper.createArrayNode();
                         for (JsonNode testCase : cases) {
                             JsonNode input = testCase.get("input");
-                            JsonNode expected = testCase.get("expected");
+                            ObjectNode entry = mapper.createObjectNode();
                             try {
                 %3$s                %4$s
-                                JsonNode actualNode = mapper.valueToTree(actual);
-                                if (actualNode.equals(expected)) {
-                                    passed++;
-                                }
+                                entry.set("returned", mapper.valueToTree(actual));
                             } catch (Throwable t) {
-                                // A case whose call throws simply does not pass.
+                                // A case whose call throws produces no answer; the grader fails it.
+                                entry.put("threw", true);
                             }
+                            results.add(entry);
                         }
-                        System.out.println("%5$s" + passed + " " + total);
+                        // Written to a dedicated file, off the submission's own output channel,
+                        // so a runaway print loop can never truncate the result away.
+                        mapper.writeValue(resultFile, results);
                     }
                 }
                 """
-                .formatted(HARNESS_CLASS, SUBMISSION_CLASS, binding, call, SUMMARY_PREFIX);
+                .formatted(HARNESS_CLASS, SUBMISSION_CLASS, binding, call);
     }
 
     private static String declaredType(DataType type) {
