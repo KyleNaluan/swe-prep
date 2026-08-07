@@ -106,7 +106,8 @@ final class ContentJson {
 
     /**
      * Reads an optional text field: {@code null} when the field is absent or JSON
-     * {@code null}, its trimmed value otherwise, and a malformed error when it is
+     * {@code null}, its value otherwise (untrimmed, like {@link #requireText}), and a
+     * malformed error when it is
      * present but not a non-blank string. Unlike {@link #requireText}, a missing field
      * is not an error - the caller's field is optional (e.g. a check's {@code
      * explanation}, issue #51).

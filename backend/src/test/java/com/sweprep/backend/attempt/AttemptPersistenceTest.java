@@ -152,10 +152,23 @@ class AttemptPersistenceTest {
         assertThat(wrong.submission().outcome()).isEqualTo(Verdict.Outcome.FAILED);
         assertThat(wrong.explanation()).isNull();
 
+        // Giving up then reading why is a legitimate terminal path: the explanation is
+        // only honoured once the sitting has ended.
+        service.abandon(started.id());
         ExplanationResult result = service.requestExplanation(started.id());
         assertThat(result.explanation()).isNull();
         // The solver did ask, so the request is recorded even with nothing to show.
         assertThat(attempts.findById(started.id()).orElseThrow().explanationRequested()).isTrue();
+    }
+
+    @Test
+    void requestingTheExplanationOnAnOpenAttemptIsRejected() {
+        Attempt started = service.start("concept-demo");
+        // Withhold-by-default: the API, not just the editor, refuses to disclose the
+        // explanation before the sitting ends, so it can never be read pre-answer.
+        assertThatThrownBy(() -> service.requestExplanation(started.id()))
+                .isInstanceOf(IllegalAttemptStateException.class);
+        assertThat(attempts.findById(started.id()).orElseThrow().explanationRequested()).isFalse();
     }
 
     @Test
