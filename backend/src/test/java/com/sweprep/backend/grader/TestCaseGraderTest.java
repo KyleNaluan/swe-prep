@@ -80,6 +80,71 @@ class TestCaseGraderTest {
     }
 
     @Test
+    void bothValidOrderingsAreAcceptedForAnOrderInsensitiveExercise() {
+        // Returns the pair with the later index first - the opposite order to what
+        // each case lists. Under exact equality this would fail every case; Two Sum
+        // declares an order-insensitive comparison, so it passes them all.
+        String reversedOrder =
+                """
+                import java.util.HashMap;
+                import java.util.Map;
+
+                class Solution {
+                    public int[] twoSum(int[] nums, int target) {
+                        Map<Integer, Integer> seen = new HashMap<>();
+                        for (int i = 0; i < nums.length; i++) {
+                            int need = target - nums[i];
+                            if (seen.containsKey(need)) {
+                                return new int[] {i, seen.get(need)};
+                            }
+                            seen.put(nums[i], i);
+                        }
+                        return new int[] {-1, -1};
+                    }
+                }
+                """;
+
+        Verdict verdict = grader(Duration.ofSeconds(10)).grade(twoSum, reversedOrder);
+
+        assertThat(verdict.outcome()).isEqualTo(Verdict.Outcome.PASSED);
+        assertThat(verdict.passed()).isEqualTo(verdict.total());
+    }
+
+    @Test
+    void aSolutionThatPrintsPastTheOutputCapIsStillGradedOnItsResults() {
+        // Floods stdout well past the runner's 1MB cap before returning the correct
+        // answer. The result lives in a dedicated file, off this output channel, so
+        // it survives the truncation and the submission grades on its answers.
+        String noisyButCorrect =
+                """
+                import java.util.HashMap;
+                import java.util.Map;
+
+                class Solution {
+                    public int[] twoSum(int[] nums, int target) {
+                        for (int i = 0; i < 200_000; i++) {
+                            System.out.println("noise line padding to exceed the output cap " + i);
+                        }
+                        Map<Integer, Integer> seen = new HashMap<>();
+                        for (int i = 0; i < nums.length; i++) {
+                            int need = target - nums[i];
+                            if (seen.containsKey(need)) {
+                                return new int[] {seen.get(need), i};
+                            }
+                            seen.put(nums[i], i);
+                        }
+                        return new int[] {-1, -1};
+                    }
+                }
+                """;
+
+        Verdict verdict = grader(Duration.ofSeconds(20)).grade(twoSum, noisyButCorrect);
+
+        assertThat(verdict.outcome()).isEqualTo(Verdict.Outcome.PASSED);
+        assertThat(verdict.passed()).isEqualTo(verdict.total());
+    }
+
+    @Test
     void compileErrorIsReportedAsSuchNotAsATestFailure() {
         String willNotCompile =
                 """

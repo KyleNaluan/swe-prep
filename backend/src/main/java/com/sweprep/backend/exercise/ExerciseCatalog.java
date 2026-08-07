@@ -21,7 +21,7 @@ public class ExerciseCatalog {
             indices of the two numbers that add up to `target`.
 
             Each input has exactly one solution, and you may not use the same \
-            element twice. Return the two indices in ascending order.""";
+            element twice. Return the two indices in any order.""";
 
     private final Exercise current;
 
@@ -44,6 +44,9 @@ public class ExerciseCatalog {
 
         // Cases are language-neutral JSON: `input` is the positional argument
         // list, `expected` is the value the return must equal. No Java here.
+        // The two indices may come back in either order, so the exercise declares
+        // an order-insensitive comparison rather than pinning an order in the
+        // statement - each case lists just one representative ordering.
         List<TestCase> cases = List.of(
                 testCase(mapper, "[[2, 7, 11, 15], 9]", "[0, 1]"),
                 testCase(mapper, "[[3, 2, 4], 6]", "[1, 2]"),
@@ -55,6 +58,7 @@ public class ExerciseCatalog {
                 "Two Sum",
                 TWO_SUM_STATEMENT,
                 signature,
+                Comparison.orderInsensitiveSequence(),
                 cases);
     }
 

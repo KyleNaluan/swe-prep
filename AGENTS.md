@@ -47,12 +47,17 @@ Contracts, kept deliberately apart (see the map, issue #6):
 
 - `LanguageAdapter` generates both the editor stub and the harness from a `Signature`; neither is hand-written per problem.
 - `Runner` only compiles and executes (`ExecutionRequest` to `ExecutionResult`) and knows nothing about test cases or verdicts.
-- `Grader` writes the cases, invokes the runner, and interprets the outcome into a `Verdict`. `COMPILE_ERROR`, `TIMEOUT` and a test failure are distinct outcomes.
+- `Grader` writes the cases, invokes the runner, and interprets the outcome into a `Verdict`. `COMPILE_ERROR`, `TIMEOUT`, a test failure and an `ERROR` (ran but reported no result) are distinct outcomes.
+
+Comparison is the grader's job, not the harness's (issue #31). The harness only records each case's raw return value; the grader compares it to the expected value under the exercise's declared rule.
+
+- An exercise declares a `Comparison` (`exercise` package): a sealed interface with `exact`, `orderInsensitiveSequence` and `setEquality`, defaulting to `exact`. A problem-specific rule is added by adding one more permitted implementation, not by redesigning - so extend it there rather than reaching for per-content workarounds. Two Sum declares `orderInsensitiveSequence` instead of pinning an order in its statement.
+- All rules share `JsonEquality.equal`, which compares numbers by magnitude (`decimalValue().compareTo`), so `5`, `5.0` and a wider int type are one answer. Never compare answers with Jackson's `JsonNode.equals` - it keys on the concrete node type and fails numerically-equal answers.
 
 Sharp edges worth knowing before touching this:
 
 - The harness classpath is resolved from the `CodeSource` of the Jackson classes it imports, not from `java.class.path`, because Surefire may hand the JVM a booter jar instead of the real dependency jars. See `JavaLanguageAdapter.jacksonClasspath`.
-- Result comparison is fully type-agnostic: the harness compares `mapper.valueToTree(actual)` against the expected JSON node with Jackson's semantic `JsonNode.equals`. Only argument binding needs per-type generated code, so it has no notion of "any valid answer" - problems whose output is not unique must pin an ordering in the statement/stub, or wait for a comparator-aware grader.
+- The harness writes each case's result to a dedicated file (an `ExecutionRequest.outputFiles` entry the runner reads back), never to the submission's own stdout. This is deliberate: stdout is capped at 1MB (`LocalJavaRunner.MAX_CAPTURED_BYTES`, keep it) to stop a runaway print loop exhausting the backend heap, and putting the result on that same channel let a noisy-but-correct solution truncate away its own result.
 - The execution timeout is `sweprep.grader.timeout` (default `PT10S`); the local runner is unsandboxed by design (single user, issue #2's swap point).
 
 ## Maintaining this file
