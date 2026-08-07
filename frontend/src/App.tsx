@@ -2,7 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import Editor from '@monaco-editor/react'
 import './App.css'
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080'
+// Empty by default: the dev server proxies /api to the backend (vite.config.ts) so every
+// call below is same-origin, whether the page was opened as localhost or a tailnet
+// address. That makes CORS a non-issue for the app's own calls in dev (issue #34). Set
+// VITE_API_BASE_URL to call a backend directly, bypassing the proxy.
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? ''
 
 type Summary = {
   id: string
@@ -101,6 +105,25 @@ async function errorMessage(response: Response): Promise<string> {
   return `backend returned ${response.status}`
 }
 
+// A wrapper around fetch that names the cause when the request never got an HTTP
+// response at all. Browsers reject a fetch with a bare "TypeError: Failed to fetch" for
+// several distinct failures - the backend is down, the network is unreachable, or the
+// browser silently blocked the response as cross-origin - and deliberately do not say
+// which, so that message alone is not actionable. This is the failure mode issue #34
+// tracked: the page loaded fine and every call went nowhere with nothing explaining why.
+async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
+  const url = `${API_BASE_URL}${path}`
+  try {
+    return await fetch(url, init)
+  } catch {
+    throw new Error(
+      `Could not reach the backend at ${url}. Check that it is running, and, if this page ` +
+        `was opened from a different host or port than usual, that this origin is allowed ` +
+        `by the backend's CORS config (sweprep.web.allowed-origins).`,
+    )
+  }
+}
+
 function App() {
   const [catalog, setCatalog] = useState<Summary[] | null>(null)
   const [catalogError, setCatalogError] = useState<string | null>(null)
@@ -131,7 +154,7 @@ function App() {
   const attemptRef = useRef<{ id: string; solved: boolean } | null>(null)
 
   const refreshHistory = useCallback(() => {
-    fetch(`${API_BASE_URL}/api/attempts`)
+    apiFetch(`/api/attempts`)
       .then(async (response) => {
         if (!response.ok) throw new Error(await errorMessage(response))
         return (await response.json()) as AttemptView[]
@@ -149,7 +172,7 @@ function App() {
     attemptRef.current = null
     if (!active || active.solved) return
     try {
-      await fetch(`${API_BASE_URL}/api/attempts/${active.id}/abandon`, { method: 'POST' })
+      await apiFetch(`/api/attempts/${active.id}/abandon`, { method: 'POST' })
     } catch {
       // best effort; the record simply stays in progress if the call fails
     }
@@ -158,7 +181,7 @@ function App() {
   // Load the list of exercises once, and select the first. Also load any history.
   useEffect(() => {
     let cancelled = false
-    fetch(`${API_BASE_URL}/api/exercises`)
+    apiFetch(`/api/exercises`)
       .then(async (response) => {
         if (!response.ok) throw new Error(await errorMessage(response))
         return (await response.json()) as Summary[]
@@ -192,7 +215,7 @@ function App() {
     setRevealPrompting(false)
     setHypothesis('')
     setConsecutiveFailures(0)
-    fetch(`${API_BASE_URL}/api/exercises/${selectedId}`)
+    apiFetch(`/api/exercises/${selectedId}`)
       .then(async (response) => {
         if (!response.ok) throw new Error(await errorMessage(response))
         return (await response.json()) as Exercise
@@ -218,7 +241,7 @@ function App() {
   // first Run so glancing at an exercise never creates an empty attempt.
   async function ensureAttempt(exerciseId: string): Promise<string> {
     if (attemptRef.current) return attemptRef.current.id
-    const response = await fetch(`${API_BASE_URL}/api/attempts`, {
+    const response = await apiFetch(`/api/attempts`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ exerciseId }),
@@ -239,7 +262,7 @@ function App() {
     setRevealPrompting(false)
     try {
       const attemptId = await ensureAttempt(exercise.id)
-      const response = await fetch(`${API_BASE_URL}/api/attempts/${attemptId}/submissions`, {
+      const response = await apiFetch(`/api/attempts/${attemptId}/submissions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ submission }),
@@ -266,7 +289,7 @@ function App() {
     setHintBusy(true)
     try {
       const attemptId = await ensureAttempt(exercise.id)
-      const response = await fetch(`${API_BASE_URL}/api/attempts/${attemptId}/hints`, {
+      const response = await apiFetch(`/api/attempts/${attemptId}/hints`, {
         method: 'POST',
       })
       if (!response.ok) throw new Error(await errorMessage(response))
@@ -290,7 +313,7 @@ function App() {
     setRevealBusy(true)
     try {
       const attemptId = await ensureAttempt(exercise.id)
-      const response = await fetch(`${API_BASE_URL}/api/attempts/${attemptId}/reveal`, {
+      const response = await apiFetch(`/api/attempts/${attemptId}/reveal`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ submission, hypothesis }),
