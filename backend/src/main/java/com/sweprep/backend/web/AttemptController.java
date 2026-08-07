@@ -1,7 +1,6 @@
 package com.sweprep.backend.web;
 
 import com.sweprep.backend.attempt.AttemptService;
-import com.sweprep.backend.attempt.Submission;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -19,13 +18,17 @@ import org.springframework.web.bind.annotation.RestController;
  * <p>A sitting is opened with {@code POST /api/attempts}; each press of Run is a
  * {@code POST .../submissions} that grades and records a submission; taking a hint is
  * a {@code POST .../hints}; revealing the failing case is a {@code POST .../reveal};
- * giving up is a {@code POST .../abandon}; and the whole history is read back from
- * {@code GET /api/attempts}.
+ * requesting the check's explanation is a {@code POST .../explanation}; giving up is a
+ * {@code POST .../abandon}; and the whole history is read back from {@code GET
+ * /api/attempts}.
  *
  * <p>Judging withholds by default (issues #16/#5): a submission's {@link RunResponse}
  * carries only the passing count, never a failing case's values. The hint ladder and
  * the failing-case reveal are the always-available, always-recorded help - both record
- * their use on the attempt and neither reduces a score or ends the sitting.
+ * their use on the attempt and neither reduces a score or ends the sitting. The check's
+ * explanation (issue #51) is the one thing disclosed automatically, on a wrong answer;
+ * when correct it is one keystroke away via {@code .../explanation}, which records the
+ * request as its own signal, distinct from taking a hint, and never penalises.
  */
 @RestController
 @RequestMapping("/api/attempts")
@@ -50,13 +53,17 @@ public class AttemptController {
 
     @PostMapping("/{id}/submissions")
     public RunResponse submit(@PathVariable UUID id, @RequestBody RunRequest request) {
-        Submission submission = attempts.submit(id, request.submission());
-        return RunResponse.of(submission);
+        return RunResponse.of(attempts.submit(id, request.submission()));
     }
 
     @PostMapping("/{id}/hints")
     public HintResponse takeHint(@PathVariable UUID id) {
         return HintResponse.of(attempts.takeHint(id));
+    }
+
+    @PostMapping("/{id}/explanation")
+    public ExplanationResponse explanation(@PathVariable UUID id) {
+        return ExplanationResponse.of(attempts.requestExplanation(id));
     }
 
     @PostMapping("/{id}/abandon")

@@ -21,6 +21,7 @@ import java.time.Instant;
  * @param hintsTaken             hint-ladder rungs climbed (issue #16)
  * @param failingCaseRevealed    whether the failing case was revealed (issue #5/#16)
  * @param revealHypothesis       the one-line guess typed before the reveal, or null
+ * @param explanationRequested   whether the check's explanation was requested (issue #51)
  * @param complexityClaim        the self-reported complexity (issue #17)
  * @param measuredComplexity     what measurement said (issue #17)
  * @param complexityClaimCorrect whether the claim matched measurement (issue #17)
@@ -38,6 +39,7 @@ public record AttemptView(
         int hintsTaken,
         boolean failingCaseRevealed,
         String revealHypothesis,
+        boolean explanationRequested,
         String complexityClaim,
         String measuredComplexity,
         Boolean complexityClaimCorrect) {
@@ -56,6 +58,7 @@ public record AttemptView(
                 attempt.hintsTaken(),
                 attempt.failingCaseRevealed(),
                 attempt.revealHypothesis(),
+                attempt.explanationRequested(),
                 attempt.complexityClaim(),
                 attempt.measuredComplexity(),
                 attempt.complexityClaimCorrect());

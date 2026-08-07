@@ -19,9 +19,9 @@ import java.util.List;
  * Builds an {@link Exercise} from the language-neutral JSON one content file holds
  * when its {@code kind} is {@code "exercise"} (the default). The shared metadata
  * reads live in {@link ContentJson}; this parser adds the exercise-only parts - the
- * {@link Response} and {@link Grading} specs, the signature, and the hint ladder -
- * and, like {@code ContentJson}, is hand-rolled so every failure names the file and
- * the exact field at fault (issue #14).
+ * {@link Response} and {@link Grading} specs, the signature, the hint ladder and the
+ * check's {@code explanation} (issue #51) - and, like {@code ContentJson}, is
+ * hand-rolled so every failure names the file and the exact field at fault (issue #14).
  *
  * <p>The format:
  * <pre>
@@ -37,6 +37,7 @@ import java.util.List;
  *             |  { "kind": "answerKey", "comparison": "...", "expected": ... }
  *             |  { "kind": "selfCheck", "modelAnswer": "..." },
  *   "hints":    [ { "name": "Pattern", "body": "..." }, ... ], // optional ladder
+ *   "explanation": "why the correct answer is correct",        // optional (issue #51)
  *   "family":   ["BACKEND", "AIML"],                           // optional, default []
  *   "stability": "STABLE|VOLATILE",                            // optional, default STABLE
  *   "reviewed": "2026-08-07"                                   // optional ISO date (VOLATILE)
@@ -60,9 +61,10 @@ final class ExerciseParser {
         Response response = response(json, json.requireObject(root, "response"));
         Grading grading = grading(json, json.requireObject(root, "grading"));
         List<Hint> hints = hints(json, root);
+        String explanation = json.optionalText(root, "explanation");
         return new Exercise(
                 id, title, statement, domain, topics, difficulty, form, response, grading, hints,
-                json.family(root), json.stability(root), json.reviewed(root));
+                explanation, json.family(root), json.stability(root), json.reviewed(root));
     }
 
     private static List<Hint> hints(ContentJson json, JsonNode root) {

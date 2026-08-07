@@ -31,6 +31,10 @@ type Exercise = {
   // Hint-ladder rung names, least revealing first. Bodies are never sent up front;
   // each is fetched only when the solver explicitly takes that rung (issue #16).
   hints: string[]
+  // Whether this check carries an explanation of why the correct answer is correct
+  // (issue #51). The text never travels up front - it is shown automatically on a wrong
+  // answer or fetched on request when correct - so only its existence is known here.
+  hasExplanation: boolean
 }
 
 type Verdict = {
@@ -40,6 +44,9 @@ type Verdict = {
   detail: string
   // Shown for interest only; never part of the verdict (issue #16/#5).
   runtimeMillis?: number
+  // Present only on a wrong answer: the check's explanation, disclosed automatically
+  // (issue #51). Withheld on a pass, where it is one keystroke away on request instead.
+  explanation?: string
 }
 
 // One revealed hint rung: its name and the body disclosed when it was taken.
@@ -79,6 +86,15 @@ type AttemptView = {
   submissionCount: number
   hintsTaken: number
   failingCaseRevealed: boolean
+  // Whether the solver asked to see the check's explanation (issue #51) - a confidence
+  // signal recorded distinctly from taking a hint, never a penalty.
+  explanationRequested: boolean
+}
+
+// The response from POST .../explanation: the check's explanation, absent when the check
+// carries none (the request is still recorded).
+type ExplanationResponse = {
+  explanation?: string
 }
 
 // After this many failed submissions in a row, the app quietly offers the next hint.
@@ -143,6 +159,10 @@ function App() {
   const [hypothesis, setHypothesis] = useState('')
   const [revealBusy, setRevealBusy] = useState(false)
   const [consecutiveFailures, setConsecutiveFailures] = useState(0)
+  // The check's explanation, once disclosed (issue #51): shown automatically on a wrong
+  // answer, or fetched on request when correct. Null until there is something to show.
+  const [explanation, setExplanation] = useState<string | null>(null)
+  const [explanationBusy, setExplanationBusy] = useState(false)
 
   const [history, setHistory] = useState<AttemptView[]>([])
 
@@ -215,6 +235,7 @@ function App() {
     setRevealPrompting(false)
     setHypothesis('')
     setConsecutiveFailures(0)
+    setExplanation(null)
     apiFetch(`/api/exercises/${selectedId}`)
       .then(async (response) => {
         if (!response.ok) throw new Error(await errorMessage(response))
@@ -222,9 +243,10 @@ function App() {
       })
       .then((loaded) => {
         if (cancelled) return
-        // Older payloads may omit the hint ladder; treat a missing one as empty so the
-        // rest of the UI can rely on it being an array.
-        setExercise({ ...loaded, hints: loaded.hints ?? [] })
+        // Older payloads may omit the hint ladder or the explanation flag; treat a
+        // missing ladder as empty and a missing flag as false so the rest of the UI can
+        // rely on both.
+        setExercise({ ...loaded, hints: loaded.hints ?? [], hasExplanation: loaded.hasExplanation ?? false })
         codeRef.current = loaded.response.kind === 'code' ? loaded.response.stub : ''
       })
       .catch((error: unknown) => {
@@ -257,9 +279,11 @@ function App() {
     const submission = exercise.response.kind === 'code' ? codeRef.current : (choice ?? '')
     setRun({ phase: 'running' })
     // A fresh run makes any previously revealed failing case stale; drop it and any
-    // half-typed hypothesis so the reveal always reflects the current code.
+    // half-typed hypothesis so the reveal always reflects the current code. A previously
+    // shown explanation is likewise stale until this run's verdict decides it.
     setFailingCase(null)
     setRevealPrompting(false)
+    setExplanation(null)
     try {
       const attemptId = await ensureAttempt(exercise.id)
       const response = await apiFetch(`/api/attempts/${attemptId}/submissions`, {
@@ -276,6 +300,9 @@ function App() {
       } else {
         setConsecutiveFailures((n) => n + 1)
       }
+      // A wrong answer discloses the explanation automatically (issue #51); a pass
+      // withholds it, leaving it one keystroke away via the request button.
+      if (verdict.explanation) setExplanation(verdict.explanation)
       setRun({ phase: 'done', verdict })
       refreshHistory()
     } catch (error: unknown) {
@@ -330,6 +357,27 @@ function App() {
     }
   }
 
+  // Request the check's explanation when correct (issue #51). Recorded as its own
+  // confidence signal, distinct from taking a hint, and never penalised.
+  async function handleRequestExplanation() {
+    if (!exercise) return
+    setExplanationBusy(true)
+    try {
+      const attemptId = await ensureAttempt(exercise.id)
+      const response = await apiFetch(`/api/attempts/${attemptId}/explanation`, {
+        method: 'POST',
+      })
+      if (!response.ok) throw new Error(await errorMessage(response))
+      const disclosed = (await response.json()) as ExplanationResponse
+      if (disclosed.explanation) setExplanation(disclosed.explanation)
+      refreshHistory()
+    } catch {
+      // Best-effort; a failure here should not disrupt the solved state.
+    } finally {
+      setExplanationBusy(false)
+    }
+  }
+
   async function handleGiveUp() {
     await abandonActive()
     setSolved(false)
@@ -339,6 +387,7 @@ function App() {
     setRevealPrompting(false)
     setHypothesis('')
     setConsecutiveFailures(0)
+    setExplanation(null)
     refreshHistory()
   }
 
@@ -478,6 +527,14 @@ function App() {
                 onCancel={() => setRevealPrompting(false)}
               />
             )}
+
+          <ExplanationPanel
+            hasExplanation={exercise.hasExplanation}
+            explanation={explanation}
+            solved={solved}
+            busy={explanationBusy}
+            onRequest={handleRequestExplanation}
+          />
         </>
       )}
 
@@ -682,6 +739,47 @@ function RevealPanel({
       </p>
     </section>
   )
+}
+
+// The check's explanation (issue #51): why the correct answer is correct, kept separate
+// from the hint ladder. It is shown automatically on a wrong answer (the parent hands
+// the disclosed text down); when the answer is correct it is one keystroke away, and
+// asking is recorded as its own confidence signal - never a penalty, and never a hint.
+function ExplanationPanel({
+  hasExplanation,
+  explanation,
+  solved,
+  busy,
+  onRequest,
+}: {
+  hasExplanation: boolean
+  explanation: string | null
+  solved: boolean
+  busy: boolean
+  onRequest: () => void
+}) {
+  if (explanation) {
+    return (
+      <section className="explanation">
+        <h2>Why this is the answer</h2>
+        <p className="explanation-body">{explanation}</p>
+      </section>
+    )
+  }
+  // Offer it only once correct - a wrong answer would have shown it automatically.
+  if (hasExplanation && solved) {
+    return (
+      <section className="explanation">
+        <button type="button" className="secondary" onClick={onRequest} disabled={busy}>
+          {busy ? 'Revealing...' : 'Why is this the answer?'}
+        </button>
+        <p className="hints-note">
+          Asking is recorded, but it never affects your score - it is not a hint.
+        </p>
+      </section>
+    )
+  }
+  return null
 }
 
 // A plain list of past sittings - the visible-history half of issue #15. It is

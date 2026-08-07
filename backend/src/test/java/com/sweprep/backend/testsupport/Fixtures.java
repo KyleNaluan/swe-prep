@@ -81,7 +81,9 @@ public final class Fixtures {
 
     /**
      * A choice exercise judged by a fixed answer key - the demonstration that a
-     * grader needs no runner. Options {@code A/B/C}, correct answer {@code B}.
+     * grader needs no runner. Options {@code A/B/C}, correct answer {@code B}. It
+     * carries an {@code explanation} (issue #51) so the auto-on-wrong disclosure and the
+     * on-request path can be proven; {@link #predictNumber()} is the sibling with none.
      */
     public static Exercise concept() {
         return new Exercise(
@@ -94,8 +96,16 @@ public final class Fixtures {
                 Form.REP,
                 new Response.Choice(List.of("A", "B", "C")),
                 new Grading.AnswerKey(text("B"), Comparison.exact()),
-                List.of());
+                List.of(),
+                CONCEPT_EXPLANATION,
+                List.of(),
+                null,
+                null);
     }
+
+    /** The explanation carried by {@link #concept()} (issue #51). */
+    public static final String CONCEPT_EXPLANATION =
+            "B is correct because it is the only option that holds in every case.";
 
     /**
      * A code exercise judged by a fixed numeric answer key - "predict the output".

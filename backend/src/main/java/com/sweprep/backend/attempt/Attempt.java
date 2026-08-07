@@ -33,6 +33,13 @@ import java.util.UUID;
  * @param revealHypothesis       the one-line guess the solver typed before revealing
  *                               the failing case, or {@code null} if none was given;
  *                               ungraded and never penalised (issue #16 pedagogy add)
+ * @param explanationRequested   whether the solver asked to see the check's explanation
+ *                               (issue #51). Recorded as its own confidence signal,
+ *                               deliberately distinct from {@link #hintsTaken}: asking
+ *                               why a correct answer is correct is not asking for help
+ *                               to solve. Set only by an explicit request; the automatic
+ *                               disclosure on a wrong answer is not a request and is not
+ *                               recorded here. Never penalised.
  * @param complexityClaim        the solver's self-reported complexity (issue #17)
  * @param measuredComplexity     what measurement said (issue #17)
  * @param complexityClaimCorrect whether the claim matched measurement (issue #17)
@@ -50,6 +57,7 @@ public record Attempt(
         int hintsTaken,
         boolean failingCaseRevealed,
         String revealHypothesis,
+        boolean explanationRequested,
         String complexityClaim,
         String measuredComplexity,
         Boolean complexityClaimCorrect) {
@@ -58,7 +66,7 @@ public record Attempt(
     public Attempt withOutcome(AttemptOutcome newOutcome, Instant endedAt) {
         return new Attempt(
                 id, userId, exerciseId, exerciseTitle, domain, form, newOutcome, startedAt, endedAt,
-                hintsTaken, failingCaseRevealed, revealHypothesis,
+                hintsTaken, failingCaseRevealed, revealHypothesis, explanationRequested,
                 complexityClaim, measuredComplexity, complexityClaimCorrect);
     }
 
@@ -66,7 +74,7 @@ public record Attempt(
     public Attempt withHintsTaken(int newHintsTaken) {
         return new Attempt(
                 id, userId, exerciseId, exerciseTitle, domain, form, outcome, startedAt, endedAt,
-                newHintsTaken, failingCaseRevealed, revealHypothesis,
+                newHintsTaken, failingCaseRevealed, revealHypothesis, explanationRequested,
                 complexityClaim, measuredComplexity, complexityClaimCorrect);
     }
 
@@ -77,7 +85,19 @@ public record Attempt(
     public Attempt withFailingCaseRevealed(String hypothesis) {
         return new Attempt(
                 id, userId, exerciseId, exerciseTitle, domain, form, outcome, startedAt, endedAt,
-                hintsTaken, true, hypothesis,
+                hintsTaken, true, hypothesis, explanationRequested,
+                complexityClaim, measuredComplexity, complexityClaimCorrect);
+    }
+
+    /**
+     * This attempt with the explanation request recorded (issue #51). A distinct signal
+     * from taking a hint, idempotent, and never penalised: the solver asked to see why
+     * the correct answer is correct.
+     */
+    public Attempt withExplanationRequested() {
+        return new Attempt(
+                id, userId, exerciseId, exerciseTitle, domain, form, outcome, startedAt, endedAt,
+                hintsTaken, failingCaseRevealed, revealHypothesis, true,
                 complexityClaim, measuredComplexity, complexityClaimCorrect);
     }
 }

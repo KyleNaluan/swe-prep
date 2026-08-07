@@ -33,6 +33,13 @@ import java.util.List;
  * @param grading    how the answer is judged
  * @param hints      the ordered hint ladder (issue #16), least revealing rung first;
  *                   empty when the exercise offers no hints
+ * @param explanation why the correct answer is correct (issue #51), independent of the
+ *                   hint ladder: shown automatically on a wrong answer and available on
+ *                   request when correct, where asking is recorded as a distinct
+ *                   confidence signal. Never a hint - a hint is disclosed only on
+ *                   request and its taking is a different signal. {@code null} when the
+ *                   check carries none (a self-check's model answer already plays this
+ *                   role, so it needs no separate explanation)
  * @param family     the role families this content serves (design revision t3,
  *                   section 2), the tag the family filter selects on; empty when
  *                   untagged, and a list because one concept can serve several roles
@@ -52,6 +59,7 @@ public record Exercise(
         Response response,
         Grading grading,
         List<Hint> hints,
+        String explanation,
         List<Family> family,
         Stability stability,
         LocalDate reviewed) implements Content {
@@ -64,10 +72,11 @@ public record Exercise(
     }
 
     /**
-     * Convenience constructor for an exercise with no content-level family or
-     * stability tags: an empty family, {@link Stability#STABLE}, and no review date.
-     * These are additive metadata (design revision t3); an untagged exercise is a
-     * stable one with no family.
+     * Convenience constructor for an exercise with no explanation and no content-level
+     * family or stability tags: no explanation, an empty family, {@link
+     * Stability#STABLE}, and no review date. These are additive metadata (issue #51,
+     * design revision t3); an untagged exercise is a stable one with no family, and one
+     * with no {@code explanation} carries {@code null}.
      */
     public Exercise(
             String id,
@@ -82,6 +91,6 @@ public record Exercise(
             List<Hint> hints) {
         this(
                 id, title, statement, domain, topics, difficulty, form, response, grading, hints,
-                List.of(), Stability.STABLE, null);
+                null, List.of(), Stability.STABLE, null);
     }
 }

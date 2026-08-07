@@ -32,13 +32,13 @@ public class AttemptRepository {
                         INSERT INTO attempt (
                             id, user_id, exercise_id, exercise_title, domain, form,
                             outcome, started_at, ended_at, hints_taken,
-                            failing_case_revealed, reveal_hypothesis, complexity_claim,
-                            measured_complexity, complexity_claim_correct)
+                            failing_case_revealed, reveal_hypothesis, explanation_requested,
+                            complexity_claim, measured_complexity, complexity_claim_correct)
                         VALUES (
                             :id, :userId, :exerciseId, :exerciseTitle, :domain, :form,
                             :outcome, :startedAt, :endedAt, :hintsTaken,
-                            :failingCaseRevealed, :revealHypothesis, :complexityClaim,
-                            :measuredComplexity, :complexityClaimCorrect)
+                            :failingCaseRevealed, :revealHypothesis, :explanationRequested,
+                            :complexityClaim, :measuredComplexity, :complexityClaimCorrect)
                         """)
                 .param("id", attempt.id())
                 .param("userId", attempt.userId())
@@ -52,6 +52,7 @@ public class AttemptRepository {
                 .param("hintsTaken", attempt.hintsTaken())
                 .param("failingCaseRevealed", attempt.failingCaseRevealed())
                 .param("revealHypothesis", attempt.revealHypothesis())
+                .param("explanationRequested", attempt.explanationRequested())
                 .param("complexityClaim", attempt.complexityClaim())
                 .param("measuredComplexity", attempt.measuredComplexity())
                 .param("complexityClaimCorrect", attempt.complexityClaimCorrect())
@@ -72,6 +73,7 @@ public class AttemptRepository {
                             hints_taken = :hintsTaken,
                             failing_case_revealed = :failingCaseRevealed,
                             reveal_hypothesis = :revealHypothesis,
+                            explanation_requested = :explanationRequested,
                             complexity_claim = :complexityClaim,
                             measured_complexity = :measuredComplexity,
                             complexity_claim_correct = :complexityClaimCorrect
@@ -83,6 +85,7 @@ public class AttemptRepository {
                 .param("hintsTaken", attempt.hintsTaken())
                 .param("failingCaseRevealed", attempt.failingCaseRevealed())
                 .param("revealHypothesis", attempt.revealHypothesis())
+                .param("explanationRequested", attempt.explanationRequested())
                 .param("complexityClaim", attempt.complexityClaim())
                 .param("measuredComplexity", attempt.measuredComplexity())
                 .param("complexityClaimCorrect", attempt.complexityClaimCorrect())
@@ -142,6 +145,7 @@ public class AttemptRepository {
                 rs.getInt("hints_taken"),
                 rs.getBoolean("failing_case_revealed"),
                 rs.getString("reveal_hypothesis"),
+                rs.getBoolean("explanation_requested"),
                 rs.getString("complexity_claim"),
                 rs.getString("measured_complexity"),
                 claimCorrect == null ? null : (Boolean) claimCorrect);
