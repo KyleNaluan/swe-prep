@@ -58,22 +58,29 @@ class AttemptPersistenceTest {
 
     private Exercise concept;
     private Exercise pair;
+    private Exercise predict;
 
     @BeforeEach
     void setUp() {
         concept = Fixtures.concept();
         pair = Fixtures.pairInAnyOrder();
+        // predict-number carries no explanation - the sibling to concept-demo, which does.
+        predict = Fixtures.predictNumber();
         when(catalog.byId("concept-demo")).thenReturn(Optional.of(concept));
         when(catalog.byId("pair-in-any-order")).thenReturn(Optional.of(pair));
+        when(catalog.byId("predict-number")).thenReturn(Optional.of(predict));
         when(catalog.byId("missing")).thenReturn(Optional.empty());
     }
 
     @Test
     void aPassingSubmissionSolvesTheAttemptAndBothPersist() {
         Attempt started = service.start("concept-demo");
-        Submission submission = service.submit(started.id(), "B");
+        SubmitResult result = service.submit(started.id(), "B");
+        Submission submission = result.submission();
 
         assertThat(submission.outcome()).isEqualTo(Verdict.Outcome.PASSED);
+        // A passing answer withholds the explanation - it is offered on request instead.
+        assertThat(result.explanation()).isNull();
 
         // Re-read from the database, not the returned object, to prove durability.
         Attempt reloaded = attempts.findById(started.id()).orElseThrow();
@@ -102,6 +109,66 @@ class AttemptPersistenceTest {
         assertThat(submissions.countByAttempt(started.id())).isEqualTo(2);
         assertThat(attempts.findById(started.id()).orElseThrow().outcome())
                 .isEqualTo(AttemptOutcome.SOLVED);
+    }
+
+    @Test
+    void aWrongAnswerDisclosesTheExplanationAutomaticallyAndRecordsNoRequest() {
+        Attempt started = service.start("concept-demo");
+        SubmitResult result = service.submit(started.id(), "A");
+
+        // The explanation is shown automatically on a wrong answer (issue #51)...
+        assertThat(result.submission().outcome()).isEqualTo(Verdict.Outcome.FAILED);
+        assertThat(result.explanation()).isEqualTo(Fixtures.CONCEPT_EXPLANATION);
+
+        // ...but that automatic disclosure is not a request, so nothing is recorded and
+        // the sitting stays open and unpenalised.
+        Attempt reloaded = attempts.findById(started.id()).orElseThrow();
+        assertThat(reloaded.explanationRequested()).isFalse();
+        assertThat(reloaded.hintsTaken()).isZero();
+        assertThat(reloaded.outcome()).isEqualTo(AttemptOutcome.IN_PROGRESS);
+    }
+
+    @Test
+    void requestingTheExplanationRecordsADistinctSignalAndNeverPenalises() {
+        Attempt started = service.start("concept-demo");
+        // Correct answer solves the sitting; the explanation is then one keystroke away.
+        service.submit(started.id(), "B");
+
+        ExplanationResult result = service.requestExplanation(started.id());
+        assertThat(result.explanation()).isEqualTo(Fixtures.CONCEPT_EXPLANATION);
+
+        Attempt reloaded = attempts.findById(started.id()).orElseThrow();
+        assertThat(reloaded.explanationRequested()).isTrue();
+        // Recorded distinctly from taking a hint, and it neither reopens nor penalises.
+        assertThat(reloaded.hintsTaken()).isZero();
+        assertThat(reloaded.outcome()).isEqualTo(AttemptOutcome.SOLVED);
+    }
+
+    @Test
+    void aCheckWithNoExplanationDisclosesNothingButStillRecordsTheRequest() {
+        Attempt started = service.start("predict-number");
+        // Wrong answer: still nothing to auto-disclose, since this check has no explanation.
+        SubmitResult wrong = service.submit(started.id(), "7");
+        assertThat(wrong.submission().outcome()).isEqualTo(Verdict.Outcome.FAILED);
+        assertThat(wrong.explanation()).isNull();
+
+        // Giving up then reading why is a legitimate terminal path: the explanation is
+        // only honoured once the sitting has ended.
+        service.abandon(started.id());
+        ExplanationResult result = service.requestExplanation(started.id());
+        assertThat(result.explanation()).isNull();
+        // The solver did ask, so the request is recorded even with nothing to show.
+        assertThat(attempts.findById(started.id()).orElseThrow().explanationRequested()).isTrue();
+    }
+
+    @Test
+    void requestingTheExplanationOnAnOpenAttemptIsRejected() {
+        Attempt started = service.start("concept-demo");
+        // Withhold-by-default: the API, not just the editor, refuses to disclose the
+        // explanation before the sitting ends, so it can never be read pre-answer.
+        assertThatThrownBy(() -> service.requestExplanation(started.id()))
+                .isInstanceOf(IllegalAttemptStateException.class);
+        assertThat(attempts.findById(started.id()).orElseThrow().explanationRequested()).isFalse();
     }
 
     @Test

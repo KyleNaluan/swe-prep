@@ -1,0 +1,11 @@
+-- Explanation-request signal (issue #51).
+--
+-- Every check carries an explanation of why the correct answer is correct. It is shown
+-- automatically on a wrong answer (no request, nothing recorded) and is one keystroke
+-- away when correct - and asking for it then is a confidence signal in its own right.
+--
+-- That signal is recorded here, deliberately separate from hints_taken: asking why a
+-- correct answer is correct is not asking for help to solve, and folding it into the
+-- hint count would corrupt what "took a hint" means to the schedulers (issue #8) and
+-- the readiness picture. It is never penalised.
+ALTER TABLE attempt ADD COLUMN explanation_requested BOOLEAN NOT NULL DEFAULT FALSE;
