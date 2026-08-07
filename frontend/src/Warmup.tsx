@@ -92,6 +92,14 @@ function Warmup() {
     }
   }, [])
 
+  // Leaving the warm-up (tab switch or unmount) abandons an unsolved sitting, so it never
+  // lingers IN_PROGRESS - the same switch-away invariant the editor honours (App.tsx).
+  useEffect(() => {
+    return () => {
+      void abandonIfUnsolved()
+    }
+  }, [abandonIfUnsolved])
+
   // Load the warm-up set once.
   useEffect(() => {
     let cancelled = false
