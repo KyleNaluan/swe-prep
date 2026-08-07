@@ -9,6 +9,7 @@ import com.sweprep.backend.exercise.Exercise;
 import com.sweprep.backend.exercise.Family;
 import com.sweprep.backend.exercise.Form;
 import com.sweprep.backend.exercise.Grading;
+import com.sweprep.backend.exercise.Option;
 import com.sweprep.backend.exercise.Response;
 import com.sweprep.backend.exercise.Stability;
 import com.fasterxml.jackson.databind.node.TextNode;
@@ -16,6 +17,7 @@ import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -287,7 +289,8 @@ class WarmupSelectorTest {
                 List.of(topic),
                 Difficulty.EASY,
                 Form.REP,
-                new Response.Choice(List.of("A", "B")),
+                new Response.Choice(List.of(
+                        Option.correct("A"), Option.distractor("B", "a plausible near-miss"))),
                 new Grading.AnswerKey(TextNode.valueOf("A"), Comparison.exact()),
                 List.of(),
                 null,
@@ -317,9 +320,14 @@ class WarmupSelectorTest {
                 Difficulty.EASY,
                 Form.REP,
                 new Response.Choice(
-                        List.of(
-                                "Two pointers", "Sliding window", "Binary search", "Hash set",
-                                "Group by", "Left join")),
+                        Stream.of(
+                                        "Two pointers", "Sliding window", "Binary search",
+                                        "Hash set", "Group by", "Left join")
+                                .map(label -> label.equals(correctLabel)
+                                        ? Option.correct(label)
+                                        : Option.distractor(
+                                                label, "confuses this pattern with " + correctLabel))
+                                .toList()),
                 new Grading.AnswerKey(TextNode.valueOf(correctLabel), Comparison.exact()),
                 List.of(),
                 null,
@@ -358,7 +366,8 @@ class WarmupSelectorTest {
                 List.of(topic),
                 Difficulty.EASY,
                 Form.CHALLENGE,
-                new Response.Choice(List.of("A", "B")),
+                new Response.Choice(List.of(
+                        Option.correct("A"), Option.distractor("B", "a plausible near-miss"))),
                 new Grading.AnswerKey(TextNode.valueOf("A"), Comparison.exact()),
                 List.of());
     }

@@ -85,7 +85,7 @@ class RealContentSmokeTest {
                 .orElseThrow(() -> new AssertionError("expected a concept (answer-key) exercise"));
         assertThat(concept.response()).isInstanceOf(Response.Choice.class);
 
-        List<String> options = ((Response.Choice) concept.response()).options();
+        List<String> options = ((Response.Choice) concept.response()).optionTexts();
         String correct = ((Grading.AnswerKey) concept.grading()).expected().asText();
 
         assertThat(graders.grade(concept, correct).outcome()).isEqualTo(Verdict.Outcome.PASSED);

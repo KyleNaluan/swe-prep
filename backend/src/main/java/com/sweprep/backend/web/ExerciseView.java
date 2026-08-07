@@ -57,7 +57,10 @@ public record ExerciseView(
         return switch (exercise.response()) {
             case Response.Code code ->
                     ResponseView.code(adapter.languageId(), adapter.generateStub(code.signature()));
-            case Response.Choice choice -> ResponseView.choice(choice.options());
+            // Only the option texts travel to the editor, never the per-distractor
+            // misconceptions (issue #42): those are authoring/verification metadata, kept
+            // off the wire like the check's explanation and the self-check's model answer.
+            case Response.Choice choice -> ResponseView.choice(choice.optionTexts());
             // A free-text box renders one of two ways, decided by the grading it is paired
             // with. Paired with an answer key it is the machine-graded "predict the output"
             // rep (issue #18); paired with a self-check it is the self-graded "explain in
