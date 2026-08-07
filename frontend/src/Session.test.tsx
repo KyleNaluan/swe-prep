@@ -56,7 +56,7 @@ type Calls = { completeWarmup: number; abandons: string[] }
 
 // Drives every fetch the session makes. `status` is what GET /api/session returns before
 // the warm-up is finished; completing it flips the reported status to complete.
-function mockFetch(calls: Calls, options: { warmup?: unknown[] } = {}) {
+function mockFetch(calls: Calls, options: { warmup?: unknown[]; failComplete?: boolean } = {}) {
   let dayComplete = false
   return vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
     const href = String(url)
@@ -66,6 +66,10 @@ function mockFetch(calls: Calls, options: { warmup?: unknown[] } = {}) {
     }
     if (href.endsWith('/api/session/complete-warmup')) {
       calls.completeWarmup += 1
+      // Simulate an unreachable backend: the completion cannot be saved.
+      if (options.failComplete) {
+        return { ok: false, status: 500, json: async () => ({ error: 'backend down' }) } as Response
+      }
       dayComplete = true
       return {
         ok: true,
@@ -233,5 +237,20 @@ describe('Session (daily loop, issue #19)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Submit' }))
 
     await waitFor(() => expect(calls.completeWarmup).toBe(1))
+  })
+
+  it('keeps the landing and the header badge consistent when saving the completion fails', async () => {
+    // The warm-up really finished, but the POST that records it fails (backend down).
+    vi.stubGlobal('fetch', mockFetch({ completeWarmup: 0, abandons: [] }, { failComplete: true }))
+    const { container } = render(<Session />)
+    await finishWarmup()
+
+    // The landing shows the day complete - the practice really happened...
+    expect(await screen.findByRole('heading', { name: 'Day complete' })).toBeInTheDocument()
+    // ...and the header badge agrees rather than contradicting it, even though the save failed,
+    // so the two can never disagree.
+    await waitFor(() =>
+      expect(container.querySelector('.day-badge.complete')).toBeInTheDocument(),
+    )
   })
 })
