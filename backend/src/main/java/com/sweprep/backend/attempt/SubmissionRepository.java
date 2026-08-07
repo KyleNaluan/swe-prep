@@ -78,6 +78,37 @@ public class SubmissionRepository {
         return counts;
     }
 
+    /**
+     * The exercise id and picked response of every wrong Choice-style submission this
+     * user made, so the confusion relation (issue #39) can be derived from which
+     * distractor was chosen without a new column - the schema already stores the picked
+     * response. A {@code FAILED} outcome is the wrong-answer signal; other outcomes
+     * ({@code COMPILE_ERROR}, {@code TIMEOUT}, {@code ERROR}) are execution problems, not
+     * a chosen distractor, and are excluded. Whether a given row was actually a Choice
+     * response (rather than code or free text) is resolved by the caller against the
+     * catalog, since the exercise's response kind lives in content, not this table.
+     */
+    public List<FailedResponse> failedResponses(UUID userId) {
+        return jdbc.sql(
+                        """
+                        SELECT a.exercise_id AS exercise_id, s.response AS response
+                        FROM submission s
+                        JOIN attempt a ON s.attempt_id = a.id
+                        WHERE a.user_id = :userId AND s.outcome = 'FAILED'
+                        """)
+                .param("userId", userId)
+                .query((ResultSet rs, int rowNum) ->
+                        new FailedResponse(rs.getString("exercise_id"), rs.getString("response")))
+                .list();
+    }
+
+    /**
+     * One wrong submission reduced to the two fields the confusion derivation needs: the
+     * exercise it was for and the response the solver picked (a distractor label, for a
+     * Choice rep).
+     */
+    public record FailedResponse(String exerciseId, String response) {}
+
     /** Every submission in an attempt, oldest first. */
     public List<Submission> findByAttempt(UUID attemptId) {
         return jdbc.sql(
