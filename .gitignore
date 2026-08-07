@@ -368,3 +368,10 @@ $RECYCLE.BIN/
 *.lnk
 
 # End of https://www.toptal.com/developers/gitignore/api/java,maven,node,intellij+all,visualstudiocode,macos,windows,linux
+
+### swe-prep ###
+# Private exercise content is a separate repo (swe-prep-content) cloned to a
+# local path, never committed here: no problem statement, test data, reference
+# solution or generator may ever land in this public repo (issue #4/#14). The
+# default content path is <repo-root>/content; keep it and any sibling clone out.
+/content/

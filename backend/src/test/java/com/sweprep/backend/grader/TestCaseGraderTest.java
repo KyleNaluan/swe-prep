@@ -4,141 +4,99 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sweprep.backend.exercise.Exercise;
-import com.sweprep.backend.exercise.ExerciseCatalog;
 import com.sweprep.backend.language.JavaLanguageAdapter;
 import com.sweprep.backend.runner.LocalJavaRunner;
+import com.sweprep.backend.testsupport.Fixtures;
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
 
 /**
  * The tracer bullet's core proof, exercised without the web layer: a Java
- * submission is compiled and run against the language-neutral Two Sum cases, and
- * every verdict path is distinguished - all pass, some fail, a compile error, and
- * a timeout.
+ * submission is compiled and run against language-neutral cases, and every verdict
+ * path is distinguished - all pass, some fail, a compile error, and a timeout.
+ * The exercise is a synthetic demo ({@code pair(a, b)} returned in any order): no
+ * real problem content lives in this repo (issue #14).
  */
 class TestCaseGraderTest {
 
     private final ObjectMapper mapper = new ObjectMapper();
-    private final Exercise twoSum = new ExerciseCatalog(mapper).current();
+    private final Exercise pair = Fixtures.pairInAnyOrder();
 
     private Grader grader(Duration timeout) {
         return new TestCaseGrader(new JavaLanguageAdapter(), new LocalJavaRunner(), mapper, timeout);
     }
 
-    private static final String CORRECT =
-            """
-            import java.util.HashMap;
-            import java.util.Map;
-
-            class Solution {
-                public int[] twoSum(int[] nums, int target) {
-                    Map<Integer, Integer> seen = new HashMap<>();
-                    for (int i = 0; i < nums.length; i++) {
-                        int need = target - nums[i];
-                        if (seen.containsKey(need)) {
-                            return new int[] {seen.get(need), i};
-                        }
-                        seen.put(nums[i], i);
-                    }
-                    return new int[] {-1, -1};
-                }
-            }
-            """;
-
     @Test
-    void correctSubmissionPassesEveryCase() {
-        Verdict verdict = grader(Duration.ofSeconds(10)).grade(twoSum, CORRECT);
-
-        assertThat(verdict.outcome()).isEqualTo(Verdict.Outcome.PASSED);
-        assertThat(verdict.passed()).isEqualTo(verdict.total());
-        assertThat(verdict.total()).isEqualTo(4);
+    void supportsOnlyTestCaseGradedExercises() {
+        assertThat(grader(Duration.ofSeconds(10)).supports(pair)).isTrue();
+        assertThat(grader(Duration.ofSeconds(10)).supports(Fixtures.concept())).isFalse();
     }
 
     @Test
-    void partiallyCorrectSubmissionCountsThePassingCases() {
-        // Only checks adjacent pairs: passes the first three cases, misses the
-        // fourth, which needs non-adjacent indices.
-        String adjacentOnly =
-                """
-                class Solution {
-                    public int[] twoSum(int[] nums, int target) {
-                        for (int i = 0; i + 1 < nums.length; i++) {
-                            if (nums[i] + nums[i + 1] == target) {
-                                return new int[] {i, i + 1};
-                            }
-                        }
-                        return new int[] {-1, -1};
-                    }
-                }
-                """;
+    void correctSubmissionPassesEveryCase() {
+        Verdict verdict = grader(Duration.ofSeconds(10)).grade(pair, Fixtures.PAIR_SOLUTION);
 
-        Verdict verdict = grader(Duration.ofSeconds(10)).grade(twoSum, adjacentOnly);
-
-        assertThat(verdict.outcome()).isEqualTo(Verdict.Outcome.FAILED);
-        assertThat(verdict.passed()).isEqualTo(3);
-        assertThat(verdict.total()).isEqualTo(4);
+        assertThat(verdict.outcome()).isEqualTo(Verdict.Outcome.PASSED);
+        assertThat(verdict.passed()).isEqualTo(verdict.total());
+        assertThat(verdict.total()).isEqualTo(3);
     }
 
     @Test
     void bothValidOrderingsAreAcceptedForAnOrderInsensitiveExercise() {
-        // Returns the pair with the later index first - the opposite order to what
-        // each case lists. Under exact equality this would fail every case; Two Sum
-        // declares an order-insensitive comparison, so it passes them all.
-        String reversedOrder =
+        // Returns the pair reversed. Under exact equality this would fail the case
+        // whose representative ordering differs; the order-insensitive rule passes
+        // them all.
+        String reversed =
                 """
-                import java.util.HashMap;
-                import java.util.Map;
-
                 class Solution {
-                    public int[] twoSum(int[] nums, int target) {
-                        Map<Integer, Integer> seen = new HashMap<>();
-                        for (int i = 0; i < nums.length; i++) {
-                            int need = target - nums[i];
-                            if (seen.containsKey(need)) {
-                                return new int[] {i, seen.get(need)};
-                            }
-                            seen.put(nums[i], i);
-                        }
-                        return new int[] {-1, -1};
+                    public int[] pair(int a, int b) {
+                        return new int[] {b, a};
                     }
                 }
                 """;
 
-        Verdict verdict = grader(Duration.ofSeconds(10)).grade(twoSum, reversedOrder);
+        Verdict verdict = grader(Duration.ofSeconds(10)).grade(pair, reversed);
 
         assertThat(verdict.outcome()).isEqualTo(Verdict.Outcome.PASSED);
         assertThat(verdict.passed()).isEqualTo(verdict.total());
     }
 
     @Test
-    void aSolutionThatPrintsPastTheOutputCapIsStillGradedOnItsResults() {
-        // Floods stdout well past the runner's 1MB cap before returning the correct
-        // answer. The result lives in a dedicated file, off this output channel, so
-        // it survives the truncation and the submission grades on its answers.
-        String noisyButCorrect =
+    void partiallyCorrectSubmissionCountsThePassingCases() {
+        // Drops the second element, so only the [7, 7] case still matches.
+        String dropsSecond =
                 """
-                import java.util.HashMap;
-                import java.util.Map;
-
                 class Solution {
-                    public int[] twoSum(int[] nums, int target) {
-                        for (int i = 0; i < 200_000; i++) {
-                            System.out.println("noise line padding to exceed the output cap " + i);
-                        }
-                        Map<Integer, Integer> seen = new HashMap<>();
-                        for (int i = 0; i < nums.length; i++) {
-                            int need = target - nums[i];
-                            if (seen.containsKey(need)) {
-                                return new int[] {seen.get(need), i};
-                            }
-                            seen.put(nums[i], i);
-                        }
-                        return new int[] {-1, -1};
+                    public int[] pair(int a, int b) {
+                        return new int[] {a, a};
                     }
                 }
                 """;
 
-        Verdict verdict = grader(Duration.ofSeconds(20)).grade(twoSum, noisyButCorrect);
+        Verdict verdict = grader(Duration.ofSeconds(10)).grade(pair, dropsSecond);
+
+        assertThat(verdict.outcome()).isEqualTo(Verdict.Outcome.FAILED);
+        assertThat(verdict.passed()).isEqualTo(1);
+        assertThat(verdict.total()).isEqualTo(3);
+    }
+
+    @Test
+    void aSolutionThatPrintsPastTheOutputCapIsStillGradedOnItsResults() {
+        // Floods stdout past the runner's 1MB cap before returning the right answer.
+        // The result lives in a dedicated file, off this channel, so it survives.
+        String noisyButCorrect =
+                """
+                class Solution {
+                    public int[] pair(int a, int b) {
+                        for (int i = 0; i < 200_000; i++) {
+                            System.out.println("noise line padding to exceed the output cap " + i);
+                        }
+                        return new int[] {a, b};
+                    }
+                }
+                """;
+
+        Verdict verdict = grader(Duration.ofSeconds(20)).grade(pair, noisyButCorrect);
 
         assertThat(verdict.outcome()).isEqualTo(Verdict.Outcome.PASSED);
         assertThat(verdict.passed()).isEqualTo(verdict.total());
@@ -149,13 +107,13 @@ class TestCaseGraderTest {
         String willNotCompile =
                 """
                 class Solution {
-                    public int[] twoSum(int[] nums, int target) {
+                    public int[] pair(int a, int b) {
                         return notAVariable;
                     }
                 }
                 """;
 
-        Verdict verdict = grader(Duration.ofSeconds(10)).grade(twoSum, willNotCompile);
+        Verdict verdict = grader(Duration.ofSeconds(10)).grade(pair, willNotCompile);
 
         assertThat(verdict.outcome()).isEqualTo(Verdict.Outcome.COMPILE_ERROR);
         assertThat(verdict.detail()).contains("Solution.java");
@@ -166,7 +124,7 @@ class TestCaseGraderTest {
         String infiniteLoop =
                 """
                 class Solution {
-                    public int[] twoSum(int[] nums, int target) {
+                    public int[] pair(int a, int b) {
                         while (true) {
                             // spin forever
                         }
@@ -174,7 +132,7 @@ class TestCaseGraderTest {
                 }
                 """;
 
-        Verdict verdict = grader(Duration.ofSeconds(2)).grade(twoSum, infiniteLoop);
+        Verdict verdict = grader(Duration.ofSeconds(2)).grade(pair, infiniteLoop);
 
         assertThat(verdict.outcome()).isEqualTo(Verdict.Outcome.TIMEOUT);
     }

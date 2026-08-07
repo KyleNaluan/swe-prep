@@ -1,3 +1,13 @@
+sweprep:
+  content:
+    # Local clone of the private swe-prep-content repo. It is NOT a submodule and
+    # is gitignored (see /content/ in .gitignore): no problem statement, test data
+    # or reference solution is ever committed to this public repo (issue #4/#14).
+    # The default assumes the backend is run from backend/ (as the README says) and
+    # the content repo is cloned into <repo-root>/content. Override with the
+    # SWEPREP_CONTENT_PATH env var to point at a clone elsewhere.
+    path: ${SWEPREP_CONTENT_PATH:../content}
+
 spring:
   application:
     name: backend
