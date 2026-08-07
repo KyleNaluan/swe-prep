@@ -104,6 +104,24 @@ public final class Fixtures {
                 new Grading.AnswerKey(json("42"), Comparison.exact()));
     }
 
+    /**
+     * A choice exercise whose options happen to be valid JSON literals
+     * ({@code true}/{@code false}) but whose answer key is the string {@code "true"}.
+     * Proves a JSON-looking option is not mis-graded against a string answer key.
+     */
+    public static Exercise booleanLookingChoice() {
+        return new Exercise(
+                "boolean-choice",
+                "Boolean Choice",
+                "True or false?",
+                "fundamentals",
+                List.of("demo"),
+                Difficulty.EASY,
+                Form.REP,
+                new Response.Choice(List.of("true", "false")),
+                new Grading.AnswerKey(text("true"), Comparison.exact()));
+    }
+
     /** An in-memory catalog over the given exercises, in argument order. */
     public static ExerciseCatalog catalogOf(Exercise... exercises) {
         List<Exercise> all = List.of(exercises);
