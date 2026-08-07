@@ -25,6 +25,8 @@ import java.util.List;
  * @param form       whether it is a {@link Form#REP} or a {@link Form#CHALLENGE}
  * @param response   how the solver answers it
  * @param grading    how the answer is judged
+ * @param hints      the ordered hint ladder (issue #16), least revealing rung first;
+ *                   empty when the exercise offers no hints
  */
 public record Exercise(
         String id,
@@ -35,9 +37,11 @@ public record Exercise(
         Difficulty difficulty,
         Form form,
         Response response,
-        Grading grading) {
+        Grading grading,
+        List<Hint> hints) {
 
     public Exercise {
         topics = List.copyOf(topics);
+        hints = List.copyOf(hints);
     }
 }

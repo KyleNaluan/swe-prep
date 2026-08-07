@@ -1,13 +1,24 @@
 package com.sweprep.backend.web;
 
 import com.sweprep.backend.exercise.Exercise;
+import com.sweprep.backend.exercise.Hint;
 import com.sweprep.backend.exercise.Response;
 import com.sweprep.backend.language.LanguageAdapter;
+import java.util.List;
 
 /**
  * Everything the editor needs to render one exercise: the prompt to read, its
- * domain/difficulty/form, and a {@link ResponseView} describing how it is answered
- * (a code stub to seed the editor, or a set of options to choose from).
+ * domain/difficulty/form, a {@link ResponseView} describing how it is answered (a code
+ * stub to seed the editor, or a set of options to choose from), and the names of the
+ * hint-ladder rungs.
+ *
+ * <p>Only the rung <em>names</em> travel here, never their bodies: the editor learns
+ * how many rungs exist and what each is called so it can offer them, but a rung's text
+ * is disclosed only when the solver explicitly takes it (issue #16). That keeps taking
+ * a hint an always-chosen, always-recorded act rather than something on the page from
+ * the start.
+ *
+ * @param hints the hint-ladder rung names in order, empty when there are none
  */
 public record ExerciseView(
         String id,
@@ -16,7 +27,8 @@ public record ExerciseView(
         String domain,
         String difficulty,
         String form,
-        ResponseView response) {
+        ResponseView response,
+        List<String> hints) {
 
     static ExerciseView of(Exercise exercise, LanguageAdapter adapter) {
         return new ExerciseView(
@@ -26,7 +38,8 @@ public record ExerciseView(
                 exercise.domain(),
                 exercise.difficulty().name(),
                 exercise.form().name(),
-                responseView(exercise.response(), adapter));
+                responseView(exercise.response(), adapter),
+                exercise.hints().stream().map(Hint::name).toList());
     }
 
     private static ResponseView responseView(Response response, LanguageAdapter adapter) {

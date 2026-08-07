@@ -15,9 +15,11 @@ import java.util.UUID;
  * @param submittedAt when Run was pressed
  * @param response    the source written or the option picked (the neutral wire field)
  * @param outcome     the verdict outcome ({@link Verdict.Outcome})
- * @param passed      cases that passed
- * @param total       cases in the exercise
- * @param detail      compiler diagnostics or a timeout note, otherwise empty
+ * @param passed        cases that passed
+ * @param total         cases in the exercise
+ * @param detail        compiler diagnostics or a timeout note, otherwise empty
+ * @param runtimeMillis how long the run took, kept for interest only - runtime is
+ *                      reported, never graded (issue #16/#5); 0 when no code ran
  */
 public record Submission(
         UUID id,
@@ -27,4 +29,5 @@ public record Submission(
         Verdict.Outcome outcome,
         int passed,
         int total,
-        String detail) {}
+        String detail,
+        long runtimeMillis) {}

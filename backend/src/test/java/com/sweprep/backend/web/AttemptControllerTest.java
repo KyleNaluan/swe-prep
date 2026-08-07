@@ -14,9 +14,14 @@ import com.sweprep.backend.attempt.AttemptNotFoundException;
 import com.sweprep.backend.attempt.AttemptOutcome;
 import com.sweprep.backend.attempt.AttemptService;
 import com.sweprep.backend.attempt.AttemptWithCount;
+import com.sweprep.backend.attempt.HintResult;
 import com.sweprep.backend.attempt.IllegalAttemptStateException;
+import com.sweprep.backend.attempt.RevealResult;
 import com.sweprep.backend.attempt.Submission;
+import com.sweprep.backend.exercise.Hint;
+import com.sweprep.backend.grader.FailingCase;
 import com.sweprep.backend.grader.Verdict;
+import com.fasterxml.jackson.databind.node.IntNode;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -61,6 +66,7 @@ class AttemptControllerTest {
                 false,
                 null,
                 null,
+                null,
                 null);
     }
 
@@ -84,7 +90,7 @@ class AttemptControllerTest {
         UUID id = UUID.randomUUID();
         Submission submission = new Submission(
                 UUID.randomUUID(), id, Instant.now(), "class Solution {}",
-                Verdict.Outcome.FAILED, 3, 4, "");
+                Verdict.Outcome.FAILED, 3, 4, "", 12L);
         when(service.submit(eq(id), any())).thenReturn(submission);
 
         mockMvc.perform(post("/api/attempts/" + id + "/submissions")
@@ -93,7 +99,12 @@ class AttemptControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.outcome").value("FAILED"))
                 .andExpect(jsonPath("$.passed").value(3))
-                .andExpect(jsonPath("$.total").value(4));
+                .andExpect(jsonPath("$.total").value(4))
+                .andExpect(jsonPath("$.runtimeMillis").value(12))
+                // A failing verdict discloses only the count - no input/expected/actual.
+                .andExpect(jsonPath("$.input").doesNotExist())
+                .andExpect(jsonPath("$.expected").doesNotExist())
+                .andExpect(jsonPath("$.actual").doesNotExist());
     }
 
     @Test
@@ -117,6 +128,56 @@ class AttemptControllerTest {
         mockMvc.perform(post("/api/attempts/" + id + "/abandon"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("No attempt")));
+    }
+
+    @Test
+    void takingAHintReturnsTheRungAndRecordsItOnTheAttempt() throws Exception {
+        UUID id = UUID.randomUUID();
+        AttemptWithCount withCount = new AttemptWithCount(attempt(id, AttemptOutcome.IN_PROGRESS), 1);
+        when(service.takeHint(id)).thenReturn(
+                new HintResult(withCount, 1, 3, new Hint("Pattern", "It is a sliding window.")));
+
+        mockMvc.perform(post("/api/attempts/" + id + "/hints"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.rungsTaken").value(1))
+                .andExpect(jsonPath("$.totalRungs").value(3))
+                .andExpect(jsonPath("$.name").value("Pattern"))
+                .andExpect(jsonPath("$.body").value("It is a sliding window."))
+                .andExpect(jsonPath("$.attempt.hintsTaken").value(0));
+    }
+
+    @Test
+    void revealingReturnsTheFailingCaseAndRecordsTheReveal() throws Exception {
+        UUID id = UUID.randomUUID();
+        AttemptWithCount withCount = new AttemptWithCount(attempt(id, AttemptOutcome.IN_PROGRESS), 1);
+        FailingCase failing = new FailingCase(
+                IntNode.valueOf(3), IntNode.valueOf(9), IntNode.valueOf(6), null);
+        when(service.revealFailingCase(eq(id), any(), any()))
+                .thenReturn(new RevealResult(withCount, failing));
+
+        mockMvc.perform(post("/api/attempts/" + id + "/reveal")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(
+                                new RevealRequest("class Solution {}", "off-by-one on the last index"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.failingCase.input").value(3))
+                .andExpect(jsonPath("$.failingCase.expected").value(9))
+                .andExpect(jsonPath("$.failingCase.actual").value(6))
+                .andExpect(jsonPath("$.attempt.failingCaseRevealed").value(false));
+    }
+
+    @Test
+    void revealingWithNoFailingCaseOmitsIt() throws Exception {
+        UUID id = UUID.randomUUID();
+        AttemptWithCount withCount = new AttemptWithCount(attempt(id, AttemptOutcome.IN_PROGRESS), 0);
+        when(service.revealFailingCase(eq(id), any(), any()))
+                .thenReturn(new RevealResult(withCount, null));
+
+        mockMvc.perform(post("/api/attempts/" + id + "/reveal")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(new RevealRequest("x", null))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.failingCase").doesNotExist());
     }
 
     @Test

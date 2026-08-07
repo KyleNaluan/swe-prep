@@ -57,11 +57,14 @@ class AttemptPersistenceTest {
     private ExerciseCatalog catalog;
 
     private Exercise concept;
+    private Exercise pair;
 
     @BeforeEach
     void setUp() {
         concept = Fixtures.concept();
+        pair = Fixtures.pairInAnyOrder();
         when(catalog.byId("concept-demo")).thenReturn(Optional.of(concept));
+        when(catalog.byId("pair-in-any-order")).thenReturn(Optional.of(pair));
         when(catalog.byId("missing")).thenReturn(Optional.empty());
     }
 
@@ -112,14 +115,96 @@ class AttemptPersistenceTest {
     }
 
     @Test
-    void revealingTheFailingCaseIsRecordedNeverPenalised() {
+    void revealingTheFailingCaseIsRecordedWithItsHypothesisNeverPenalised() {
         Attempt started = service.start("concept-demo");
-        service.recordFailingCaseReveal(started.id());
+        RevealResult result = service.revealFailingCase(started.id(), "A", "I think option A is a trap");
+
+        // A concept exercise is judged by an answer key, so there is no case to disclose;
+        // the reveal and its hypothesis are still recorded.
+        assertThat(result.failingCase()).isNull();
 
         Attempt reloaded = attempts.findById(started.id()).orElseThrow();
         assertThat(reloaded.failingCaseRevealed()).isTrue();
-        // Recording the reveal does not end the attempt.
+        assertThat(reloaded.revealHypothesis()).isEqualTo("I think option A is a trap");
+        // Recording the reveal does not end the attempt or count against it.
         assertThat(reloaded.outcome()).isEqualTo(AttemptOutcome.IN_PROGRESS);
+    }
+
+    @Test
+    void revealingACodeFailureDisclosesTheCaseInputExpectedAndActual() {
+        Attempt started = service.start("pair-in-any-order");
+        // Drops the second element, so the [1,2] and [5,3] cases fail and [7,7] passes.
+        String dropsSecond =
+                """
+                class Solution {
+                    public int[] pair(int a, int b) {
+                        return new int[] {a, a};
+                    }
+                }
+                """;
+        service.submit(started.id(), dropsSecond);
+
+        RevealResult result = service.revealFailingCase(started.id(), dropsSecond, "");
+        assertThat(result.failingCase()).isNotNull();
+        assertThat(result.failingCase().input().toString()).isEqualTo("[1,2]");
+        assertThat(result.failingCase().expected().toString()).isEqualTo("[1,2]");
+        assertThat(result.failingCase().actual().toString()).isEqualTo("[1,1]");
+
+        Attempt reloaded = attempts.findById(started.id()).orElseThrow();
+        assertThat(reloaded.failingCaseRevealed()).isTrue();
+        // A blank hypothesis is allowed (skipping is not forced) and stored as null.
+        assertThat(reloaded.revealHypothesis()).isNull();
+        assertThat(reloaded.outcome()).isEqualTo(AttemptOutcome.IN_PROGRESS);
+    }
+
+    @Test
+    void takingHintsClimbsTheLadderInOrderAndRecordsTheRungReached() {
+        Attempt started = service.start("pair-in-any-order");
+
+        HintResult first = service.takeHint(started.id());
+        assertThat(first.rungsTaken()).isEqualTo(1);
+        assertThat(first.totalRungs()).isEqualTo(3);
+        assertThat(first.revealed().name()).isEqualTo("Pattern");
+        assertThat(attempts.findById(started.id()).orElseThrow().hintsTaken()).isEqualTo(1);
+
+        HintResult second = service.takeHint(started.id());
+        assertThat(second.rungsTaken()).isEqualTo(2);
+        assertThat(second.revealed().name()).isEqualTo("Approach");
+
+        // Taking hints never ends the attempt or counts against it.
+        Attempt reloaded = attempts.findById(started.id()).orElseThrow();
+        assertThat(reloaded.hintsTaken()).isEqualTo(2);
+        assertThat(reloaded.outcome()).isEqualTo(AttemptOutcome.IN_PROGRESS);
+    }
+
+    @Test
+    void takingAHintPastTheLastRungRevealsNothingMoreAndDoesNotOvercount() {
+        Attempt started = service.start("pair-in-any-order");
+        service.takeHint(started.id());
+        service.takeHint(started.id());
+        service.takeHint(started.id());
+
+        HintResult beyond = service.takeHint(started.id());
+        assertThat(beyond.revealed()).isNull();
+        assertThat(beyond.rungsTaken()).isEqualTo(3);
+        assertThat(attempts.findById(started.id()).orElseThrow().hintsTaken()).isEqualTo(3);
+    }
+
+    @Test
+    void aCodeRunRecordsItsRuntimeAndANoCodeRunRecordsZero() {
+        Attempt conceptAttempt = service.start("concept-demo");
+        service.submit(conceptAttempt.id(), "B");
+        assertThat(submissions.findByAttempt(conceptAttempt.id()))
+                .singleElement()
+                .satisfies(s -> assertThat(s.runtimeMillis()).isZero());
+
+        Attempt pairAttempt = service.start("pair-in-any-order");
+        service.submit(pairAttempt.id(), Fixtures.PAIR_SOLUTION);
+        assertThat(submissions.findByAttempt(pairAttempt.id()))
+                .singleElement()
+                // A forked-JVM run takes real wall-clock time; never negative, and
+                // recorded so history and the schedulers can read it.
+                .satisfies(s -> assertThat(s.runtimeMillis()).isGreaterThanOrEqualTo(0));
     }
 
     @Test
