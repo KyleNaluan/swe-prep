@@ -31,7 +31,8 @@ class ExerciseControllerTest {
     static class Config {
         @Bean
         ExerciseCatalog catalog() {
-            return Fixtures.catalogOf(Fixtures.pairInAnyOrder(), Fixtures.concept());
+            return Fixtures.catalogOf(
+                    Fixtures.pairInAnyOrder(), Fixtures.concept(), Fixtures.predictOutputRep());
         }
     }
 
@@ -42,9 +43,24 @@ class ExerciseControllerTest {
     void listsEveryExercise() throws Exception {
         mockMvc.perform(get("/api/exercises"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$.length()").value(3))
                 .andExpect(jsonPath("$[?(@.id=='pair-in-any-order')].form").value("CHALLENGE"))
                 .andExpect(jsonPath("$[?(@.id=='concept-demo')].form").value("REP"));
+    }
+
+    @Test
+    void servesAPredictOutputRepAsAFreeTextBox() throws Exception {
+        // The "predict the output" rep (issue #18) is a free-text response: a plain box,
+        // no options and no code stub. Its answer is graded on submit, never shipped here.
+        mockMvc.perform(get("/api/exercises/rep-predict-output"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.form").value("REP"))
+                .andExpect(jsonPath("$.response.kind").value("freeText"))
+                .andExpect(jsonPath("$.response.options").doesNotExist())
+                .andExpect(jsonPath("$.response.stub").doesNotExist())
+                // It carries an explanation, disclosed only on a wrong answer or on request.
+                .andExpect(jsonPath("$.hasExplanation").value(true))
+                .andExpect(jsonPath("$.explanation").doesNotExist());
     }
 
     @Test

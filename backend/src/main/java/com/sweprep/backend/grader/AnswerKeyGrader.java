@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.TextNode;
 import com.sweprep.backend.exercise.Exercise;
 import com.sweprep.backend.exercise.Grading;
+import com.sweprep.backend.exercise.Response;
 import org.springframework.stereotype.Component;
 
 /**
@@ -38,12 +39,36 @@ public class AnswerKeyGrader implements Grader {
         if (submission == null || submission.isBlank()) {
             return Verdict.of(0, 1);
         }
-        String stripped = submission.strip();
-        JsonNode asText = TextNode.valueOf(stripped);
-        JsonNode asJson = parse(stripped);
-        boolean correct = key.comparison().matches(key.expected(), asText)
-                || (asJson != null && key.comparison().matches(key.expected(), asJson));
+        // A "predict the output" rep is a free-text box graded by exact match after
+        // normalisation (issue #18): trivial whitespace differences between what was
+        // typed and the expected value are not wrong answers. A choice submission is an
+        // exact option string, so it is only stripped - collapsing its internal spaces
+        // could make two distinct options collide. The expected side is normalised the
+        // same way, so a spaced answer key ("race car") still matches.
+        boolean freeText = exercise.response() instanceof Response.FreeText;
+        String normalized = freeText ? normalizeFreeText(submission) : submission.strip();
+        JsonNode expected = freeText ? normalizeTextNode(key.expected()) : key.expected();
+        JsonNode asText = TextNode.valueOf(normalized);
+        JsonNode asJson = parse(normalized);
+        boolean correct = key.comparison().matches(expected, asText)
+                || (asJson != null && key.comparison().matches(expected, asJson));
         return Verdict.of(correct ? 1 : 0, 1);
+    }
+
+    /** Strip the ends and collapse every internal run of whitespace to a single space. */
+    private static String normalizeFreeText(String value) {
+        return value.strip().replaceAll("\\s+", " ");
+    }
+
+    /**
+     * The answer key with the same free-text normalisation applied when it is a plain
+     * string, so a value typed with different spacing still matches. A numeric or
+     * structured key is untouched - it is compared by magnitude/shape, not by text.
+     */
+    private JsonNode normalizeTextNode(JsonNode expected) {
+        return expected != null && expected.isTextual()
+                ? TextNode.valueOf(normalizeFreeText(expected.asText()))
+                : expected;
     }
 
     /**

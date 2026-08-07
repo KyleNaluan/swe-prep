@@ -47,6 +47,15 @@ import java.util.List;
  *                   3.4); {@link Stability#STABLE} unless the content rots
  * @param reviewed   the date {@link Stability#VOLATILE} content was last
  *                   re-verified; {@code null} for stable content, which needs none
+ * @param derivedFrom the id of the underlying problem this rep was derived from
+ *                   (issue #9: nearly every rep falls out of a challenge's reference
+ *                   solution), used only by the warm-up selector to gate the rep: a
+ *                   derived rep (complexity, fill-in-the-blank, predict-output,
+ *                   spot-the-bug) is only served once that problem has been attempted,
+ *                   since practising it cold is guessing. {@code null} for a rep that is
+ *                   available cold - the pattern-identification type, whose whole point
+ *                   is that recognising a shape needs no prior attempt (issue #18). Only
+ *                   meaningful for a {@link Form#REP}; a challenge carries {@code null}
  */
 public record Exercise(
         String id,
@@ -62,7 +71,8 @@ public record Exercise(
         String explanation,
         List<Family> family,
         Stability stability,
-        LocalDate reviewed) implements Content {
+        LocalDate reviewed,
+        String derivedFrom) implements Content {
 
     public Exercise {
         topics = List.copyOf(topics);
@@ -74,9 +84,10 @@ public record Exercise(
     /**
      * Convenience constructor for an exercise with no explanation and no content-level
      * family or stability tags: no explanation, an empty family, {@link
-     * Stability#STABLE}, and no review date. These are additive metadata (issue #51,
-     * design revision t3); an untagged exercise is a stable one with no family, and one
-     * with no {@code explanation} carries {@code null}.
+     * Stability#STABLE}, no review date, and no {@code derivedFrom} gate (available
+     * cold). These are additive metadata (issue #51, design revision t3, issue #18); an
+     * untagged exercise is a stable one with no family, one with no {@code explanation}
+     * carries {@code null}, and one with no {@code derivedFrom} is served without gating.
      */
     public Exercise(
             String id,
@@ -91,6 +102,6 @@ public record Exercise(
             List<Hint> hints) {
         this(
                 id, title, statement, domain, topics, difficulty, form, response, grading, hints,
-                null, List.of(), Stability.STABLE, null);
+                null, List.of(), Stability.STABLE, null, null);
     }
 }
