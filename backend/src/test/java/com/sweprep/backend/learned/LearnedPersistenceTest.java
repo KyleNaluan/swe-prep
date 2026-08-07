@@ -8,10 +8,11 @@ import com.sweprep.backend.attempt.Attempt;
 import com.sweprep.backend.attempt.AttemptService;
 import com.sweprep.backend.attempt.CurrentUser;
 import com.sweprep.backend.attempt.Submission;
+import com.sweprep.backend.attempt.SubmissionOutcome;
 import com.sweprep.backend.attempt.SubmissionRepository;
+import com.sweprep.backend.exercise.ContentCatalog;
 import com.sweprep.backend.exercise.Exercise;
 import com.sweprep.backend.exercise.ExerciseCatalog;
-import com.sweprep.backend.grader.Verdict;
 import com.sweprep.backend.learned.LearnedState.Status;
 import com.sweprep.backend.testsupport.Fixtures;
 import java.time.Clock;
@@ -69,6 +70,11 @@ class LearnedPersistenceTest {
 
     @MockitoBean
     private ExerciseCatalog catalog;
+
+    // Mocking ExerciseCatalog replaces the shared FileExerciseCatalog bean, so the wider
+    // ContentCatalog (LessonController's dependency) must be supplied for the context to load.
+    @MockitoBean
+    private ContentCatalog contentCatalog;
 
     private ZoneId zone;
 
@@ -165,7 +171,7 @@ class LearnedPersistenceTest {
                 attemptId,
                 when,
                 "B",
-                Verdict.Outcome.PASSED,
+                SubmissionOutcome.PASSED,
                 1,
                 1,
                 "",

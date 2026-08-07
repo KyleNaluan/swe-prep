@@ -26,6 +26,17 @@ type Summary = {
 type ResponseSpec =
   | { kind: 'code'; language: string; stub: string }
   | { kind: 'choice'; options: string[] }
+  // A machine-graded "predict the output" free-text box (issue #18).
+  | { kind: 'freeText' }
+  // A self-graded "explain in your own words" produce-then-reveal item (issue #41). The
+  // model answer is never in this spec - it is disclosed only after the learner commits.
+  | { kind: 'selfCheck' }
+
+// A self-rating of a revealed self-check answer (issue #41). Never a score, never graded.
+type SelfRating = 'NAILED_IT' | 'PARTIAL' | 'MISSED'
+
+// What the self-check reveal returns: the model answer, and the committed submission to rate.
+type SelfCheckReveal = { submissionId: string; modelAnswer: string }
 
 type Exercise = {
   id: string
@@ -87,7 +98,7 @@ type AttemptView = {
   exerciseTitle: string
   domain: string
   form: string
-  outcome: 'IN_PROGRESS' | 'SOLVED' | 'ABANDONED' | 'READ'
+  outcome: 'IN_PROGRESS' | 'SOLVED' | 'ABANDONED' | 'READ' | 'EXPLAINED'
   startedAt: string
   endedAt: string | null
   submissionCount: number
@@ -153,6 +164,16 @@ function Practice({
 
   const codeRef = useRef<string>('')
   const [choice, setChoice] = useState<string | null>(null)
+  // The free-text box's contents, shared by the machine-graded predict-output item and the
+  // self-graded explain item (both render a text box; only their grading differs).
+  const [text, setText] = useState('')
+
+  // The self-check produce-then-reveal flow (issue #41): the revealed model answer + the
+  // submission to rate (null until the learner commits their text), and the rating placed.
+  const [reveal, setReveal] = useState<SelfCheckReveal | null>(null)
+  const [selfRating, setSelfRating] = useState<SelfRating | null>(null)
+  const [selfCheckBusy, setSelfCheckBusy] = useState(false)
+  const [selfCheckError, setSelfCheckError] = useState<string | null>(null)
 
   // The active sitting for the selected exercise. Held in a ref so the selection
   // effect's cleanup can abandon it on switch-away without re-subscribing.
@@ -220,6 +241,10 @@ function Practice({
     setLoadError(null)
     setRun({ phase: 'idle' })
     setChoice(null)
+    setText('')
+    setReveal(null)
+    setSelfRating(null)
+    setSelfCheckError(null)
     setSolved(false)
     setRevealedHints([])
     setFailingCase(null)
@@ -267,7 +292,12 @@ function Practice({
 
   async function handleSubmit() {
     if (!exercise) return
-    const submission = exercise.response.kind === 'code' ? codeRef.current : (choice ?? '')
+    const submission =
+      exercise.response.kind === 'code'
+        ? codeRef.current
+        : exercise.response.kind === 'choice'
+          ? (choice ?? '')
+          : text
     setRun({ phase: 'running' })
     // A fresh run makes any previously revealed failing case stale; drop it and any
     // half-typed hypothesis so the reveal always reflects the current code. A previously
@@ -328,7 +358,12 @@ function Practice({
   // one-line hypothesis typed first. Both are recorded, never penalised (issue #16).
   async function handleReveal() {
     if (!exercise) return
-    const submission = exercise.response.kind === 'code' ? codeRef.current : (choice ?? '')
+    const submission =
+      exercise.response.kind === 'code'
+        ? codeRef.current
+        : exercise.response.kind === 'choice'
+          ? (choice ?? '')
+          : text
     setRevealBusy(true)
     try {
       const attemptId = await ensureAttempt(exercise.id)
@@ -367,6 +402,56 @@ function Practice({
       // Best-effort; a failure here should not disrupt the solved state.
     } finally {
       setExplanationBusy(false)
+    }
+  }
+
+  // Commit the produced explanation and reveal the model answer (issue #41). Nothing is
+  // machine-graded: the text is frozen server-side before the answer comes back, so a later
+  // self-rating cannot be a copy of what was peeked at.
+  async function handleRevealModelAnswer() {
+    if (!exercise) return
+    setSelfCheckBusy(true)
+    setSelfCheckError(null)
+    try {
+      const attemptId = await ensureAttempt(exercise.id)
+      const response = await apiFetch(`/api/attempts/${attemptId}/self-check/reveal`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ produced: text }),
+      })
+      if (!response.ok) throw new Error(await errorMessage(response))
+      setReveal((await response.json()) as SelfCheckReveal)
+    } catch (error: unknown) {
+      setSelfCheckError(error instanceof Error ? error.message : String(error))
+    } finally {
+      setSelfCheckBusy(false)
+    }
+  }
+
+  // Record the learner's self-rating against the committed submission and end the sitting
+  // EXPLAINED (issue #41). It is a generation signal only - it never touches any score.
+  async function handleSelfRate(rating: SelfRating) {
+    if (!exercise || !reveal) return
+    setSelfCheckBusy(true)
+    setSelfCheckError(null)
+    try {
+      const attemptId = await ensureAttempt(exercise.id)
+      const response = await apiFetch(`/api/attempts/${attemptId}/self-check/rating`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ submission: reveal.submissionId, rating }),
+      })
+      if (!response.ok) throw new Error(await errorMessage(response))
+      // The sitting is now terminal; mark it so switch-away never tries to abandon it, and
+      // let the session know an optional-main item was completed.
+      if (attemptRef.current) attemptRef.current.solved = true
+      setSelfRating(rating)
+      onSolved?.()
+      refreshHistory()
+    } catch (error: unknown) {
+      setSelfCheckError(error instanceof Error ? error.message : String(error))
+    } finally {
+      setSelfCheckBusy(false)
     }
   }
 
@@ -437,106 +522,229 @@ function Practice({
           </header>
           <p className="statement">{exercise.statement}</p>
 
-          {exercise.response.kind === 'code' ? (
-            <div className="editor">
-              <Editor
-                key={exercise.id}
-                height="360px"
-                defaultLanguage={exercise.response.language}
-                defaultValue={exercise.response.stub}
-                onChange={(value) => {
-                  codeRef.current = value ?? ''
-                }}
-                options={{ minimap: { enabled: false }, fontSize: 14 }}
-              />
-            </div>
-          ) : (
-            <fieldset className="choices">
-              <legend>Choose one</legend>
-              {exercise.response.options.map((option) => (
-                <label key={option} className="choice">
-                  <input
-                    type="radio"
-                    name="answer"
-                    value={option}
-                    checked={choice === option}
-                    onChange={() => setChoice(option)}
-                  />
-                  <span>{option}</span>
-                </label>
-              ))}
-            </fieldset>
-          )}
-
-          <div className="actions">
-            <button
-              type="button"
-              onClick={handleSubmit}
-              disabled={
-                run.phase === 'running' ||
-                solved ||
-                (exercise.response.kind === 'choice' && choice === null)
-              }
-            >
-              {run.phase === 'running'
-                ? 'Checking...'
-                : exercise.response.kind === 'code'
-                  ? 'Run'
-                  : 'Submit'}
-            </button>
-            <button
-              type="button"
-              className="secondary"
-              onClick={handleGiveUp}
-              disabled={run.phase === 'running' || solved || attemptRef.current === null}
-            >
-              Give up
-            </button>
-          </div>
-
-          <VerdictView run={run} scored={exercise.response.kind === 'choice'} />
-
-          {!solved && (
-            <HintLadder
-              rungNames={exercise.hints}
-              revealed={revealedHints}
-              busy={hintBusy}
-              stuck={
-                consecutiveFailures >= STUCK_NUDGE_AFTER_FAILURES &&
-                revealedHints.length < exercise.hints.length
-              }
-              onTakeHint={handleTakeHint}
+          {exercise.response.kind === 'selfCheck' ? (
+            <SelfCheckView
+              text={text}
+              reveal={reveal}
+              rating={selfRating}
+              busy={selfCheckBusy}
+              error={selfCheckError}
+              onType={setText}
+              onReveal={handleRevealModelAnswer}
+              onRate={handleSelfRate}
             />
-          )}
+          ) : (
+            <>
+              {exercise.response.kind === 'code' ? (
+                <div className="editor">
+                  <Editor
+                    key={exercise.id}
+                    height="360px"
+                    defaultLanguage={exercise.response.language}
+                    defaultValue={exercise.response.stub}
+                    onChange={(value) => {
+                      codeRef.current = value ?? ''
+                    }}
+                    options={{ minimap: { enabled: false }, fontSize: 14 }}
+                  />
+                </div>
+              ) : exercise.response.kind === 'freeText' ? (
+                <div className="freetext">
+                  <label htmlFor="free-answer">Type your answer</label>
+                  <input
+                    id="free-answer"
+                    type="text"
+                    className="hypothesis"
+                    value={text}
+                    disabled={solved}
+                    onChange={(event) => setText(event.target.value)}
+                  />
+                </div>
+              ) : (
+                <fieldset className="choices">
+                  <legend>Choose one</legend>
+                  {exercise.response.options.map((option) => (
+                    <label key={option} className="choice">
+                      <input
+                        type="radio"
+                        name="answer"
+                        value={option}
+                        checked={choice === option}
+                        onChange={() => setChoice(option)}
+                      />
+                      <span>{option}</span>
+                    </label>
+                  ))}
+                </fieldset>
+              )}
 
-          {exercise.response.kind === 'code' &&
-            !solved &&
-            run.phase === 'done' &&
-            run.verdict.outcome === 'FAILED' && (
-              <RevealPanel
-                prompting={revealPrompting}
-                busy={revealBusy}
-                hypothesis={hypothesis}
-                failingCase={failingCase}
-                onHypothesisChange={setHypothesis}
-                onStart={() => setRevealPrompting(true)}
-                onConfirm={handleReveal}
-                onCancel={() => setRevealPrompting(false)}
+              <div className="actions">
+                <button
+                  type="button"
+                  onClick={handleSubmit}
+                  disabled={
+                    run.phase === 'running' ||
+                    solved ||
+                    (exercise.response.kind === 'choice' && choice === null) ||
+                    (exercise.response.kind === 'freeText' && text.trim() === '')
+                  }
+                >
+                  {run.phase === 'running'
+                    ? 'Checking...'
+                    : exercise.response.kind === 'code'
+                      ? 'Run'
+                      : 'Submit'}
+                </button>
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={handleGiveUp}
+                  disabled={run.phase === 'running' || solved || attemptRef.current === null}
+                >
+                  Give up
+                </button>
+              </div>
+
+              <VerdictView run={run} scored={exercise.response.kind !== 'code'} />
+
+              {!solved && (
+                <HintLadder
+                  rungNames={exercise.hints}
+                  revealed={revealedHints}
+                  busy={hintBusy}
+                  stuck={
+                    consecutiveFailures >= STUCK_NUDGE_AFTER_FAILURES &&
+                    revealedHints.length < exercise.hints.length
+                  }
+                  onTakeHint={handleTakeHint}
+                />
+              )}
+
+              {exercise.response.kind === 'code' &&
+                !solved &&
+                run.phase === 'done' &&
+                run.verdict.outcome === 'FAILED' && (
+                  <RevealPanel
+                    prompting={revealPrompting}
+                    busy={revealBusy}
+                    hypothesis={hypothesis}
+                    failingCase={failingCase}
+                    onHypothesisChange={setHypothesis}
+                    onStart={() => setRevealPrompting(true)}
+                    onConfirm={handleReveal}
+                    onCancel={() => setRevealPrompting(false)}
+                  />
+                )}
+
+              <ExplanationPanel
+                hasExplanation={exercise.hasExplanation}
+                explanation={explanation}
+                solved={solved}
+                busy={explanationBusy}
+                onRequest={handleRequestExplanation}
               />
-            )}
-
-          <ExplanationPanel
-            hasExplanation={exercise.hasExplanation}
-            explanation={explanation}
-            solved={solved}
-            busy={explanationBusy}
-            onRequest={handleRequestExplanation}
-          />
+            </>
+          )}
         </>
       )}
 
       <History attempts={history} />
     </>
+  )
+}
+
+// The self-graded "explain in your own words" produce-then-reveal flow (issue #41). You
+// write your explanation, commit it to reveal the model answer, then rate yourself against
+// it. Nothing here is machine-graded and no rating touches any score - it is production
+// practice the recognition reps cannot give, kept structurally out of the competence signal.
+function SelfCheckView({
+  text,
+  reveal,
+  rating,
+  busy,
+  error,
+  onType,
+  onReveal,
+  onRate,
+}: {
+  text: string
+  reveal: SelfCheckReveal | null
+  rating: SelfRating | null
+  busy: boolean
+  error: string | null
+  onType: (value: string) => void
+  onReveal: () => void
+  onRate: (rating: SelfRating) => void
+}) {
+  const ratingLabels: Record<SelfRating, string> = {
+    NAILED_IT: 'Nailed it',
+    PARTIAL: 'Partial',
+    MISSED: 'Missed it',
+  }
+  return (
+    <section className="self-check">
+      <div className="freetext">
+        <label htmlFor="explain-answer">Explain it in your own words</label>
+        <textarea
+          id="explain-answer"
+          className="explain-box"
+          rows={6}
+          value={text}
+          disabled={reveal !== null}
+          placeholder="Write your explanation before revealing the model answer."
+          onChange={(event) => onType(event.target.value)}
+        />
+      </div>
+
+      {error && <p className="status down">Could not save: {error}</p>}
+
+      {reveal === null ? (
+        <div className="actions">
+          <button type="button" onClick={onReveal} disabled={busy || text.trim() === ''}>
+            {busy ? 'Revealing...' : 'Reveal the model answer'}
+          </button>
+          <p className="hints-note">
+            Producing it cold first is the point - the interview asks you to explain, not to
+            recognise. Nothing here is graded.
+          </p>
+        </div>
+      ) : (
+        <>
+          <section className="explanation">
+            <h2>Model answer</h2>
+            <p className="explanation-body">{reveal.modelAnswer}</p>
+          </section>
+
+          {rating === null ? (
+            <section className="self-rating">
+              <h2>How did yours compare?</h2>
+              <p className="hints-note">
+                This is for you - it is recorded as a generation signal, never a score, and it
+                can never move your objective progress.
+              </p>
+              <div className="actions">
+                {(Object.keys(ratingLabels) as SelfRating[]).map((value) => (
+                  <button
+                    key={value}
+                    type="button"
+                    className="secondary"
+                    disabled={busy}
+                    onClick={() => onRate(value)}
+                  >
+                    {ratingLabels[value]}
+                  </button>
+                ))}
+              </div>
+            </section>
+          ) : (
+            <p className="status up">
+              Explanation recorded ({ratingLabels[rating]}). That is production practice done -
+              no score changed.
+            </p>
+          )}
+        </>
+      )}
+    </section>
   )
 }
 

@@ -1,0 +1,118 @@
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import Practice from './Practice'
+
+// Monaco needs a canvas jsdom cannot give it; a self-check item never renders it, but the
+// import is stubbed so nothing pulls the real editor in.
+vi.mock('@monaco-editor/react', () => ({
+  default: ({ defaultValue }: { defaultValue?: string }) => (
+    <textarea aria-label="editor" defaultValue={defaultValue} />
+  ),
+}))
+
+const CATALOG = [
+  {
+    id: 'explain-gd',
+    title: 'Explain gradient descent',
+    domain: 'ai-ml',
+    difficulty: 'MEDIUM',
+    form: 'CHALLENGE',
+  },
+]
+
+const EXPLAIN = {
+  id: 'explain-gd',
+  title: 'Explain gradient descent',
+  statement: 'Explain, in your own words, what gradient descent does.',
+  domain: 'ai-ml',
+  difficulty: 'MEDIUM',
+  response: { kind: 'selfCheck' },
+  hints: [],
+  hasExplanation: false,
+}
+
+const MODEL_ANSWER = 'It steps parameters down the negative gradient of the loss.'
+
+type Calls = { reveal: number; rating: string | null; revealedProduced: string | null }
+
+function mockFetch(calls: Calls) {
+  return vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+    const href = String(url)
+    const method = init?.method ?? 'GET'
+    if (href.endsWith('/api/exercises')) return { ok: true, json: async () => CATALOG } as Response
+    if (href.endsWith('/api/exercises/explain-gd'))
+      return { ok: true, json: async () => EXPLAIN } as Response
+    if (href.endsWith('/api/attempts') && method === 'POST')
+      return { ok: true, json: async () => ({ id: 'att-1' }) } as Response
+    if (href.endsWith('/api/attempts')) return { ok: true, json: async () => [] } as Response
+    if (href.endsWith('/self-check/reveal')) {
+      calls.reveal += 1
+      calls.revealedProduced = JSON.parse(String(init?.body)).produced
+      return {
+        ok: true,
+        json: async () => ({ submissionId: 'sub-1', modelAnswer: MODEL_ANSWER }),
+      } as Response
+    }
+    if (href.endsWith('/self-check/rating')) {
+      calls.rating = JSON.parse(String(init?.body)).rating
+      return {
+        ok: true,
+        json: async () => ({
+          rating: calls.rating,
+          attempt: { id: 'att-1', outcome: 'EXPLAINED' },
+        }),
+      } as Response
+    }
+    throw new Error(`unexpected fetch to ${method} ${href}`)
+  })
+}
+
+describe('Practice self-check (issue #41)', () => {
+  beforeEach(() => vi.stubGlobal('fetch', vi.fn()))
+  afterEach(() => {
+    cleanup()
+    vi.unstubAllGlobals()
+  })
+
+  it('produces, then reveals the model answer only afterwards, then records a self-rating', async () => {
+    const calls: Calls = { reveal: 0, rating: null, revealedProduced: null }
+    vi.stubGlobal('fetch', mockFetch(calls))
+    render(<Practice />)
+
+    // The explain item is the default main.
+    expect(await screen.findByRole('heading', { name: 'Explain gradient descent' })).toBeInTheDocument()
+
+    // The model answer is not on the page before the learner commits their own text.
+    expect(screen.queryByText(MODEL_ANSWER)).not.toBeInTheDocument()
+
+    // Reveal is disabled until something is produced.
+    const revealButton = screen.getByRole('button', { name: 'Reveal the model answer' })
+    expect(revealButton).toBeDisabled()
+
+    fireEvent.change(screen.getByLabelText('Explain it in your own words'), {
+      target: { value: 'my cold explanation' },
+    })
+    expect(revealButton).toBeEnabled()
+    fireEvent.click(revealButton)
+
+    // The model answer appears only after the reveal, and the produced text was committed.
+    expect(await screen.findByText(MODEL_ANSWER)).toBeInTheDocument()
+    expect(calls.reveal).toBe(1)
+    expect(calls.revealedProduced).toBe('my cold explanation')
+
+    // Self-rating is recorded, and the flow confirms it without changing any score.
+    fireEvent.click(screen.getByRole('button', { name: 'Nailed it' }))
+    await waitFor(() => expect(calls.rating).toBe('NAILED_IT'))
+    expect(await screen.findByText(/Explanation recorded/)).toBeInTheDocument()
+  })
+
+  it('never machine-grades the free text: there is no Run/Submit button', async () => {
+    vi.stubGlobal('fetch', mockFetch({ reveal: 0, rating: null, revealedProduced: null }))
+    render(<Practice />)
+    await screen.findByRole('heading', { name: 'Explain gradient descent' })
+
+    // A self-check has no graded submit path at all - only produce-then-reveal.
+    expect(screen.queryByRole('button', { name: 'Run' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Submit' })).not.toBeInTheDocument()
+  })
+})

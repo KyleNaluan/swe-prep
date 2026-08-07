@@ -18,11 +18,14 @@ import com.sweprep.backend.attempt.ExplanationResult;
 import com.sweprep.backend.attempt.HintResult;
 import com.sweprep.backend.attempt.IllegalAttemptStateException;
 import com.sweprep.backend.attempt.RevealResult;
+import com.sweprep.backend.attempt.SelfCheckRating;
+import com.sweprep.backend.attempt.SelfCheckReveal;
+import com.sweprep.backend.attempt.SelfRating;
 import com.sweprep.backend.attempt.Submission;
+import com.sweprep.backend.attempt.SubmissionOutcome;
 import com.sweprep.backend.attempt.SubmitResult;
 import com.sweprep.backend.exercise.Hint;
 import com.sweprep.backend.grader.FailingCase;
-import com.sweprep.backend.grader.Verdict;
 import com.fasterxml.jackson.databind.node.IntNode;
 import java.time.Instant;
 import java.util.List;
@@ -93,7 +96,7 @@ class AttemptControllerTest {
         UUID id = UUID.randomUUID();
         Submission submission = new Submission(
                 UUID.randomUUID(), id, Instant.now(), "class Solution {}",
-                Verdict.Outcome.FAILED, 3, 4, "", 12L);
+                SubmissionOutcome.FAILED, 3, 4, "", 12L);
         // A wrong answer here carries no explanation (this check has none).
         when(service.submit(eq(id), any())).thenReturn(new SubmitResult(submission, null));
 
@@ -118,7 +121,7 @@ class AttemptControllerTest {
         UUID id = UUID.randomUUID();
         Submission submission = new Submission(
                 UUID.randomUUID(), id, Instant.now(), "B",
-                Verdict.Outcome.FAILED, 0, 1, "", 0L);
+                SubmissionOutcome.FAILED, 0, 1, "", 0L);
         when(service.submit(eq(id), any()))
                 .thenReturn(new SubmitResult(submission, "Because B holds in every case."));
 
@@ -228,5 +231,55 @@ class AttemptControllerTest {
                         .content(mapper.writeValueAsString(new RunRequest("x"))))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("already ended")));
+    }
+
+    @Test
+    void revealingASelfCheckReturnsTheModelAnswerAndTheSubmissionToRate() throws Exception {
+        UUID id = UUID.randomUUID();
+        UUID submissionId = UUID.randomUUID();
+        Submission committed = new Submission(
+                submissionId, id, Instant.now(), "my explanation",
+                SubmissionOutcome.SELF_RATED, 0, 0, "", 0L);
+        when(service.revealSelfCheck(eq(id), any()))
+                .thenReturn(new SelfCheckReveal(committed, "The model answer."));
+
+        mockMvc.perform(post("/api/attempts/" + id + "/self-check/reveal")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(
+                                new SelfCheckRevealRequest("my explanation"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.submissionId").value(submissionId.toString()))
+                .andExpect(jsonPath("$.modelAnswer").value("The model answer."));
+    }
+
+    @Test
+    void ratingASelfCheckRecordsItAndEndsExplained() throws Exception {
+        UUID id = UUID.randomUUID();
+        UUID submissionId = UUID.randomUUID();
+        AttemptWithCount withCount = new AttemptWithCount(attempt(id, AttemptOutcome.EXPLAINED), 1);
+        when(service.rateSelfCheck(eq(id), eq(submissionId), eq(SelfRating.NAILED_IT)))
+                .thenReturn(new SelfCheckRating(withCount, SelfRating.NAILED_IT));
+
+        mockMvc.perform(post("/api/attempts/" + id + "/self-check/rating")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(
+                                new SelfCheckRatingRequest(submissionId, SelfRating.NAILED_IT))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.rating").value("NAILED_IT"))
+                .andExpect(jsonPath("$.attempt.outcome").value("EXPLAINED"));
+    }
+
+    @Test
+    void revealingANonSelfCheckItemIsABadRequest() throws Exception {
+        UUID id = UUID.randomUUID();
+        when(service.revealSelfCheck(eq(id), any()))
+                .thenThrow(new IllegalArgumentException("Exercise 'x' is not a self-check item"));
+
+        mockMvc.perform(post("/api/attempts/" + id + "/self-check/reveal")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(new SelfCheckRevealRequest("text"))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error")
+                        .value(org.hamcrest.Matchers.containsString("not a self-check")));
     }
 }
