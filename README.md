@@ -55,7 +55,11 @@ Prerequisites: Java 21 on `PATH`, Docker running, Node 24.
    ```
 
 5. Open `http://localhost:5173`. The app opens straight on the daily warm-up, with
-   Today/Practice/Learn tabs to switch surfaces. The warm-up (issue #18) walks an
+   Today/Practice/Learn tabs to switch surfaces and a role picker in the header for
+   choosing which roles you are preparing for (issue #40): the required warm-up and
+   auto-seeding then draw only from those families (plus the always-on core), while
+   everything stays reachable through the Practice/Learn browse tabs - it hides nothing.
+   The warm-up (issue #18) walks an
    interleaved set of ~8 quick reps one at a time - multiple-choice or a short
    predict-the-output box - driving the same attempt flow every exercise uses; a
    wrong answer shows the check's explanation at once and re-queues that rep later
