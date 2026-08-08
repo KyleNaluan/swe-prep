@@ -3,6 +3,7 @@ import { apiFetch, errorMessage } from './api'
 import Warmup from './Warmup'
 import Practice from './Practice'
 import Lesson from './Lesson'
+import RolePicker from './RolePicker'
 
 // The daily session loop (issue #19) - the product the rest of the machinery serves.
 //
@@ -37,6 +38,13 @@ function Session() {
   // the day, so completing a single Practice exercise becomes the fallback that banks it -
   // an empty warm-up must never leave the day impossible to complete.
   const [warmupEmpty, setWarmupEmpty] = useState(false)
+  // Bumped whenever the user changes their role focus (issue #40). It keys the warm-up so a
+  // new role rebuilds the set from the newly active families rather than showing a stale one.
+  const [roleVersion, setRoleVersion] = useState(0)
+  const handleRoleChange = useCallback(() => {
+    setWarmupEmpty(false)
+    setRoleVersion((v) => v + 1)
+  }, [])
 
   const refreshStatus = useCallback(() => {
     apiFetch('/api/session')
@@ -106,7 +114,10 @@ function Session() {
     <main className="workspace">
       <header className="session-header">
         <h1 className="wordmark">swe-prep</h1>
-        <DayBadge status={status} />
+        <div className="session-header-controls">
+          <RolePicker onChange={handleRoleChange} />
+          <DayBadge status={status} />
+        </div>
       </header>
 
       <nav className="mode-tabs" aria-label="Sections">
@@ -138,7 +149,11 @@ function Session() {
 
       {mode === 'today' ? (
         tier === 'warmup' ? (
-          <Warmup onComplete={handleWarmupComplete} onEmpty={handleWarmupEmpty} />
+          <Warmup
+            key={roleVersion}
+            onComplete={handleWarmupComplete}
+            onEmpty={handleWarmupEmpty}
+          />
         ) : (
           <Landing status={status} onStartMain={() => setMode('practice')} />
         )

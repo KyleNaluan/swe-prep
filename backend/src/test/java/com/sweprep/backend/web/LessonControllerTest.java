@@ -1,10 +1,14 @@
 package com.sweprep.backend.web;
 
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.sweprep.backend.attempt.AttemptNotFoundException;
+import com.sweprep.backend.attempt.LessonReadService;
 import com.sweprep.backend.exercise.ContentCatalog;
 import com.sweprep.backend.testsupport.Fixtures;
 import java.util.List;
@@ -28,6 +32,9 @@ class LessonControllerTest {
 
     @MockitoBean
     private ContentCatalog catalog;
+
+    @MockitoBean
+    private LessonReadService reads;
 
     @Test
     void readsALessonWithItsSelfExplanationPrompts() throws Exception {
@@ -62,5 +69,23 @@ class LessonControllerTest {
         when(catalog.contentById("concept-demo")).thenReturn(Optional.of(Fixtures.concept()));
 
         mockMvc.perform(get("/api/lessons/concept-demo")).andExpect(status().isNotFound());
+    }
+
+    @Test
+    void readingALessonRecordsItSoItsChecksAreSeeded() throws Exception {
+        // The read is what opts an inactive-family lesson's Checks into the warm-up (issue #40);
+        // the endpoint just records it and returns 200. The seeding effect is proven end to end
+        // in WarmupServiceTest.
+        mockMvc.perform(post("/api/lessons/lesson-indexes/read")).andExpect(status().isOk());
+        verify(reads).recordRead("lesson-indexes");
+    }
+
+    @Test
+    void readingANonLessonIdIsNotFound() throws Exception {
+        org.mockito.Mockito.doThrow(new AttemptNotFoundException("nope"))
+                .when(reads)
+                .recordRead("concept-demo");
+
+        mockMvc.perform(post("/api/lessons/concept-demo/read")).andExpect(status().isNotFound());
     }
 }

@@ -64,6 +64,19 @@ function mockFetch(calls: Calls, options: { warmup?: unknown[]; failComplete?: b
     if (href.endsWith('/api/reps/warmup')) {
       return { ok: true, json: async () => options.warmup ?? WARMUP_SET } as Response
     }
+    if (href.endsWith('/api/role')) {
+      // The role picker (issue #40) reads its status on mount and PUTs on a change; the session
+      // tests do not exercise role switching, so a stable default status is enough.
+      return {
+        ok: true,
+        json: async () => ({
+          presets: [{ id: 'everything', label: 'Everything', families: [] }],
+          activeFamilies: [],
+          currentPreset: 'everything',
+          chosen: false,
+        }),
+      } as Response
+    }
     if (href.endsWith('/api/session/complete-warmup')) {
       calls.completeWarmup += 1
       // Simulate an unreachable backend: the completion cannot be saved.
@@ -254,6 +267,10 @@ describe('Session (daily loop, issue #19)', () => {
               { id: 'l1', title: 'A Lesson', domain: 'fundamentals', difficulty: 'EASY', promptCount: 1 },
             ],
           } as Response
+        if (href.endsWith('/api/lessons/l1/read'))
+          // Reading a lesson seeds its checks into the warm-up (issue #40): a best-effort POST
+          // fired when the lesson opens.
+          return { ok: true, json: async () => ({}) } as Response
         if (href.endsWith('/api/lessons/l1'))
           return {
             ok: true,

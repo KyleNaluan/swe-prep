@@ -1,7 +1,5 @@
 package com.sweprep.backend.reps;
 
-import com.sweprep.backend.exercise.Family;
-import java.util.List;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
@@ -11,24 +9,19 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * section 4.2). {@code warmupSize} is a hard cap on the four-minute core - it is
  * deliberately small and must not grow.
  *
- * <p>{@code activeFamilies} is the temporary home of the family filter until its user
- * setting and UI land (#40). Empty (the default) means no family restriction - every
- * family is treated as active - so nothing is suppressed before the user can choose;
- * the suppression mechanism itself lives in {@link WarmupSelector} and is exercised
- * whenever this list is non-empty. {@link Family#CORE} and {@link Family#PROFESSIONAL}
- * are always active regardless of this list.
+ * <p>Which families are active is <em>not</em> a config property: it is the user's own role choice
+ * (issue #40), stored per user and read by {@link WarmupService} from {@link
+ * com.sweprep.backend.role.RoleService}. Keeping it out of here is deliberate - there is one family
+ * filter, sourced from the user's durable choice, not a config default competing with it.
  *
  * @param warmupSize         reps in one warm-up set
  * @param maxConsecutiveSame most reps in a row that may share a topic or domain
- * @param activeFamilies     families the user has turned on; empty means all active
  */
 @ConfigurationProperties(prefix = "sweprep.reps")
-public record RepProperties(
-        Integer warmupSize, Integer maxConsecutiveSame, List<Family> activeFamilies) {
+public record RepProperties(Integer warmupSize, Integer maxConsecutiveSame) {
 
     public RepProperties {
         warmupSize = warmupSize == null ? 8 : warmupSize;
         maxConsecutiveSame = maxConsecutiveSame == null ? 2 : maxConsecutiveSame;
-        activeFamilies = activeFamilies == null ? List.of() : List.copyOf(activeFamilies);
     }
 }

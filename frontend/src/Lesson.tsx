@@ -67,7 +67,12 @@ function Lesson() {
         return (await response.json()) as LessonDetail
       })
       .then((loaded) => {
-        if (!cancelled) setLesson({ ...loaded, prompts: loaded.prompts ?? [] })
+        if (cancelled) return
+        setLesson({ ...loaded, prompts: loaded.prompts ?? [] })
+        // Reading a lesson seeds its checks into the warm-up (issue #40): an inactive-family
+        // lesson pulls that one concept's checks into review, one concept at a time. This is a
+        // best-effort side effect of opening the lesson - a failure here must never break reading.
+        void apiFetch(`/api/lessons/${loaded.id}/read`, { method: 'POST' }).catch(() => {})
       })
       .catch((error: unknown) => {
         if (!cancelled) setLoadError(error instanceof Error ? error.message : String(error))
