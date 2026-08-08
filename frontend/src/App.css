@@ -449,6 +449,63 @@
   letter-spacing: -0.01em;
 }
 
+/* Role focus picker (issue #40): the user's own "what am I preparing for?" control. It sits in
+   the header beside the day badge - it shapes the daily core but hides nothing, so it is quiet
+   chrome, not a gate. */
+.session-header-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.role-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.role-picker .role-label {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.7rem;
+}
+
+.role-picker select {
+  font: inherit;
+  font-weight: 600;
+  color: #0f172a;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid rgba(148, 163, 184, 0.5);
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.role-picker select:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.role-picker.error {
+  color: #b45309;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .day-badge {
   font-size: 0.8rem;
   font-weight: 600;

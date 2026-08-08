@@ -93,6 +93,32 @@ class WarmupSelectorTest {
     }
 
     @Test
+    void anOptedInRepStaysEligibleEvenWhenItsFamilyIsInactive() {
+        // The reachability hinge and the review-debt-first rule share one mechanism (issue #40):
+        // a rep in the opted-in set (attempted, or seeded by reading its lesson) is eligible even
+        // though its family is inactive. This is what keeps an already-due review in the queue
+        // after a family is deactivated, and what lets reading an inactive-family lesson pull a
+        // check in without turning the whole family on.
+        WarmupSelector selector = new WarmupSelector(8, 2);
+        List<Exercise> catalog = List.of(
+                rep("core", "a", List.of(Family.CORE), null),
+                rep("data-opted-in", "d", List.of(Family.DATA), null),
+                rep("data-untouched", "e", List.of(Family.DATA), null));
+
+        // Only BACKEND active, so both DATA reps are normally suppressed - except the opted-in one.
+        List<Exercise> set = selector.select(
+                catalog,
+                EnumSet.of(Family.BACKEND),
+                Set.of("data-opted-in"),
+                NOTHING_ATTEMPTED,
+                ConfusionPairs.empty());
+
+        assertThat(set).extracting(Exercise::id)
+                .containsExactlyInAnyOrder("core", "data-opted-in")
+                .doesNotContain("data-untouched");
+    }
+
+    @Test
     void gatesDerivedRepsOnHavingAttemptedTheProblemButServesPatternIdCold() {
         WarmupSelector selector = new WarmupSelector(8, 2);
         List<Exercise> catalog = List.of(

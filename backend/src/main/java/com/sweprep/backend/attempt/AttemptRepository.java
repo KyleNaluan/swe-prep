@@ -135,6 +135,22 @@ public class AttemptRepository {
                         .list());
     }
 
+    /**
+     * The distinct ids of every Lesson this user has read (an attempt with outcome
+     * {@code READ}). Reading a Lesson seeds its Checks into the warm-up even when their
+     * family is inactive - the reachability hinge of the family filter (issue #40, design
+     * revision t3 section 2.2) - so the warm-up build maps these lesson ids to their Checks.
+     */
+    public java.util.Set<String> readLessonIds(UUID userId) {
+        return new java.util.HashSet<>(
+                jdbc.sql(
+                                "SELECT DISTINCT exercise_id FROM attempt "
+                                        + "WHERE user_id = :userId AND outcome = 'READ'")
+                        .param("userId", userId)
+                        .query(String.class)
+                        .list());
+    }
+
     private static java.sql.Timestamp toTimestamp(Instant instant) {
         return instant == null ? null : java.sql.Timestamp.from(instant);
     }
