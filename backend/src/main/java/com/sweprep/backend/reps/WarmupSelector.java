@@ -27,10 +27,15 @@ import java.util.function.Function;
  * <ol>
  *   <li><b>Only reps.</b> Only {@link Form#REP} exercises are warm-up material; a
  *       challenge is a full sitting, not a warm-up.
- *   <li><b>Active families only.</b> The required core draws only from the active
- *       families plus the always-on {@link Family#CORE} and {@link Family#PROFESSIONAL}
- *       (section 2.2). Untagged content is treated as always-eligible substrate, so
- *       existing reps that predate the family taxonomy are never silently dropped.
+ *   <li><b>Active families only, but in-flight reps survive.</b> The required core draws
+ *       only from the active families plus the always-on {@link Family#CORE} and {@link
+ *       Family#PROFESSIONAL} (section 2.2). Untagged content is treated as always-eligible
+ *       substrate, so existing reps that predate the family taxonomy are never silently
+ *       dropped. The one exception is the {@code optedIn} set: a rep the user has already
+ *       pulled in - by attempting it, or by reading a Lesson that seeds it (section 2.2's
+ *       reachability hinge) - stays eligible even when its family is inactive, so
+ *       deactivating a family stops <em>new</em> seeding without ripping already-due
+ *       reviews out of the queue (the review-debt-first rule, issue #8).
  *   <li><b>Gating.</b> A derived rep (complexity, fill-in-the-blank, predict-output,
  *       spot-the-bug) is served only once its underlying problem has been attempted;
  *       practising it cold is guessing, not practice. A pattern-identification rep
@@ -104,10 +109,32 @@ public final class WarmupSelector {
             Set<Family> activeFamilies,
             Set<String> attemptedProblems,
             ConfusionPairs confusionPairs) {
+        return select(catalog, activeFamilies, Set.of(), attemptedProblems, confusionPairs);
+    }
+
+    /**
+     * The ordered warm-up set, additionally admitting reps in the {@code optedIn} set even
+     * when their family is inactive (section 2.2). {@code optedIn} is the ids the user has
+     * already pulled in - attempted reps and the Checks of Lessons they have read - so a
+     * family deactivation stops new seeding but leaves already-due reviews in the queue.
+     *
+     * @param activeFamilies the families the user has turned on, excluding the always-on
+     *                       ones; may be empty
+     * @param optedIn        ids of reps that stay eligible regardless of their family
+     * @param attemptedProblems the ids of problems this user has attempted, used to gate
+     *                       derived reps
+     * @param confusionPairs which topics learners actually mistake for each other
+     */
+    public List<Exercise> select(
+            List<Exercise> catalog,
+            Set<Family> activeFamilies,
+            Set<String> optedIn,
+            Set<String> attemptedProblems,
+            ConfusionPairs confusionPairs) {
         List<Exercise> eligible = catalog.stream()
                 .filter(exercise -> exercise.form() == Form.REP)
                 .filter(WarmupSelector::warmupGradable)
-                .filter(exercise -> familyEligible(exercise, activeFamilies))
+                .filter(exercise -> familyEligible(exercise, activeFamilies, optedIn))
                 .filter(exercise -> gatingEligible(exercise, attemptedProblems))
                 .toList();
         return interleave(eligible, confusionPairs);
@@ -127,11 +154,17 @@ public final class WarmupSelector {
     }
 
     /**
-     * A rep is family-eligible when it is untagged (always-on substrate) or serves at
-     * least one active or always-on family. Deactivating a family only stops it seeding
-     * the core; that filter (its user setting) is a separate ticket (#40).
+     * A rep is family-eligible when it is untagged (always-on substrate), serves at least
+     * one active or always-on family, or has been individually opted in. The opt-in set is
+     * what makes deactivating a family stop new seeding without ripping already-due reviews
+     * out: an in-flight rep (attempted, or seeded by a read Lesson) stays eligible even
+     * after its family goes inactive (section 2.2).
      */
-    private static boolean familyEligible(Exercise exercise, Set<Family> activeFamilies) {
+    private static boolean familyEligible(
+            Exercise exercise, Set<Family> activeFamilies, Set<String> optedIn) {
+        if (optedIn.contains(exercise.id())) {
+            return true;
+        }
         List<Family> families = exercise.family();
         if (families.isEmpty()) {
             return true;

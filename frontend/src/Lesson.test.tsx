@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import Lesson from './Lesson'
 
@@ -23,6 +23,9 @@ const DETAIL = {
 function mockFetch() {
   return vi.fn(async (url: string | URL | Request) => {
     const href = String(url)
+    if (href.endsWith('/api/lessons/lesson-idx/read'))
+      // Reading seeds the lesson's checks into the warm-up (issue #40): a best-effort POST on open.
+      return { ok: true, json: async () => ({}) } as Response
     if (href.endsWith('/api/lessons')) return { ok: true, json: async () => LESSONS } as Response
     if (href.endsWith('/api/lessons/lesson-idx'))
       return { ok: true, json: async () => DETAIL } as Response
@@ -51,5 +54,20 @@ describe('Lesson renderer (issue #41/#46)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Reveal the answer' }))
 
     expect(await screen.findByText(/stores raw values/)).toBeInTheDocument()
+  })
+
+  it('records the read so the lesson seeds its checks into the warm-up (issue #40)', async () => {
+    const fetchMock = mockFetch()
+    vi.stubGlobal('fetch', fetchMock)
+    render(<Lesson />)
+
+    await screen.findByRole('heading', { name: 'Why an index is not used' })
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining('/api/lessons/lesson-idx/read'),
+        expect.objectContaining({ method: 'POST' }),
+      ),
+    )
   })
 })

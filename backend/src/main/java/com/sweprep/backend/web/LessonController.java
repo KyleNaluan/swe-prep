@@ -1,5 +1,6 @@
 package com.sweprep.backend.web;
 
+import com.sweprep.backend.attempt.LessonReadService;
 import com.sweprep.backend.exercise.Content;
 import com.sweprep.backend.exercise.ContentCatalog;
 import com.sweprep.backend.exercise.Lesson;
@@ -7,6 +8,7 @@ import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
@@ -26,9 +28,11 @@ import org.springframework.web.server.ResponseStatusException;
 public class LessonController {
 
     private final ContentCatalog catalog;
+    private final LessonReadService reads;
 
-    public LessonController(ContentCatalog catalog) {
+    public LessonController(ContentCatalog catalog, LessonReadService reads) {
         this.catalog = catalog;
+        this.reads = reads;
     }
 
     @GetMapping
@@ -51,5 +55,16 @@ public class LessonController {
                     HttpStatus.NOT_FOUND, "Content '" + id + "' is not a lesson");
         }
         return LessonView.of(lesson);
+    }
+
+    /**
+     * Records that the reader read this lesson (issue #40). Reading is still not attempting - no
+     * verdict, no grade - but it seeds this lesson's Checks into the warm-up, so it is a deliberate
+     * durable action the reader takes. Returns nothing but a 200; the seeding effect is read on the
+     * next warm-up build. A non-lesson id 404s, exactly as {@link #get} does.
+     */
+    @PostMapping("/{id}/read")
+    public void read(@PathVariable String id) {
+        reads.recordRead(id);
     }
 }
