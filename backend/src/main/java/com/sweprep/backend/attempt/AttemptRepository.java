@@ -136,6 +136,24 @@ public class AttemptRepository {
     }
 
     /**
+     * The single {@code READ} attempt this user already holds for the given content id, if
+     * any, taken under a row lock so a concurrent re-read serialises rather than racing in a
+     * second row. Reading a Lesson is idempotent per (user, lesson) - re-opening it refreshes
+     * the one record's timestamp instead of appending duplicates (issue #40) - and this is the
+     * lookup that keeps it so.
+     */
+    public Optional<Attempt> findReadAttempt(UUID userId, String exerciseId) {
+        return jdbc.sql(
+                        "SELECT * FROM attempt "
+                                + "WHERE user_id = :userId AND exercise_id = :exerciseId "
+                                + "AND outcome = 'READ' FOR UPDATE")
+                .param("userId", userId)
+                .param("exerciseId", exerciseId)
+                .query(MAPPER)
+                .optional();
+    }
+
+    /**
      * The distinct ids of every Lesson this user has read (an attempt with outcome
      * {@code READ}). Reading a Lesson seeds its Checks into the warm-up even when their
      * family is inactive - the reachability hinge of the family filter (issue #40, design

@@ -494,6 +494,12 @@
   color: #b45309;
 }
 
+.role-picker-error {
+  color: #b91c1c;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
 .visually-hidden {
   position: absolute;
   width: 1px;
