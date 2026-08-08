@@ -60,6 +60,24 @@ describe('RolePicker (issue #40)', () => {
     expect(putBody).toEqual({ preset: 'backend' })
   })
 
+  it('surfaces a failed save inline rather than reverting the select silently', async () => {
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const href = String(url)
+      if (href.endsWith('/api/role') && (init?.method ?? 'GET') === 'PUT') {
+        return { ok: false, status: 500, json: async () => ({ error: 'boom' }) } as Response
+      }
+      return { ok: true, json: async () => STATUS } as Response
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    render(<RolePicker />)
+
+    const select = (await screen.findByRole('combobox')) as HTMLSelectElement
+    fireEvent.change(select, { target: { value: 'backend' } })
+
+    // The status is already loaded, so the save error must show inline, not be swallowed.
+    expect(await screen.findByRole('alert')).toHaveTextContent('Not saved')
+  })
+
   it('degrades to a quiet note when the role status cannot be read', async () => {
     vi.stubGlobal(
       'fetch',

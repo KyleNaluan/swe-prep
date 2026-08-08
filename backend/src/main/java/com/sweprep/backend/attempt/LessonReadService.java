@@ -4,6 +4,7 @@ import com.sweprep.backend.exercise.Content;
 import com.sweprep.backend.exercise.ContentCatalog;
 import com.sweprep.backend.exercise.Lesson;
 import java.time.Instant;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -39,6 +40,11 @@ public class LessonReadService {
      * Records the current user as having read the given Lesson, returning the stored attempt. The
      * id must be a Lesson - an Exercise is attempted, not read - so a non-lesson id is a {@link
      * AttemptNotFoundException} (404), the same shape the reader's GET already gives.
+     *
+     * <p>Idempotent per (user, lesson): the frontend fires this best-effort on every open, so a
+     * re-read refreshes the single existing {@code READ} row's timestamp rather than appending a
+     * duplicate. Only the first read inserts a new row; the opt-in set the selector reads back is
+     * unchanged either way.
      */
     @Transactional
     public Attempt recordRead(String lessonId) {
@@ -49,6 +55,12 @@ public class LessonReadService {
             throw new AttemptNotFoundException("Content '" + lessonId + "' is not a lesson to read");
         }
         Instant now = Instant.now();
+        Optional<Attempt> existing = attempts.findReadAttempt(currentUser.id(), lesson.id());
+        if (existing.isPresent()) {
+            Attempt refreshed = existing.get().withOutcome(AttemptOutcome.READ, now);
+            attempts.update(refreshed);
+            return refreshed;
+        }
         Attempt attempt = new Attempt(
                 UUID.randomUUID(),
                 currentUser.id(),

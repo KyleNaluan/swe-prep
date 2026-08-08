@@ -94,6 +94,13 @@ function RolePicker({ onChange }: { onChange?: () => void }) {
         ))}
       </select>
       <span className="visually-hidden">Current focus: {currentLabel}</span>
+      {/* A failed save leaves the select reverted to the persisted role; say so inline rather
+          than let the change vanish silently. */}
+      {error && (
+        <span className="role-picker-error" role="alert" title={error}>
+          Not saved
+        </span>
+      )}
     </label>
   )
 }
