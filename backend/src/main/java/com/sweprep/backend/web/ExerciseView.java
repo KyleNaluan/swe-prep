@@ -40,7 +40,7 @@ public record ExerciseView(
         List<String> hints,
         boolean hasExplanation) {
 
-    static ExerciseView of(Exercise exercise, LanguageAdapter adapter) {
+    static ExerciseView of(Exercise exercise, LanguageAdapter adapter, OptionShuffler shuffler) {
         return new ExerciseView(
                 exercise.id(),
                 exercise.title(),
@@ -48,19 +48,24 @@ public record ExerciseView(
                 exercise.domain(),
                 exercise.difficulty().name(),
                 exercise.form().name(),
-                responseView(exercise, adapter),
+                responseView(exercise, adapter, shuffler),
                 exercise.hints().stream().map(Hint::name).toList(),
                 exercise.explanation() != null);
     }
 
-    private static ResponseView responseView(Exercise exercise, LanguageAdapter adapter) {
+    private static ResponseView responseView(
+            Exercise exercise, LanguageAdapter adapter, OptionShuffler shuffler) {
         return switch (exercise.response()) {
             case Response.Code code ->
                     ResponseView.code(adapter.languageId(), adapter.generateStub(code.signature()));
             // Only the option texts travel to the editor, never the per-distractor
             // misconceptions (issue #42): those are authoring/verification metadata, kept
             // off the wire like the check's explanation and the self-check's model answer.
-            case Response.Choice choice -> ResponseView.choice(choice.optionTexts());
+            // Options are presented in a shuffled but per-attempt-stable order (issue #59)
+            // so answer position cannot be exploited; grading matches by text, not index,
+            // so the order has no bearing on correctness.
+            case Response.Choice choice ->
+                    ResponseView.choice(shuffler.order(exercise.id(), choice.optionTexts()));
             // A free-text box renders one of two ways, decided by the grading it is paired
             // with. Paired with an answer key it is the machine-graded "predict the output"
             // rep (issue #18); paired with a self-check it is the self-graded "explain in

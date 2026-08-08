@@ -23,10 +23,13 @@ public class ExerciseController {
 
     private final ExerciseCatalog catalog;
     private final LanguageAdapter adapter;
+    private final OptionShuffler shuffler;
 
-    public ExerciseController(ExerciseCatalog catalog, LanguageAdapter adapter) {
+    public ExerciseController(
+            ExerciseCatalog catalog, LanguageAdapter adapter, OptionShuffler shuffler) {
         this.catalog = catalog;
         this.adapter = adapter;
+        this.shuffler = shuffler;
     }
 
     @GetMapping
@@ -36,7 +39,7 @@ public class ExerciseController {
 
     @GetMapping("/{id}")
     public ExerciseView get(@PathVariable String id) {
-        return ExerciseView.of(require(id), adapter);
+        return ExerciseView.of(require(id), adapter, shuffler);
     }
 
     private Exercise require(String id) {

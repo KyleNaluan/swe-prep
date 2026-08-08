@@ -4,9 +4,11 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.sweprep.backend.attempt.CurrentUser;
 import com.sweprep.backend.exercise.ExerciseCatalog;
 import com.sweprep.backend.grader.GraderRegistry;
 import com.sweprep.backend.language.JavaLanguageAdapter;
+import com.sweprep.backend.session.SessionConfig;
 import com.sweprep.backend.testsupport.Fixtures;
 import org.hamcrest.Matchers;
 import org.junit.jupiter.api.Test;
@@ -23,7 +25,14 @@ import org.springframework.test.web.servlet.MockMvc;
  * a 500 whose body carries the plain-language cause, not a bare status.
  */
 @WebMvcTest(ExerciseController.class)
-@Import({JavaLanguageAdapter.class, GraderRegistry.class, ContentErrorHandlerTest.Config.class})
+@Import({
+    JavaLanguageAdapter.class,
+    GraderRegistry.class,
+    DeterministicOptionShuffler.class,
+    CurrentUser.class,
+    SessionConfig.class,
+    ContentErrorHandlerTest.Config.class
+})
 class ContentErrorHandlerTest {
 
     static final String MESSAGE =
