@@ -136,21 +136,49 @@ public class AttemptRepository {
     }
 
     /**
-     * The single {@code READ} attempt this user already holds for the given content id, if
-     * any, taken under a row lock so a concurrent re-read serialises rather than racing in a
-     * second row. Reading a Lesson is idempotent per (user, lesson) - re-opening it refreshes
-     * the one record's timestamp instead of appending duplicates (issue #40) - and this is the
-     * lookup that keeps it so.
+     * Records a Lesson read idempotently per (user, lesson): the first read inserts the given
+     * {@code READ} attempt, and a re-read refreshes the one existing record's {@code ended_at}
+     * instead of appending a duplicate (issue #40). This is a single atomic upsert on the partial
+     * unique index {@code attempt_one_read_per_user_exercise} (Flyway {@code V7}), so two racing
+     * first-reads can never both insert - the DB enforces the one-row invariant, not a read-then-write
+     * that a concurrent read could slip past. Returns the persisted row: the freshly inserted attempt
+     * on a first read, or the pre-existing one (its original id, refreshed timestamp) on a re-read.
      */
-    public Optional<Attempt> findReadAttempt(UUID userId, String exerciseId) {
+    public Attempt upsertRead(Attempt attempt) {
         return jdbc.sql(
-                        "SELECT * FROM attempt "
-                                + "WHERE user_id = :userId AND exercise_id = :exerciseId "
-                                + "AND outcome = 'READ' FOR UPDATE")
-                .param("userId", userId)
-                .param("exerciseId", exerciseId)
+                        """
+                        INSERT INTO attempt (
+                            id, user_id, exercise_id, exercise_title, domain, form,
+                            outcome, started_at, ended_at, hints_taken,
+                            failing_case_revealed, reveal_hypothesis, explanation_requested,
+                            complexity_claim, measured_complexity, complexity_claim_correct)
+                        VALUES (
+                            :id, :userId, :exerciseId, :exerciseTitle, :domain, :form,
+                            :outcome, :startedAt, :endedAt, :hintsTaken,
+                            :failingCaseRevealed, :revealHypothesis, :explanationRequested,
+                            :complexityClaim, :measuredComplexity, :complexityClaimCorrect)
+                        ON CONFLICT (user_id, exercise_id) WHERE outcome = 'READ'
+                        DO UPDATE SET ended_at = EXCLUDED.ended_at
+                        RETURNING *
+                        """)
+                .param("id", attempt.id())
+                .param("userId", attempt.userId())
+                .param("exerciseId", attempt.exerciseId())
+                .param("exerciseTitle", attempt.exerciseTitle())
+                .param("domain", attempt.domain())
+                .param("form", attempt.form())
+                .param("outcome", attempt.outcome().name())
+                .param("startedAt", toTimestamp(attempt.startedAt()))
+                .param("endedAt", toTimestamp(attempt.endedAt()))
+                .param("hintsTaken", attempt.hintsTaken())
+                .param("failingCaseRevealed", attempt.failingCaseRevealed())
+                .param("revealHypothesis", attempt.revealHypothesis())
+                .param("explanationRequested", attempt.explanationRequested())
+                .param("complexityClaim", attempt.complexityClaim())
+                .param("measuredComplexity", attempt.measuredComplexity())
+                .param("complexityClaimCorrect", attempt.complexityClaimCorrect())
                 .query(MAPPER)
-                .optional();
+                .single();
     }
 
     /**
