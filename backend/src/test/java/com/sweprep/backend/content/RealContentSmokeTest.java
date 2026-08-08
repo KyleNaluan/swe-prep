@@ -71,6 +71,39 @@ class RealContentSmokeTest {
         }
     }
 
+    /**
+     * The set-level answer-tell guard (issue #60) run over the <em>real</em> content set.
+     * It lives here, beside the other real-content proofs, precisely because this test is
+     * <b>skipped when no content clone is present</b> (as on CI) - so an author with a
+     * local clone sees the finding and fixes it in the content repo, while CI never turns
+     * the expected finding into a permanently red build. The check itself is a quality
+     * smell, deliberately not a load failure: a malformed file still fails at load, a
+     * merely lopsided one surfaces here. The mechanism is demonstrated on both sides by
+     * {@link AnswerTellCheckerTest}'s fixtures, independent of what real content looks like.
+     *
+     * <p>Expect this to fail on the first authored AI/ML batch until that content repo's own
+     * PR pads the distractors up to parity - that failure is the guard working, not a bug
+     * in it. Do not silence it by weakening the check.
+     */
+    @Test
+    void realChoiceChecksHaveNoSetLevelAnswerTells() {
+        Path dir = contentDir();
+        assumeTrue(Files.isDirectory(dir), "no local content clone at " + dir.toAbsolutePath());
+
+        ExerciseCatalog catalog = new FileExerciseCatalog(new ContentProperties(dir.toString()), mapper);
+        List<AnswerTellChecker.Finding> findings =
+                new AnswerTellChecker(mapper).checkAll(catalog.all());
+
+        assertThat(findings)
+                .as(
+                        "real multiple-choice checks must not carry set-level answer tells "
+                                + "(issue #60). Findings:%n%s",
+                        findings.stream()
+                                .map(AnswerTellChecker.Finding::message)
+                                .reduce("", (a, b) -> a + "  - " + b + System.lineSeparator()))
+                .isEmpty();
+    }
+
     @Test
     void theConceptExerciseIsGradedWithNoRunner() {
         Path dir = contentDir();

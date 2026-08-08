@@ -4,8 +4,10 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.sweprep.backend.attempt.CurrentUser;
 import com.sweprep.backend.exercise.ExerciseCatalog;
 import com.sweprep.backend.language.JavaLanguageAdapter;
+import com.sweprep.backend.session.SessionConfig;
 import com.sweprep.backend.testsupport.Fixtures;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -23,7 +25,14 @@ import org.springframework.test.web.servlet.MockMvc;
  * rejected rather than silently ignored.
  */
 @WebMvcTest(ExerciseController.class)
-@Import({JavaLanguageAdapter.class, WebConfig.class, WebConfigTest.Config.class})
+@Import({
+    JavaLanguageAdapter.class,
+    WebConfig.class,
+    DeterministicOptionShuffler.class,
+    CurrentUser.class,
+    SessionConfig.class,
+    WebConfigTest.Config.class
+})
 @TestPropertySource(
         properties = "sweprep.web.allowed-origins=http://localhost:5173,http://100.64.1.2:5173")
 class WebConfigTest {

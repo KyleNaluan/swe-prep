@@ -2,7 +2,6 @@ package com.sweprep.backend.content;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.TextNode;
 import com.sweprep.backend.exercise.Comparison;
 import com.sweprep.backend.exercise.DataType;
 import com.sweprep.backend.exercise.Difficulty;
@@ -219,7 +218,7 @@ final class ExerciseParser {
         }
         boolean anyCorrect = false;
         for (Option option : choice.options()) {
-            if (matchesKey(key, option.text())) {
+            if (ChoiceKeys.matchesKey(key, option.text(), MAPPER)) {
                 anyCorrect = true;
             } else if (!option.hasMisconception()) {
                 throw json.malformed(
@@ -232,30 +231,6 @@ final class ExerciseParser {
             throw json.malformed(
                     "the answer key '" + key.expected().asText() + "' matches none of the choice "
                             + "options, so the check has no correct answer");
-        }
-    }
-
-    /**
-     * Whether {@code optionText} is the correct answer under the key, using the same
-     * matching {@code AnswerKeyGrader} applies to a choice submission: the stripped text,
-     * and its parsed-JSON form when it is valid JSON, each compared under the exercise's
-     * {@link Comparison}. Keeping the rule identical here means an option is classed a
-     * distractor exactly when a learner picking it would be marked wrong.
-     */
-    private static boolean matchesKey(Grading.AnswerKey key, String optionText) {
-        String stripped = optionText.strip();
-        if (key.comparison().matches(key.expected(), TextNode.valueOf(stripped))) {
-            return true;
-        }
-        JsonNode asJson = tryParse(stripped);
-        return asJson != null && key.comparison().matches(key.expected(), asJson);
-    }
-
-    private static JsonNode tryParse(String value) {
-        try {
-            return MAPPER.readTree(value);
-        } catch (Exception e) {
-            return null;
         }
     }
 }
