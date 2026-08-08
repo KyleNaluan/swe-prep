@@ -23,3 +23,14 @@ CREATE TABLE active_family (
     family  TEXT NOT NULL,
     PRIMARY KEY (user_id, family)
 );
+
+-- Reading a lesson is idempotent per (user, lesson): the frontend fires the read best-effort on
+-- every open (issue #40), so re-opening the same lesson must refresh the one READ record rather
+-- than append a duplicate. This partial unique index is what makes the upsert atomic and correct
+-- under concurrency - two racing first-reads can no longer both insert, and the "one READ row per
+-- (user, lesson)" invariant is enforced by the DB, not by a read-then-write that races. It is
+-- partial (WHERE outcome = 'READ') so every other attempt outcome stays append-only: a user has
+-- many IN_PROGRESS/SOLVED/ABANDONED sittings with the same exercise, only READ is one-per-pair.
+CREATE UNIQUE INDEX attempt_one_read_per_user_exercise
+    ON attempt (user_id, exercise_id)
+    WHERE outcome = 'READ';

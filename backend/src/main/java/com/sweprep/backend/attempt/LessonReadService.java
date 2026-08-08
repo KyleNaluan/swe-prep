@@ -4,7 +4,6 @@ import com.sweprep.backend.exercise.Content;
 import com.sweprep.backend.exercise.ContentCatalog;
 import com.sweprep.backend.exercise.Lesson;
 import java.time.Instant;
-import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -55,12 +54,6 @@ public class LessonReadService {
             throw new AttemptNotFoundException("Content '" + lessonId + "' is not a lesson to read");
         }
         Instant now = Instant.now();
-        Optional<Attempt> existing = attempts.findReadAttempt(currentUser.id(), lesson.id());
-        if (existing.isPresent()) {
-            Attempt refreshed = existing.get().withOutcome(AttemptOutcome.READ, now);
-            attempts.update(refreshed);
-            return refreshed;
-        }
         Attempt attempt = new Attempt(
                 UUID.randomUUID(),
                 currentUser.id(),
@@ -78,7 +71,6 @@ public class LessonReadService {
                 null,
                 null,
                 null);
-        attempts.insert(attempt);
-        return attempt;
+        return attempts.upsertRead(attempt);
     }
 }
