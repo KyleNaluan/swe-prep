@@ -19,7 +19,7 @@ class ExerciseViewTest {
 
     @Test
     void aPredictOutputRepRendersAsAFreeTextBox() {
-        ExerciseView view = ExerciseView.of(Fixtures.predictOutputRep(), adapter);
+        ExerciseView view = ExerciseView.of(Fixtures.predictOutputRep(), adapter, OptionShuffler.IDENTITY);
 
         assertThat(view.response().kind()).isEqualTo("freeText");
         assertThat(view.response().options()).isNull();
@@ -28,7 +28,7 @@ class ExerciseViewTest {
 
     @Test
     void aSelfCheckItemRendersAsSelfCheckWithoutShippingTheModelAnswer() {
-        ExerciseView view = ExerciseView.of(Fixtures.explainChallenge(), adapter);
+        ExerciseView view = ExerciseView.of(Fixtures.explainChallenge(), adapter, OptionShuffler.IDENTITY);
 
         assertThat(view.response().kind()).isEqualTo("selfCheck");
         assertThat(view.response().options()).isNull();

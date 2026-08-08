@@ -4,9 +4,13 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.sweprep.backend.attempt.CurrentUser;
 import com.sweprep.backend.exercise.ExerciseCatalog;
 import com.sweprep.backend.language.JavaLanguageAdapter;
 import com.sweprep.backend.testsupport.Fixtures;
+import java.time.Clock;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import org.hamcrest.Matchers;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,7 +28,7 @@ import org.springframework.test.web.servlet.MockMvc;
  * exercises so no real content is committed (issue #14).
  */
 @WebMvcTest(ExerciseController.class)
-@Import({JavaLanguageAdapter.class, ExerciseControllerTest.Config.class})
+@Import({JavaLanguageAdapter.class, DeterministicOptionShuffler.class, ExerciseControllerTest.Config.class})
 class ExerciseControllerTest {
 
     @TestConfiguration
@@ -32,7 +36,24 @@ class ExerciseControllerTest {
         @Bean
         ExerciseCatalog catalog() {
             return Fixtures.catalogOf(
-                    Fixtures.pairInAnyOrder(), Fixtures.concept(), Fixtures.predictOutputRep());
+                    Fixtures.pairInAnyOrder(),
+                    Fixtures.concept(),
+                    Fixtures.predictOutputRep(),
+                    Fixtures.patternIdRep());
+        }
+
+        // A fixed clock and the single seeded user pin the shuffle (issue #59) to one known
+        // day, so the served permutation is deterministic and directly assertable.
+        @Bean
+        Clock clock() {
+            return Clock.fixed(
+                    LocalDate.parse("2026-08-08").atStartOfDay(ZoneOffset.UTC).toInstant(),
+                    ZoneOffset.UTC);
+        }
+
+        @Bean
+        CurrentUser currentUser() {
+            return new CurrentUser();
         }
     }
 
@@ -43,7 +64,7 @@ class ExerciseControllerTest {
     void listsEveryExercise() throws Exception {
         mockMvc.perform(get("/api/exercises"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(3))
+                .andExpect(jsonPath("$.length()").value(4))
                 .andExpect(jsonPath("$[?(@.id=='pair-in-any-order')].form").value("CHALLENGE"))
                 .andExpect(jsonPath("$[?(@.id=='concept-demo')].form").value("REP"));
     }
@@ -85,12 +106,48 @@ class ExerciseControllerTest {
         mockMvc.perform(get("/api/exercises/concept-demo"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.response.kind").value("choice"))
-                .andExpect(jsonPath("$.response.options").value(Matchers.contains("A", "B", "C")))
+                // Every authored option is served (in any order - see the shuffle test below),
+                // never fewer or more.
+                .andExpect(jsonPath("$.response.options").value(Matchers.containsInAnyOrder("A", "B", "C")))
                 .andExpect(jsonPath("$.response.stub").doesNotExist())
                 // The check carries an explanation, so the editor is told one exists -
                 // but its text never travels up front (issue #51).
                 .andExpect(jsonPath("$.hasExplanation").value(true))
                 .andExpect(jsonPath("$.explanation").doesNotExist());
+    }
+
+    /**
+     * Options are shuffled at serve time so answer position cannot be exploited (issue #59).
+     * {@code rep-pattern-id} authors the correct answer ("Two pointers") <em>first</em>; the
+     * deterministic production shuffler must not serve it first. The order is keyed on
+     * (exercise id, user, day), so within a day it is identical across a refresh or a resumed
+     * session - proved here by two separate fetches returning the same order - never
+     * reshuffling under the learner; the day-based rotation across sittings is proved in
+     * {@link DeterministicOptionShufflerTest}.
+     */
+    @Test
+    void shufflesChoiceOptionsOffFileOrderAndKeepsThatOrderStableWithinTheDay() throws Exception {
+        // File order authors the key first; the served order (pinned to 2026-08-08 by the
+        // test clock) does not.
+        mockMvc.perform(get("/api/exercises/rep-pattern-id"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.response.options[0]").value(Matchers.not("Two pointers")))
+                .andExpect(jsonPath("$.response.options")
+                        .value(Matchers.containsInAnyOrder(
+                                "Two pointers", "Sliding window", "Binary search", "Hash set")))
+                // The exact production permutation for this id/user/day, asserted so a
+                // regression in the shipped shuffler (not just a test-only stub) is caught.
+                .andExpect(jsonPath("$.response.options")
+                        .value(Matchers.contains(
+                                "Binary search", "Sliding window", "Two pointers", "Hash set")));
+
+        // A second fetch on the same day (a refresh / resumed session) yields the identical
+        // order.
+        mockMvc.perform(get("/api/exercises/rep-pattern-id"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.response.options")
+                        .value(Matchers.contains(
+                                "Binary search", "Sliding window", "Two pointers", "Hash set")));
     }
 
     @Test
