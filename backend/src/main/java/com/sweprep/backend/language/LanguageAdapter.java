@@ -29,4 +29,15 @@ public interface LanguageAdapter {
      * expected JSON. The submission's own source is compiled alongside it.
      */
     GeneratedHarness generateHarness(Signature signature);
+
+    /**
+     * The harness that runs the submission repeatedly against one input at a growing
+     * measured size, recording each repetition's wall-clock time rather than comparing a
+     * return value (issue #17) - this is the runner's "second execution mode" the
+     * complexity self-report flow measures scaling with. Generated from the signature
+     * alone, exactly like {@link #generateHarness}, so no per-language timing code is
+     * ever hand-written. There is no {@link com.sweprep.backend.exercise.Comparison}
+     * here: nothing is graded, only timed.
+     */
+    GeneratedHarness generateTimingHarness(Signature signature);
 }

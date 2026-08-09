@@ -100,4 +100,17 @@ public record Attempt(
                 hintsTaken, failingCaseRevealed, revealHypothesis, true,
                 complexityClaim, measuredComplexity, complexityClaimCorrect);
     }
+
+    /**
+     * This attempt with the complexity self-report and its measurement outcome recorded
+     * (issue #17). {@code claimCorrect} is {@code null} when measurement made no
+     * determination - skipped for lack of an input generator, or genuinely inconclusive -
+     * never a forced true/false, per the honesty constraint.
+     */
+    public Attempt withComplexity(String claim, String measured, Boolean claimCorrect) {
+        return new Attempt(
+                id, userId, exerciseId, exerciseTitle, domain, form, outcome, startedAt, endedAt,
+                hintsTaken, failingCaseRevealed, revealHypothesis, explanationRequested,
+                claim, measured, claimCorrect);
+    }
 }

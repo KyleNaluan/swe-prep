@@ -1,5 +1,9 @@
 package com.sweprep.backend.attempt;
 
+import com.sweprep.backend.complexity.ComplexityBucket;
+import com.sweprep.backend.complexity.MeasurementOutcome;
+import com.sweprep.backend.complexity.ScalingMeasurer;
+import com.sweprep.backend.exercise.ComplexityCheck;
 import com.sweprep.backend.exercise.Exercise;
 import com.sweprep.backend.exercise.ExerciseCatalog;
 import com.sweprep.backend.exercise.Grading;
@@ -11,9 +15,12 @@ import com.sweprep.backend.grader.Verdict;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * Turns practice into the durable record the schedulers read (issues #15, #8, #5).
@@ -44,23 +51,29 @@ public class AttemptService {
     private final ExerciseCatalog catalog;
     private final GraderRegistry graders;
     private final SelfCheckGrader selfCheckGrader;
+    private final ScalingMeasurer measurer;
     private final AttemptRepository attempts;
     private final SubmissionRepository submissions;
     private final CurrentUser currentUser;
+    private final TransactionTemplate transactionTemplate;
 
     public AttemptService(
             ExerciseCatalog catalog,
             GraderRegistry graders,
             SelfCheckGrader selfCheckGrader,
+            ScalingMeasurer measurer,
             AttemptRepository attempts,
             SubmissionRepository submissions,
-            CurrentUser currentUser) {
+            CurrentUser currentUser,
+            PlatformTransactionManager transactionManager) {
         this.catalog = catalog;
         this.graders = graders;
         this.selfCheckGrader = selfCheckGrader;
+        this.measurer = measurer;
         this.attempts = attempts;
         this.submissions = submissions;
         this.currentUser = currentUser;
+        this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
 
     /** Opens a new sitting with an exercise, snapshotting its title, domain and form. */
@@ -212,6 +225,85 @@ public class AttemptService {
     }
 
     /**
+     * Records the solver's self-reported complexity for a solved attempt and, in the
+     * same response, reveals the authored target alongside what empirical scaling
+     * measurement found (issue #17). The order is load-bearing and enforced here, not
+     * just in the editor: the claim is written to the attempt <em>before</em> the target
+     * is read back, and the target is never returned from any earlier call - {@code
+     * ExerciseView} ships only whether a target exists, never its value - so there is no
+     * way for the client to already be holding it while this prompt renders.
+     *
+     * <p>Requires a {@code SOLVED} attempt (the acceptance criterion "after tests pass")
+     * whose exercise declares a {@link ComplexityCheck}, and only once per attempt: a
+     * second call is rejected rather than letting a solver retry claims against the same
+     * measurement. The submission measured is the one that solved the attempt - {@link
+     * #submit} refuses every further call once an attempt is {@code SOLVED}, so the last
+     * submission on a solved attempt is exactly that one.
+     *
+     * @throws AttemptNotFoundException       if the attempt or its exercise is unknown
+     * @throws IllegalAttemptStateException   if the attempt is not yet solved, or has
+     *                                        already recorded a complexity claim
+     * @throws InvalidAttemptRequestException if the exercise carries no complexity check
+     */
+    public ComplexityClaimResult claimComplexity(UUID attemptId, ComplexityClaim claim) {
+        // Validate and gather the inputs with a plain read - measurement forks a JVM per
+        // configured size and can run for tens of seconds, so it must never hold the
+        // attempt's row lock (or its pooled connection). The short check-then-update
+        // transaction below re-reads the row under a lock and re-checks these guards, so
+        // the ordering and one-claim-per-attempt guarantees survive the unlocked read.
+        Attempt attempt = requireOwnedUnlocked(attemptId);
+        requireClaimable(attempt, attemptId);
+        Exercise exercise = requireExercise(attempt);
+        ComplexityCheck check = exercise.complexityCheck();
+        if (check == null) {
+            throw new InvalidAttemptRequestException(
+                    "Exercise '" + exercise.id() + "' has no complexity target to claim against");
+        }
+
+        List<Submission> submitted = submissions.findByAttempt(attempt.id());
+        String passingSubmission =
+                submitted.isEmpty() ? null : submitted.get(submitted.size() - 1).response();
+
+        MeasurementOutcome measurement = measurer.measure(exercise, passingSubmission);
+        Boolean claimCorrect = switch (measurement) {
+            case MeasurementOutcome.Skipped ignored -> null;
+            case MeasurementOutcome.Inconclusive ignored -> null;
+            case MeasurementOutcome.Conclusive conclusive ->
+                    conclusive.bucket() == ComplexityBucket.of(claim.time());
+        };
+        String measuredText = switch (measurement) {
+            case MeasurementOutcome.Skipped ignored -> null;
+            case MeasurementOutcome.Inconclusive ignored -> "INCONCLUSIVE";
+            case MeasurementOutcome.Conclusive conclusive ->
+                    conclusive.bucket().name() + ":" + String.format("%.2f", conclusive.exponent());
+        };
+
+        return transactionTemplate.execute(status -> {
+            Attempt locked = requireOwned(attemptId);
+            requireClaimable(locked, attemptId);
+            Attempt recorded = locked.withComplexity(claim.serialize(), measuredText, claimCorrect);
+            attempts.update(recorded);
+            return new ComplexityClaimResult(
+                    withCount(recorded), check.targetTime(), check.targetSpace(), measurement);
+        });
+    }
+
+    // The preconditions for claiming complexity, checked both before measurement (to fail
+    // fast and cheaply) and again under the row lock before the write (to keep the
+    // one-claim-per-attempt guarantee across concurrent claims).
+    private void requireClaimable(Attempt attempt, UUID attemptId) {
+        if (attempt.outcome() != AttemptOutcome.SOLVED) {
+            throw new IllegalAttemptStateException(
+                    "Attempt " + attemptId + " is not solved yet; complexity is claimed only "
+                            + "after a passing submission");
+        }
+        if (attempt.complexityClaim() != null) {
+            throw new IllegalAttemptStateException(
+                    "Attempt " + attemptId + " has already recorded a complexity claim");
+        }
+    }
+
+    /**
      * Records that the solver gave up on an open attempt, returning it with its live
      * submission count. Only an {@code IN_PROGRESS} attempt is transitioned; the locking
      * read in {@link #requireOwned} means a racing solve wins, so an abandon can never
@@ -359,9 +451,19 @@ public class AttemptService {
     // transactional), so a concurrent submit and abandon on the same sitting serialise
     // rather than each committing over the other's outcome.
     private Attempt requireOwned(UUID attemptId) {
-        Attempt attempt = attempts
-                .findByIdForUpdate(attemptId)
-                .orElseThrow(() -> new AttemptNotFoundException("No attempt with id " + attemptId));
+        return requireOwned(attempts.findByIdForUpdate(attemptId), attemptId);
+    }
+
+    // Reads an owned attempt without a row lock, for a caller that will do expensive,
+    // non-transactional work before re-reading under a lock to write (see
+    // claimComplexity). No caller may write off the attempt this returns.
+    private Attempt requireOwnedUnlocked(UUID attemptId) {
+        return requireOwned(attempts.findById(attemptId), attemptId);
+    }
+
+    private Attempt requireOwned(Optional<Attempt> found, UUID attemptId) {
+        Attempt attempt =
+                found.orElseThrow(() -> new AttemptNotFoundException("No attempt with id " + attemptId));
         // Single-user today, but ownership is still checked so history can never cross
         // users if a real account mechanism ever lands (issue #14's discipline).
         if (!attempt.userId().equals(currentUser.id())) {

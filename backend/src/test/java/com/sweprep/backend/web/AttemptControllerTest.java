@@ -15,6 +15,7 @@ import com.sweprep.backend.attempt.AttemptNotFoundException;
 import com.sweprep.backend.attempt.AttemptOutcome;
 import com.sweprep.backend.attempt.AttemptService;
 import com.sweprep.backend.attempt.AttemptWithCount;
+import com.sweprep.backend.attempt.ComplexityClaimResult;
 import com.sweprep.backend.attempt.ExplanationResult;
 import com.sweprep.backend.attempt.HintResult;
 import com.sweprep.backend.attempt.IllegalAttemptStateException;
@@ -297,5 +298,115 @@ class AttemptControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsString(new SelfCheckRevealRequest("text")))))
                 .hasCauseInstanceOf(IllegalArgumentException.class);
+    }
+
+    // --- Complexity self-report (issue #17) ----------------------------------------
+
+    @Test
+    void claimingComplexityRevealsTheTargetAndReportsAConsistentMeasurement() throws Exception {
+        UUID id = UUID.randomUUID();
+        Attempt recorded = attempt(id, AttemptOutcome.SOLVED)
+                .withComplexity("time=LINEAR;space=CONSTANT", "LINEAR:1.02", true);
+        AttemptWithCount withCount = new AttemptWithCount(recorded, 1);
+        when(service.claimComplexity(eq(id), any())).thenReturn(new ComplexityClaimResult(
+                withCount,
+                com.sweprep.backend.exercise.Complexity.LINEAR,
+                com.sweprep.backend.exercise.Complexity.CONSTANT,
+                new com.sweprep.backend.complexity.MeasurementOutcome.Conclusive(
+                        com.sweprep.backend.complexity.ComplexityBucket.LINEAR, 1.02)));
+
+        mockMvc.perform(post("/api/attempts/" + id + "/complexity")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(new ComplexityClaimRequest(
+                                com.sweprep.backend.exercise.Complexity.LINEAR,
+                                com.sweprep.backend.exercise.Complexity.CONSTANT))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.targetTime").value("LINEAR"))
+                .andExpect(jsonPath("$.targetSpace").value("CONSTANT"))
+                .andExpect(jsonPath("$.status").value("CONSISTENT"))
+                // Never worded as flatly "correct" - the wire status is the coarse,
+                // honest vocabulary; the editor's own copy layers the "consistent with
+                // your claim" wording on top of this.
+                .andExpect(jsonPath("$.detail").doesNotExist())
+                .andExpect(jsonPath("$.attempt.complexityClaimCorrect").value(true));
+    }
+
+    @Test
+    void aContradictedClaimIsReportedAsContradictedNeverSilentlyPassed() throws Exception {
+        UUID id = UUID.randomUUID();
+        Attempt recorded = attempt(id, AttemptOutcome.SOLVED)
+                .withComplexity("time=LINEAR;space=CONSTANT", "QUADRATIC:2.01", false);
+        AttemptWithCount withCount = new AttemptWithCount(recorded, 1);
+        when(service.claimComplexity(eq(id), any())).thenReturn(new ComplexityClaimResult(
+                withCount,
+                com.sweprep.backend.exercise.Complexity.LINEAR,
+                com.sweprep.backend.exercise.Complexity.CONSTANT,
+                new com.sweprep.backend.complexity.MeasurementOutcome.Conclusive(
+                        com.sweprep.backend.complexity.ComplexityBucket.QUADRATIC, 2.01)));
+
+        mockMvc.perform(post("/api/attempts/" + id + "/complexity")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(new ComplexityClaimRequest(
+                                com.sweprep.backend.exercise.Complexity.LINEAR,
+                                com.sweprep.backend.exercise.Complexity.CONSTANT))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CONTRADICTED"))
+                .andExpect(jsonPath("$.attempt.complexityClaimCorrect").value(false));
+    }
+
+    @Test
+    void anInconclusiveMeasurementNeverAssertsCorrectnessEitherWay() throws Exception {
+        UUID id = UUID.randomUUID();
+        Attempt recorded = attempt(id, AttemptOutcome.SOLVED)
+                .withComplexity("time=LINEAR;space=CONSTANT", "INCONCLUSIVE", null);
+        AttemptWithCount withCount = new AttemptWithCount(recorded, 1);
+        when(service.claimComplexity(eq(id), any())).thenReturn(new ComplexityClaimResult(
+                withCount,
+                com.sweprep.backend.exercise.Complexity.LINEAR,
+                com.sweprep.backend.exercise.Complexity.CONSTANT,
+                new com.sweprep.backend.complexity.MeasurementOutcome.Inconclusive(
+                        "measured growth sits between two complexity classes and cannot be "
+                                + "confidently classified")));
+
+        mockMvc.perform(post("/api/attempts/" + id + "/complexity")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(new ComplexityClaimRequest(
+                                com.sweprep.backend.exercise.Complexity.LINEAR,
+                                com.sweprep.backend.exercise.Complexity.CONSTANT))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("INCONCLUSIVE"))
+                .andExpect(jsonPath("$.detail").value(org.hamcrest.Matchers.containsString("cannot be")))
+                .andExpect(jsonPath("$.attempt.complexityClaimCorrect").doesNotExist());
+    }
+
+    @Test
+    void claimingComplexityOnAnUnsolvedAttemptConflicts() throws Exception {
+        UUID id = UUID.randomUUID();
+        when(service.claimComplexity(eq(id), any())).thenThrow(new IllegalAttemptStateException(
+                "Attempt " + id + " is not solved yet; complexity is claimed only after a passing submission"));
+
+        mockMvc.perform(post("/api/attempts/" + id + "/complexity")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(new ComplexityClaimRequest(
+                                com.sweprep.backend.exercise.Complexity.LINEAR,
+                                com.sweprep.backend.exercise.Complexity.CONSTANT))))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("not solved")));
+    }
+
+    @Test
+    void claimingComplexityOnAnExerciseWithNoCheckIsABadRequest() throws Exception {
+        UUID id = UUID.randomUUID();
+        when(service.claimComplexity(eq(id), any())).thenThrow(new InvalidAttemptRequestException(
+                "Exercise 'x' has no complexity target to claim against"));
+
+        mockMvc.perform(post("/api/attempts/" + id + "/complexity")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(new ComplexityClaimRequest(
+                                com.sweprep.backend.exercise.Complexity.LINEAR,
+                                com.sweprep.backend.exercise.Complexity.CONSTANT))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error")
+                        .value(org.hamcrest.Matchers.containsString("no complexity target")));
     }
 }

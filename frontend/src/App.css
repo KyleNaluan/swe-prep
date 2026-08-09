@@ -226,19 +226,63 @@
 
 .hints,
 .reveal,
-.explanation {
+.explanation,
+.complexity {
   margin-top: 1.5rem;
 }
 
 .hints h2,
 .reveal h2,
-.explanation h2 {
+.explanation h2,
+.complexity h2 {
   font-size: 0.85rem;
   font-weight: 600;
   color: #64748b;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   margin-bottom: 0.5rem;
+}
+
+.complexity-claim {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin: 0.5rem 0;
+}
+
+.complexity-claim label {
+  font-size: 0.85rem;
+  color: #64748b;
+}
+
+.complexity-claim select {
+  padding: 0.4rem 0.6rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(148, 163, 184, 0.5);
+  background: transparent;
+  color: inherit;
+  font-size: 0.9rem;
+}
+
+.complexity-target {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.4rem 1rem;
+  margin: 0.5rem 0;
+}
+
+.complexity-target dt {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  align-self: center;
+}
+
+.complexity-target dd {
+  margin: 0;
 }
 
 .explanation-body {
@@ -292,7 +336,8 @@
 
 .hint-offer button,
 .reveal button,
-.explanation button {
+.explanation button,
+.complexity button {
   padding: 0.5rem 1.1rem;
   border-radius: 0.5rem;
   border: 1px solid rgba(148, 163, 184, 0.5);
@@ -304,7 +349,8 @@
 
 .hint-offer button:disabled,
 .reveal button:disabled,
-.explanation button:disabled {
+.explanation button:disabled,
+.complexity button:disabled {
   opacity: 0.6;
   cursor: default;
 }

@@ -116,3 +116,82 @@ describe('Practice self-check (issue #41)', () => {
     expect(screen.queryByRole('button', { name: 'Submit' })).not.toBeInTheDocument()
   })
 })
+
+// The complexity self-report flow (issue #17): a code exercise with a complexity
+// check prompts for a claim only once solved, and the authored target never appears
+// on the page before that claim is submitted.
+describe('Practice complexity self-report (issue #17)', () => {
+  const CODE_CATALOG = [
+    { id: 'sum-demo', title: 'Sum Demo', domain: 'algorithms', difficulty: 'EASY', form: 'CHALLENGE' },
+  ]
+  const CODE_EXERCISE = {
+    id: 'sum-demo',
+    title: 'Sum Demo',
+    statement: 'Sum the array.',
+    domain: 'algorithms',
+    difficulty: 'EASY',
+    response: { kind: 'code', language: 'java', stub: 'class Solution {}' },
+    hints: [],
+    hasExplanation: false,
+    hasComplexityCheck: true,
+  }
+
+  beforeEach(() => vi.stubGlobal('fetch', vi.fn()))
+  afterEach(() => {
+    cleanup()
+    vi.unstubAllGlobals()
+  })
+
+  function mockCodeFetch(claimedBody: { time: string; space: string }[]) {
+    return vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const href = String(url)
+      const method = init?.method ?? 'GET'
+      if (href.endsWith('/api/exercises')) return { ok: true, json: async () => CODE_CATALOG } as Response
+      if (href.endsWith('/api/exercises/sum-demo'))
+        return { ok: true, json: async () => CODE_EXERCISE } as Response
+      if (href.endsWith('/api/attempts') && method === 'POST')
+        return { ok: true, json: async () => ({ id: 'att-1' }) } as Response
+      if (href.endsWith('/api/attempts')) return { ok: true, json: async () => [] } as Response
+      if (href.endsWith('/submissions'))
+        return {
+          ok: true,
+          json: async () => ({ outcome: 'PASSED', passed: 1, total: 1, detail: '', runtimeMillis: 5 }),
+        } as Response
+      if (href.endsWith('/complexity')) {
+        claimedBody.push(JSON.parse(String(init?.body)))
+        return {
+          ok: true,
+          json: async () => ({ targetTime: 'LINEAR', targetSpace: 'CONSTANT', status: 'CONSISTENT' }),
+        } as Response
+      }
+      throw new Error(`unexpected fetch to ${method} ${href}`)
+    })
+  }
+
+  it('prompts for a claim only after solving, and never shows the target before it is submitted', async () => {
+    const claims: { time: string; space: string }[] = []
+    vi.stubGlobal('fetch', mockCodeFetch(claims))
+    render(<Practice />)
+    await screen.findByRole('heading', { name: 'Sum Demo' })
+
+    // Not solved yet: no complexity prompt, and the target vocabulary is nowhere on
+    // the page - it cannot leak before a claim exists to gate it.
+    expect(screen.queryByText(/complexity/i)).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Run' }))
+    expect(await screen.findByText('1 of 1 tests passed')).toBeInTheDocument()
+
+    // Solved: the claim prompt appears, still with no target revealed.
+    expect(await screen.findByText("What is your solution's complexity?")).toBeInTheDocument()
+    expect(screen.queryByText(/Authored target/)).not.toBeInTheDocument()
+    expect(claims).toHaveLength(0)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Submit complexity claim' }))
+
+    // Only now - after the claim was sent - does the target appear, worded as
+    // "consistent with", never flatly "correct" (issue #17's honesty constraint).
+    expect(await screen.findByText(/Authored target/)).toBeInTheDocument()
+    expect(screen.getByText('Measured scaling is consistent with your claim.')).toBeInTheDocument()
+    expect(claims).toEqual([{ time: 'LINEAR', space: 'LINEAR' }])
+  })
+})

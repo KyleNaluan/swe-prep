@@ -44,4 +44,39 @@ class JavaLanguageAdapterTest {
         assertThat(harness).contains("mapper.convertValue(input.get(0), String.class)");
         assertThat(harness).contains("solution.isAnagram(arg0, arg1)");
     }
+
+    // --- The timing harness (issue #17) -------------------------------------------
+
+    @Test
+    void theTimingHarnessBindsArgumentsAndCallsTheSubmissionLikeTheCorrectnessHarness() {
+        Signature signature = new Signature(
+                "twoSum",
+                List.of(new Parameter("nums", DataType.INT_ARRAY), new Parameter("target", DataType.INT)),
+                DataType.INT_ARRAY);
+
+        String harness =
+                adapter.generateTimingHarness(signature).sourceFiles().values().iterator().next();
+
+        assertThat(harness).contains("mapper.convertValue(input.get(0), int[].class)");
+        assertThat(harness).contains("solution.twoSum(arg0, arg1)");
+        // Timing mode: repetitions and elapsed time, never a comparison against an
+        // expected value - there is no Comparison in play here.
+        assertThat(harness).contains("repetitions");
+        assertThat(harness).contains("System.nanoTime()");
+        assertThat(harness).contains("elapsedNanos");
+        assertThat(harness).doesNotContain("expected");
+    }
+
+    @Test
+    void theTimingHarnessIsAFreshFileDistinctFromTheCorrectnessHarness() {
+        Signature signature = new Signature(
+                "identity", List.of(new Parameter("n", DataType.INT)), DataType.INT);
+
+        var correctness = adapter.generateHarness(signature);
+        var timing = adapter.generateTimingHarness(signature);
+
+        assertThat(timing.mainClass()).isNotEqualTo(correctness.mainClass());
+        assertThat(timing.sourceFiles().keySet())
+                .doesNotContainAnyElementsOf(correctness.sourceFiles().keySet());
+    }
 }
