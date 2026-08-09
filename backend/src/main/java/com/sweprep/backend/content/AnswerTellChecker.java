@@ -6,9 +6,11 @@ import com.sweprep.backend.exercise.Grading;
 import com.sweprep.backend.exercise.Option;
 import com.sweprep.backend.exercise.Response;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.function.ToIntFunction;
 
 /**
  * A <b>content-quality</b> check for set-level "answer tells" in multiple-choice checks
@@ -29,6 +31,34 @@ import java.util.Set;
  * only when it exceeds {@link #DEFAULT_LENGTH_RATIO} times the mean length of the
  * distractors - targeting the systematic case while tolerating honest variation. The
  * number is tunable in one place (this constant, or the test constructor).
+ *
+ * <p>Issue #67 extended this same axis two ways, after a corpus audit found "pick the
+ * shortest option by word count" scoring 41.2% (AI/ML metrics corpus) and 36.0% (Core
+ * batch 1 corpus) against a 25% four-option baseline - the single strongest exploit in
+ * either batch - while character-based measures on the same content looked unremarkable:
+ * the word-count tell was hiding entirely behind a passing character check. First, the
+ * ratio bar is now measured against <b>word count as well as characters</b>, and is
+ * <b>two-sided</b>: a ratio of 0.57 (correct much shorter than its distractors) is exactly
+ * as exploitable as 1.75, and was previously invisible since the original bar only caught
+ * "too long." Second, a key can sit comfortably inside that ratio bar and still be the
+ * <b>uniquely shortest or uniquely longest</b> option; {@link #rankExtreme} flags that,
+ * with equal severity in either direction. Rank uniqueness is deliberately checked on word
+ * count only, not characters: character count is close to continuous prose, so two
+ * independently-written sentences almost never land on the exact same value, and a corpus
+ * measurement found raw character-count rank flagging a majority of already-balanced,
+ * hand-reviewed content on that noise alone (including this class's own "roughly balanced"
+ * fixture) - the exact false-alarm failure mode issue #69 warns against. Word count is
+ * coarse enough that ties are common and a unique extreme is a real signal, which matches
+ * what the production exploit actually measured. As with connective style, the passing
+ * condition is symmetric and never demands uniformity: the fix is to bring the correct
+ * option (or the distractors) to comparable length, and a unique extreme is the defect -
+ * not "every option is a different length," which collapsing them all to one length would
+ * only trade for a different, equally exploitable tell. The regression fixture is two real
+ * items from swe-prep-content history at their pre-fix commit, not synthetic examples -
+ * {@code http-status-classes} (key 13 words against distractors of 21/23/24) and {@code
+ * cache-no-cache-vs-no-store} (key 16 words against 24/27/29) - both of which shipped
+ * through a red-team, an adjudication pass and an author self-check before this check
+ * existed.
  *
  * <p>A cheap secondary tell is also flagged: the correct option being the <em>only</em>
  * qualified ("often", "typically", …) one among otherwise absolute distractors, another
@@ -56,11 +86,27 @@ public final class AnswerTellChecker {
 
     /**
      * The correct option is flagged when it is longer than this multiple of the mean
-     * distractor length. 1.3x tolerates honest variation (a correct answer that carries a
-     * short "because …" clause) while catching the systematic 2x+ imbalance the batch
-     * showed. Tune here.
+     * distractor length, or shorter than its reciprocal (issue #67 made the bar two-sided:
+     * 1/1.3 is exactly as much a failure as 1.3, not just the "too long" direction). 1.3x
+     * tolerates honest variation (a correct answer that carries a short "because …" clause)
+     * while catching the systematic 2x+ imbalance the first AI/ML batch showed. Tune here.
      */
     public static final double DEFAULT_LENGTH_RATIO = 1.3;
+
+    /** One length dimension: how to measure it, and the words used to name it in a finding. */
+    private record LengthMetric(String unit, String name, ToIntFunction<Option> measure) {}
+
+    private static final LengthMetric CHARACTER_METRIC =
+            new LengthMetric("characters", "character count", AnswerTellChecker::length);
+    private static final LengthMetric WORD_METRIC =
+            new LengthMetric("words", "word count", AnswerTellChecker::wordCount);
+
+    /**
+     * The dimensions checked for ratio parity (issue #67), in evaluation order. Rank
+     * uniqueness ({@link #rankExtreme}) deliberately checks only {@link #WORD_METRIC} - see
+     * the class javadoc for why character count is too noisy a signal for rank.
+     */
+    private static final List<LengthMetric> RATIO_METRICS = List.of(CHARACTER_METRIC, WORD_METRIC);
 
     /**
      * Hedge words that make an option read as "qualified" rather than absolute. A single
@@ -132,23 +178,118 @@ public final class AnswerTellChecker {
         return findings;
     }
 
+    /**
+     * The length-axis finding (issue #60, extended by #67), or empty when the key is
+     * neither a ratio outlier on either length metric nor a unique rank extreme on word
+     * count. Ratio is checked first (both metrics, each direction) since it is the more
+     * systemic signal; rank is checked last since it catches only what ratio's tolerance
+     * band lets through. At most one finding, matching {@link #loneQualifier}/{@link
+     * #connectiveStyle}.
+     */
     private java.util.Optional<Finding> lengthImbalance(
             String id, Option correct, List<Option> distractors) {
-        int correctLen = length(correct);
-        double meanOthers =
-                distractors.stream().mapToInt(AnswerTellChecker::length).average().orElse(0);
-        if (meanOthers <= 0 || correctLen <= lengthRatio * meanOthers) {
+        for (LengthMetric metric : RATIO_METRICS) {
+            java.util.Optional<Finding> ratio = ratioImbalance(id, correct, distractors, metric);
+            if (ratio.isPresent()) {
+                return ratio;
+            }
+        }
+        return rankExtreme(id, correct, distractors, WORD_METRIC);
+    }
+
+    /** The two-sided ratio check for one length metric: too long, or (issue #67) too short. */
+    private java.util.Optional<Finding> ratioImbalance(
+            String id, Option correct, List<Option> distractors, LengthMetric metric) {
+        int correctValue = metric.measure().applyAsInt(correct);
+        List<Integer> otherValues =
+                distractors.stream().map(metric.measure()::applyAsInt).toList();
+        double mean = otherValues.stream().mapToInt(Integer::intValue).average().orElse(0);
+        if (mean <= 0) {
             return java.util.Optional.empty();
         }
-        List<Integer> otherLens = distractors.stream().map(AnswerTellChecker::length).toList();
+        if (correctValue > lengthRatio * mean) {
+            return java.util.Optional.of(
+                    ratioFinding(id, metric, "longest", correctValue, otherValues, mean));
+        }
+        if (correctValue < mean / lengthRatio) {
+            return java.util.Optional.of(
+                    ratioFinding(id, metric, "shortest", correctValue, otherValues, mean));
+        }
+        return java.util.Optional.empty();
+    }
+
+    private Finding ratioFinding(
+            String id,
+            LengthMetric metric,
+            String direction,
+            int correctValue,
+            List<Integer> otherValues,
+            double mean) {
+        String action =
+                direction.equals("longest")
+                        ? "Bring the distractors up to comparable length; do NOT truncate the "
+                                + "correct answer into something inaccurate."
+                        : "Bring the correct option up to comparable length, or trim the "
+                                + "distractors down to parity; do NOT simply invert which side "
+                                + "reads short.";
         String message = String.format(
                 Locale.ROOT,
-                "check '%s': the correct option is %d characters but the distractors are %s "
-                        + "(mean %.1f) - a learner can score by picking the longest option "
-                        + "without reading. Bring the distractors up to comparable length; do NOT "
-                        + "truncate the correct answer into something inaccurate. "
-                        + "(threshold: correct must be <= %.2fx the distractor mean)",
-                id, correctLen, otherLens, meanOthers, lengthRatio);
+                "check '%s': the correct option is %d %s but the distractors are %s (mean %.1f "
+                        + "%s) - a learner can score by picking the %s option by %s without "
+                        + "reading. %s (threshold: correct must be between %.2fx and %.2fx the "
+                        + "distractor mean)",
+                id,
+                correctValue,
+                metric.unit(),
+                otherValues,
+                mean,
+                metric.unit(),
+                direction,
+                metric.name(),
+                action,
+                1 / lengthRatio,
+                lengthRatio);
+        return new Finding(id, Tell.LENGTH_IMBALANCE, message);
+    }
+
+    /**
+     * The rank check (issue #67): the correct option flagged for being the <em>only</em>
+     * option at the minimum or maximum of {@code metric}, regardless of how close the ratio
+     * bar would otherwise call it. A tie at the extreme - including the degenerate case
+     * where every option is the same length - passes: the property required is "shares the
+     * extreme with at least one distractor," never "every option is identical."
+     */
+    private java.util.Optional<Finding> rankExtreme(
+            String id, Option correct, List<Option> distractors, LengthMetric metric) {
+        int correctValue = metric.measure().applyAsInt(correct);
+        List<Integer> otherValues = distractors.stream().map(metric.measure()::applyAsInt).toList();
+        List<Integer> allValues = new ArrayList<>(otherValues);
+        allValues.add(correctValue);
+        int min = Collections.min(allValues);
+        int max = Collections.max(allValues);
+        if (min == max) {
+            return java.util.Optional.empty();
+        }
+        long atMin = allValues.stream().filter(v -> v == min).count();
+        long atMax = allValues.stream().filter(v -> v == max).count();
+        String direction;
+        if (correctValue == min && atMin == 1) {
+            direction = "shortest";
+        } else if (correctValue == max && atMax == 1) {
+            direction = "longest";
+        } else {
+            return java.util.Optional.empty();
+        }
+        String message = String.format(
+                Locale.ROOT,
+                "check '%s': the correct option is the uniquely %s option by %s (%d %s; the "
+                        + "distractors are %s) - a learner can score by picking the %s option "
+                        + "without reading, even though it sits inside the ratio bar. The "
+                        + "correct option must not be a unique extreme by this metric - share "
+                        + "the extreme with at least one distractor, or move it toward the "
+                        + "middle of the pack; do NOT collapse every option to the same length "
+                        + "instead.",
+                id, direction, metric.name(), correctValue, metric.unit(), otherValues, direction);
         return java.util.Optional.of(new Finding(id, Tell.LENGTH_IMBALANCE, message));
     }
 
@@ -216,6 +357,11 @@ public final class AnswerTellChecker {
 
     private static int length(Option option) {
         return option.text().strip().length();
+    }
+
+    private static int wordCount(Option option) {
+        String text = option.text().strip();
+        return text.isEmpty() ? 0 : text.split("\\s+").length;
     }
 
     private static boolean isQualified(Option option) {
