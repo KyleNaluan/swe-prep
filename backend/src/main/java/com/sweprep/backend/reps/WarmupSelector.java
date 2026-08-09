@@ -14,15 +14,15 @@ import java.util.function.Function;
 
 /**
  * Builds one warm-up set: the ~8-rep, ~4-minute daily core (issues #3, #9, #18). It is
- * pure and deterministic - given the same catalog, active families, attempted problems
- * and confusion relation it returns the same ordered set - so the whole of its behaviour
- * is unit testable without a database or a scheduler. The spaced-repetition scheduler
- * that decides <em>which</em> reps are due (true due-date ordering) is a later ticket
- * (#38); what this selector owes now is narrower and load-bearing: the set it hands back
- * is drawn from the right content, is never blocked practice, and prefers confusable
- * juxtaposition where the material allows it.
+ * pure and deterministic - given the same catalog, active families, attempted problems,
+ * confusion relation and due set it returns the same ordered set - so the whole of its
+ * behaviour is unit testable without a database or a live scheduler. The spaced-repetition
+ * algorithm that decides <em>which</em> reps are due lives behind {@code RepScheduler}
+ * (issue #20); this selector only consumes its verdict as one more membership filter
+ * ({@code dueToday}, alongside family and gating) and never the algorithm itself, so a
+ * future scheduler swap never touches this class.
  *
- * <p>Three rules, all from the design revision (sections 2.2 and 4.2):
+ * <p>Four rules, all from the design revision (sections 2.2 and 4.2) plus issue #20:
  *
  * <ol>
  *   <li><b>Only reps.</b> Only {@link Form#REP} exercises are warm-up material; a
@@ -41,6 +41,12 @@ import java.util.function.Function;
  *       practising it cold is guessing, not practice. A pattern-identification rep
  *       carries no {@link Exercise#derivedFrom()} and so is available cold - the point
  *       of it (issue #18).
+ *   <li><b>Due today.</b> A rep that is otherwise eligible but has not yet come due (its
+ *       {@code RepScheduler}-computed due date is in the future) is excluded - "a day's
+ *       warm-up is drawn from what is actually due" (issue #20). A rep with no review
+ *       history is due immediately, so cold-start behaviour is unchanged. This is purely
+ *       a membership filter, applied before interleaving, so it never competes with the
+ *       ordering rules below.
  * </ol>
  *
  * <p>Then the eligible reps are <b>interleaved, not merely due-ordered</b> (section
@@ -60,7 +66,7 @@ import java.util.function.Function;
  * <em>confusable</em> with the rep just placed within the same domain (a {@link
  * ConfusionPairs} relation derived from real wrong answers, issue #39) - that is where
  * discrimination is trained; cross-domain confusability is not rewarded, since mixing
- * unrelated domains is only spacing. True due-date ordering is #38.
+ * unrelated domains is only spacing.
  */
 public final class WarmupSelector {
 
@@ -131,13 +137,49 @@ public final class WarmupSelector {
             Set<String> optedIn,
             Set<String> attemptedProblems,
             ConfusionPairs confusionPairs) {
-        List<Exercise> eligible = catalog.stream()
+        return interleave(eligible(catalog, activeFamilies, optedIn, attemptedProblems), confusionPairs);
+    }
+
+    /**
+     * The ordered warm-up set, additionally drawn only from what is actually due today (issue
+     * #20's acceptance criterion). {@code dueToday} narrows the eligible pool exactly like
+     * {@code optedIn} and gating narrow it - membership only, no ordering opinion of its own -
+     * so the existing interleaving and confusability preferences (issues #18, #39) apply
+     * unchanged to whatever survives; due-date selection and interleaving compose rather than
+     * compete. A rep that passes every other check but has simply not come due yet is excluded
+     * here, which can legitimately leave the returned set smaller than {@link #size}, or empty,
+     * when nothing eligible is due - the caller (issue #19's empty-warm-up fallback already
+     * handles an empty set the same way it handles an empty eligible pool) decides what that
+     * means, not this method.
+     *
+     * @param dueToday the ids, among the eligible pool, that {@code RepScheduler} reports due
+     *                 for review today; a rep with no review history is due by definition
+     */
+    public List<Exercise> select(
+            List<Exercise> catalog,
+            Set<Family> activeFamilies,
+            Set<String> optedIn,
+            Set<String> attemptedProblems,
+            ConfusionPairs confusionPairs,
+            Set<String> dueToday) {
+        List<Exercise> due = eligible(catalog, activeFamilies, optedIn, attemptedProblems).stream()
+                .filter(exercise -> dueToday.contains(exercise.id()))
+                .toList();
+        return interleave(due, confusionPairs);
+    }
+
+    /** The reps eligible on form, family and gating alone - every filter except due-date. */
+    private List<Exercise> eligible(
+            List<Exercise> catalog,
+            Set<Family> activeFamilies,
+            Set<String> optedIn,
+            Set<String> attemptedProblems) {
+        return catalog.stream()
                 .filter(exercise -> exercise.form() == Form.REP)
                 .filter(WarmupSelector::warmupGradable)
                 .filter(exercise -> familyEligible(exercise, activeFamilies, optedIn))
                 .filter(exercise -> gatingEligible(exercise, attemptedProblems))
                 .toList();
-        return interleave(eligible, confusionPairs);
     }
 
     /**

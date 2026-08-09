@@ -33,6 +33,11 @@ import org.springframework.stereotype.Service;
  *       inactive-family Lesson pulls that one concept's Checks into the warm-up without turning the
  *       whole family on - the reachability hinge of the filter.
  * </ul>
+ *
+ * <p>The due-date SM-2 queue (issue #20) is wired in the same way: {@link RepDueService}
+ * derives which reps are due today from attempt history, exactly as {@link
+ * ConfusionPairService} derives the confusion relation, and the result is handed to the
+ * selector as one more filter alongside family and gating.
  */
 @Service
 public class WarmupService {
@@ -41,6 +46,7 @@ public class WarmupService {
     private final ContentCatalog contentCatalog;
     private final AttemptRepository attempts;
     private final ConfusionPairService confusionPairs;
+    private final RepDueService repDue;
     private final CurrentUser currentUser;
     private final RoleService roles;
     private final WarmupSelector selector;
@@ -50,6 +56,7 @@ public class WarmupService {
             ContentCatalog contentCatalog,
             AttemptRepository attempts,
             ConfusionPairService confusionPairs,
+            RepDueService repDue,
             CurrentUser currentUser,
             RoleService roles,
             RepProperties properties) {
@@ -57,24 +64,28 @@ public class WarmupService {
         this.contentCatalog = contentCatalog;
         this.attempts = attempts;
         this.confusionPairs = confusionPairs;
+        this.repDue = repDue;
         this.currentUser = currentUser;
         this.roles = roles;
         this.selector =
                 new WarmupSelector(properties.warmupSize(), properties.maxConsecutiveSame());
     }
 
-    /** The ordered warm-up set for the current user. */
+    /** The ordered warm-up set for the current user, drawn only from what is due today. */
     public List<Exercise> warmup() {
         UUID userId = currentUser.id();
+        List<Exercise> allContent = catalog.all();
         Set<Family> activeFamilies = roles.activeFamilies(userId);
         Set<String> attemptedProblems = attempts.attemptedExerciseIds(userId);
         Set<String> optedIn = optedInReps(userId, attemptedProblems);
+        Set<String> dueToday = repDue.dueToday(userId, allContent);
         return selector.select(
-                catalog.all(),
+                allContent,
                 activeFamilies,
                 optedIn,
                 attemptedProblems,
-                confusionPairs.forUser(userId));
+                confusionPairs.forUser(userId),
+                dueToday);
     }
 
     /**
