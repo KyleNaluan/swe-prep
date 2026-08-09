@@ -190,8 +190,8 @@ public final class AnswerTellChecker {
             if (correctHas && distractorsWithIt == 0) {
                 String message = String.format(
                         Locale.ROOT,
-                        "check '%s': the correct option is the only one using a causal connective "
-                                + "('%s') - a learner can pick the option that justifies itself without "
+                        "check '%s': the correct option is the only one using the causal connective "
+                                + "'%s' - a learner can pick the option that justifies itself without "
                                 + "reading. Add '%s' (or a similar connective) to at least one "
                                 + "distractor, or remove it from the correct answer, so the connective "
                                 + "is not a tell; do NOT simply move it onto the distractors instead.",
@@ -201,12 +201,12 @@ public final class AnswerTellChecker {
             if (!correctHas && distractorsWithIt == distractors.size()) {
                 String message = String.format(
                         Locale.ROOT,
-                        "check '%s': the correct option is the only one NOT using a causal connective "
-                                + "('%s') - every distractor justifies itself and the correct answer "
-                                + "stands alone, so a learner can pick the option that does not justify "
-                                + "itself without reading. Add '%s' (or a similar connective) to the "
-                                + "correct answer, or remove it from at least one distractor, so the "
-                                + "connective is not a tell.",
+                        "check '%s': the correct option is the only one NOT using the connective "
+                                + "'%s' - every distractor uses it and the correct answer stands alone, "
+                                + "so a learner can pick the odd one out without reading (the key may "
+                                + "still carry a different connective). Add '%s' to the correct answer, "
+                                + "or remove it from at least one distractor, so the connective is not a "
+                                + "tell.",
                         id, connective, connective);
                 return java.util.Optional.of(new Finding(id, Tell.CONNECTIVE_STYLE, message));
             }
