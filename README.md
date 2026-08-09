@@ -80,7 +80,13 @@ Prerequisites: Java 21 on `PATH`, Docker running, Node 24.
    failures. A check that carries an explanation of why the answer is right shows it
    automatically on a wrong answer, and offers it one click away once the sitting has
    ended; asking is recorded but never affects your score - it is not a hint. Runtime is
-   shown next to the verdict for interest only, never as part of pass/fail. A concept exercise shows multiple-choice options and is
+   shown next to the verdict for interest only, never as part of pass/fail. Once a
+   coding exercise is solved, if it carries a complexity target you are asked to state
+   your solution's time and space complexity before that target is revealed (issue #17)
+   - articulating it is itself the interview skill - and your time claim is checked by
+   measuring how the solution actually scales; the app only ever says the measurement is
+   "consistent" with your claim or explicitly inconclusive, never "correct", because
+   timing cannot tell some growth rates (like O(n) vs O(n log n)) apart. A concept exercise shows multiple-choice options and is
    graded with no code execution at all. An "explain it in your own words" exercise
    (issue #41) is different again: it takes free text, then reveals a model answer for
    you to self-rate against - production practice that is deliberately never machine-graded,
