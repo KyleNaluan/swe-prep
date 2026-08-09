@@ -15,7 +15,7 @@ import java.util.Optional;
  * under the exercise's {@link com.sweprep.backend.exercise.Comparison}. Keeping the rule
  * in one place means an option is classed correct/distractor exactly when a learner
  * picking it would be graded right/wrong - so the loader's distractor gate (issue #42)
- * and the answer-tell quality check (issue #60) never drift from how the option actually
+ * and the answer-tell quality check (issues #60/#65) never drift from how the option actually
  * grades. Never compare with Jackson's {@code JsonNode.equals}: it keys on node type and
  * would fail numerically-equal answers (see {@code JsonEquality}).
  */
