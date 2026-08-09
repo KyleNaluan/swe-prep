@@ -115,6 +115,119 @@ class AnswerTellCheckerTest {
     }
 
     @Test
+    void flagsWhenTheCorrectOptionIsTheOnlyOneCarryingACausalConnective() {
+        Exercise onlyKeyJustifies = choice(
+                "connective-only-key",
+                Option.correct("A hash map gives O(1) average lookup because keys hash directly "
+                        + "to a bucket index"),
+                Option.distractor("A sorted array gives O(log n) lookup by binary search", "m1"),
+                Option.distractor("A linked list gives O(n) lookup by scanning nodes", "m2"),
+                Option.distractor("A stack gives O(1) access only to its top element", "m3"));
+
+        List<Finding> findings = checker.check(onlyKeyJustifies);
+
+        assertThat(findings).extracting(Finding::tell).contains(Tell.CONNECTIVE_STYLE);
+        Finding finding = findings.stream()
+                .filter(f -> f.tell() == Tell.CONNECTIVE_STYLE)
+                .findFirst()
+                .orElseThrow();
+        assertThat(finding.message())
+                .contains("connective-only-key")
+                .contains("because")
+                .containsIgnoringCase("only one using");
+    }
+
+    @Test
+    void flagsWithEqualSeverityWhenTheCorrectOptionIsTheOnlyOneLackingAConnective() {
+        // The mirror case: every distractor justifies itself with "since" and the key
+        // stands alone - exactly as exploitable as the reverse, and must be caught with
+        // the same Tell (equal severity), not treated as a lesser case.
+        Exercise onlyDistractorsJustify = choice(
+                "connective-only-distractors",
+                Option.correct("A hash map gives O(1) average lookup by key"),
+                Option.distractor(
+                        "A sorted array gives O(log n) lookup, since binary search halves the "
+                                + "range each step",
+                        "m1"),
+                Option.distractor(
+                        "A linked list gives O(n) lookup, since every node must be visited in "
+                                + "turn",
+                        "m2"),
+                Option.distractor(
+                        "A stack gives O(1) access only to its top element, since deeper "
+                                + "elements are unreachable without popping",
+                        "m3"));
+
+        List<Finding> findings = checker.check(onlyDistractorsJustify);
+
+        assertThat(findings).extracting(Finding::tell).contains(Tell.CONNECTIVE_STYLE);
+        Finding finding = findings.stream()
+                .filter(f -> f.tell() == Tell.CONNECTIVE_STYLE)
+                .findFirst()
+                .orElseThrow();
+        assertThat(finding.message())
+                .contains("connective-only-distractors")
+                .contains("since")
+                .containsIgnoringCase("only one NOT using");
+    }
+
+    @Test
+    void passesWhenTheKeySharesConnectiveUseWithAtLeastOneDistractor() {
+        // The key uses "because" and so does one distractor - the property is shared, not
+        // one-sided, so it must not be flagged even though it is not universal.
+        Exercise shared = choice(
+                "connective-shared",
+                Option.correct("A hash map gives O(1) average lookup because keys hash directly "
+                        + "to a bucket index"),
+                Option.distractor("A sorted array gives O(log n) lookup because it halves the "
+                        + "search range each step", "m1"),
+                Option.distractor("A linked list gives O(n) lookup by scanning nodes", "m2"),
+                Option.distractor("A stack gives O(1) access only to its top element", "m3"));
+
+        assertThat(checker.check(shared))
+                .extracting(Finding::tell)
+                .doesNotContain(Tell.CONNECTIVE_STYLE);
+    }
+
+    @Test
+    void passesWhenNoOptionUsesAConnectiveAtAll() {
+        Exercise noConnectives = choice(
+                "connective-none",
+                Option.correct("A hash map gives O(1) average lookup by key"),
+                Option.distractor("A sorted array gives O(log n) lookup by binary search", "m1"),
+                Option.distractor("A linked list gives O(n) lookup by scanning nodes", "m2"),
+                Option.distractor("A stack gives O(1) access only to its top element", "m3"));
+
+        assertThat(checker.check(noConnectives))
+                .extracting(Finding::tell)
+                .doesNotContain(Tell.CONNECTIVE_STYLE);
+    }
+
+    @Test
+    void isBlindToConnectivesMergedIntoOneBucket_theExactLexemeMatters() {
+        // A corpus audit found this exact shape leak through a merged "any connective"
+        // check: the key uses "because" and every distractor uses "since" - a merged
+        // bucket sees "a connective" on both sides and passes, but the exact lexeme
+        // "since" is a clean 100%-distractors/0%-key split and must be caught.
+        Exercise exactLexemeLeak = choice(
+                "connective-exact-lexeme",
+                Option.correct("Use F_beta with beta > 1 because it weights recall more heavily"),
+                Option.distractor(
+                        "Keep using F1, since the harmonic mean already balances precision and "
+                                + "recall equally", "m1"),
+                Option.distractor(
+                        "Use F_beta with beta < 1, since a value below 1 reads as discounting "
+                                + "precision", "m2"),
+                Option.distractor(
+                        "Switch to accuracy, since it treats every correct prediction the same",
+                        "m3"));
+
+        List<Finding> findings = checker.check(exactLexemeLeak);
+
+        assertThat(findings).extracting(Finding::tell).contains(Tell.CONNECTIVE_STYLE);
+    }
+
+    @Test
     void ignoresNonChoiceContent() {
         // Only Choice + AnswerKey has a "correct option" and distractors to compare.
         Exercise code = choice("noop", Option.correct("only"), Option.distractor("x", "m"));
