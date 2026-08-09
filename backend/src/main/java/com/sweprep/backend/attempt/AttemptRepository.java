@@ -197,6 +197,40 @@ public class AttemptRepository {
                         .list());
     }
 
+    /**
+     * One terminal {@code REP}-form attempt's outcome - the raw material {@code RepDueService}
+     * (issue #20) reduces to a spaced-repetition {@code Review}. {@code solved} is the
+     * correctness signal; {@code explanationRequested} is the "asked why" confidence signal
+     * (issue #51) that makes an otherwise-correct review weaker.
+     */
+    public record RepReview(String exerciseId, Instant endedAt, boolean solved, boolean explanationRequested) {}
+
+    /**
+     * Every terminal {@code REP}-form attempt this user has ever ended, across every exercise -
+     * the due-date scheduler's (issue #20) raw material. Only {@code SOLVED} (correct) and
+     * {@code ABANDONED} (not solved) are terminal outcomes a rep can reach; a self-check rep
+     * ends {@code EXPLAINED} instead, which this {@code outcome IN (...)} filter structurally
+     * excludes with no separate form or grading-kind check - the same "the query alone enforces
+     * the boundary" shape as {@link com.sweprep.backend.attempt.SubmissionRepository#cleanPassInstants}.
+     * An attempt still {@code IN_PROGRESS} is not yet a completed review and is excluded too.
+     */
+    public List<RepReview> repReviews(UUID userId) {
+        return jdbc.sql(
+                        """
+                        SELECT exercise_id, ended_at, outcome, explanation_requested
+                        FROM attempt
+                        WHERE user_id = :userId AND form = 'REP' AND outcome IN ('SOLVED', 'ABANDONED')
+                        ORDER BY ended_at
+                        """)
+                .param("userId", userId)
+                .query((ResultSet rs, int rowNum) -> new RepReview(
+                        rs.getString("exercise_id"),
+                        rs.getTimestamp("ended_at").toInstant(),
+                        "SOLVED".equals(rs.getString("outcome")),
+                        rs.getBoolean("explanation_requested")))
+                .list();
+    }
+
     private static java.sql.Timestamp toTimestamp(Instant instant) {
         return instant == null ? null : java.sql.Timestamp.from(instant);
     }
