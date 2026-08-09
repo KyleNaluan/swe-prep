@@ -36,9 +36,21 @@ import java.util.Set;
  * grammatically-agreeing option" tell is left out: detecting grammatical agreement
  * reliably is not cheap, and a shaky heuristic there would cry wolf.)
  *
+ * <p>A third, set-level axis (issue #65) is <b>connective style</b>: a check is flagged
+ * when the correct option is the only one carrying a causal connective ("since",
+ * "because", …) and, with equal severity, when it is the only one <em>lacking</em> one -
+ * "pick the option that does not justify itself" is exactly as exploitable as "pick the
+ * option that does." This was found scoring 4/4 with zero domain knowledge on a real
+ * authored batch (swe-prep-content PR #5) before a red-team caught it by hand. The
+ * passing condition is symmetric: the key must merely <em>share</em> the property with at
+ * least one distractor, never that the property point a particular way - see
+ * {@link #connectiveStyle}.
+ *
  * <p>Findings are advisory and their messages are actionable: the fix is always to bring
- * the distractors up to parity, never to truncate the correct answer into something
- * inaccurate.
+ * the distractors (or, for connective style, either side) up to parity, never to
+ * truncate the correct answer into something inaccurate or to simply invert which side
+ * carries the tell - that inversion, not a missed fix, is this repo's dominant recurring
+ * failure on these checks.
  */
 public final class AnswerTellChecker {
 
@@ -57,6 +69,20 @@ public final class AnswerTellChecker {
     private static final Set<String> QUALIFIERS = Set.of(
             "often", "typically", "usually", "sometimes", "generally", "frequently",
             "occasionally", "may", "can", "most", "many", "rarely", "tend", "tends");
+
+    /**
+     * Causal connectives, in one place so a newly discovered near-neighbour is a one-line
+     * addition (issue #65's fourth acceptance criterion). Checked one lexeme at a time
+     * (see {@link #connectiveStyle}), <b>never</b> merged into one "does it have some
+     * connective" bucket: a corpus audit measured that a merged-bucket version of this
+     * check passed on a batch where every key said "because" and every distractor said
+     * "since" - both sides read as "has a connective" to the merged bucket, hiding the
+     * exact-lexeme imbalance that a learner could actually exploit. An ordered list, not a
+     * {@code Set}, so the lexeme scanned first (and therefore reported first, when more
+     * than one trips) is deterministic.
+     */
+    private static final List<String> CONNECTIVES =
+            List.of("since", "because", "as", "so that");
 
     private final ObjectMapper mapper;
     private final double lengthRatio;
@@ -102,6 +128,7 @@ public final class AnswerTellChecker {
         List<Finding> findings = new ArrayList<>();
         lengthImbalance(exercise.id(), correct, distractors).ifPresent(findings::add);
         loneQualifier(exercise.id(), correct, distractors).ifPresent(findings::add);
+        connectiveStyle(exercise.id(), correct, distractors).ifPresent(findings::add);
         return findings;
     }
 
@@ -144,6 +171,49 @@ public final class AnswerTellChecker {
         return java.util.Optional.of(new Finding(id, Tell.LONE_QUALIFIER, message));
     }
 
+    /**
+     * The connective-style finding (issue #65), or empty when the key shares each
+     * lexeme's presence/absence with at least one distractor. Scanned one connective at a
+     * time in {@link #CONNECTIVES} order; the first lexeme that isolates the key - either
+     * direction - is reported, so a check with more than one imbalanced lexeme still
+     * yields exactly one finding (matching {@link #lengthImbalance}/{@link
+     * #loneQualifier}, each of which also contributes at most one finding per exercise).
+     */
+    private java.util.Optional<Finding> connectiveStyle(
+            String id, Option correct, List<Option> distractors) {
+        String correctText = correct.text().toLowerCase(Locale.ROOT);
+        for (String connective : CONNECTIVES) {
+            boolean correctHas = containsWord(correctText, connective);
+            long distractorsWithIt = distractors.stream()
+                    .filter(option -> containsWord(option.text().toLowerCase(Locale.ROOT), connective))
+                    .count();
+            if (correctHas && distractorsWithIt == 0) {
+                String message = String.format(
+                        Locale.ROOT,
+                        "check '%s': the correct option is the only one using the causal connective "
+                                + "'%s' - a learner can pick the option that justifies itself without "
+                                + "reading. Add '%s' (or a similar connective) to at least one "
+                                + "distractor, or remove it from the correct answer, so the connective "
+                                + "is not a tell; do NOT simply move it onto the distractors instead.",
+                        id, connective, connective);
+                return java.util.Optional.of(new Finding(id, Tell.CONNECTIVE_STYLE, message));
+            }
+            if (!correctHas && distractorsWithIt == distractors.size()) {
+                String message = String.format(
+                        Locale.ROOT,
+                        "check '%s': the correct option is the only one NOT using the connective "
+                                + "'%s' - every distractor uses it and the correct answer stands alone, "
+                                + "so a learner can pick the odd one out without reading (the key may "
+                                + "still carry a different connective). Add '%s' to the correct answer, "
+                                + "or remove it from at least one distractor, so the connective is not a "
+                                + "tell.",
+                        id, connective, connective);
+                return java.util.Optional.of(new Finding(id, Tell.CONNECTIVE_STYLE, message));
+            }
+        }
+        return java.util.Optional.empty();
+    }
+
     private static int length(Option option) {
         return option.text().strip().length();
     }
@@ -159,6 +229,7 @@ public final class AnswerTellChecker {
         return false;
     }
 
+    /** Word-boundary substring match; {@code word} may be a single token or a phrase. */
     private static boolean containsWord(String text, String word) {
         int from = 0;
         while (true) {
@@ -179,7 +250,8 @@ public final class AnswerTellChecker {
     /** The kind of answer tell a finding reports. */
     public enum Tell {
         LENGTH_IMBALANCE,
-        LONE_QUALIFIER
+        LONE_QUALIFIER,
+        CONNECTIVE_STYLE
     }
 
     /** One answer-tell finding: which check, which tell, and an actionable message. */
