@@ -205,6 +205,64 @@ class RealContentSmokeTest {
         }
     }
 
+    /**
+     * The commit swe-prep-content was at right before the fix for the word-rank regression
+     * this guards (issue #67), and the two files it fixed. Extracted at test time via
+     * {@code git show}, never committed here, for the same public-engine/private-content
+     * reason as {@link #CONNECTIVE_REGRESSION_COMMIT}.
+     */
+    private static final String LENGTH_RANK_REGRESSION_COMMIT =
+            "b030f28fd7b18a4c9a9a9972a5f6aa9589c0babc";
+
+    private static final List<String> LENGTH_RANK_REGRESSION_FILES =
+            List.of("http-status-classes.json", "cache-no-cache-vs-no-store.json");
+
+    /**
+     * The length-axis rank/word-count guard (issue #67), demonstrated against the exact
+     * real regression the issue's acceptance criteria name rather than a synthetic
+     * stand-in: {@code http-status-classes} (key 13 words against distractors of 21/23/24)
+     * and {@code cache-no-cache-vs-no-store} (key 16 words against 24/27/29), both at
+     * {@link #LENGTH_RANK_REGRESSION_COMMIT} - the commit immediately before that content
+     * repo's own fix. A corpus audit measured "pick the shortest option by word count" at
+     * 41.2%/36.0% against a 25% baseline on real corpora containing these items; the
+     * pre-fix key in each is the uniquely shortest option by a wide word-count margin.
+     * Skipped, like every real-content test here, when no local clone - or this specific
+     * historical commit - is available.
+     */
+    @Test
+    void theRealPreFixLengthItemsTripTheWordRankGuard() throws Exception {
+        Path dir = contentDir();
+        assumeTrue(Files.isDirectory(dir), "no local content clone at " + dir.toAbsolutePath());
+        assumeTrue(Files.isDirectory(dir.resolve(".git")), dir + " is not a git working tree");
+        assumeTrue(
+                commitExists(dir, LENGTH_RANK_REGRESSION_COMMIT),
+                "local clone has no commit " + LENGTH_RANK_REGRESSION_COMMIT);
+
+        Path fixtureDir = Files.createTempDirectory("length-rank-regression");
+        try {
+            for (String file : LENGTH_RANK_REGRESSION_FILES) {
+                Files.writeString(
+                        fixtureDir.resolve(file), gitShow(dir, LENGTH_RANK_REGRESSION_COMMIT, file));
+            }
+
+            ExerciseCatalog catalog =
+                    new FileExerciseCatalog(new ContentProperties(fixtureDir.toString()), mapper);
+            List<AnswerTellChecker.Finding> findings =
+                    new AnswerTellChecker(mapper).checkAll(catalog.all());
+
+            assertThat(findings)
+                    .as(
+                            "the pre-fix http-status-classes/cache-no-cache-vs-no-store items "
+                                    + "(commit %s) are the known-bad word-rank regression fixture "
+                                    + "and must trip the guard",
+                            LENGTH_RANK_REGRESSION_COMMIT)
+                    .extracting(AnswerTellChecker.Finding::tell)
+                    .contains(AnswerTellChecker.Tell.LENGTH_IMBALANCE);
+        } finally {
+            deleteRecursively(fixtureDir);
+        }
+    }
+
     @Test
     void theConceptExerciseIsGradedWithNoRunner() {
         Path dir = contentDir();
