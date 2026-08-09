@@ -3,12 +3,15 @@ package com.sweprep.backend.content;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sweprep.backend.exercise.Comparison;
+import com.sweprep.backend.exercise.Complexity;
+import com.sweprep.backend.exercise.ComplexityCheck;
 import com.sweprep.backend.exercise.DataType;
 import com.sweprep.backend.exercise.Difficulty;
 import com.sweprep.backend.exercise.Exercise;
 import com.sweprep.backend.exercise.Form;
 import com.sweprep.backend.exercise.Grading;
 import com.sweprep.backend.exercise.Hint;
+import com.sweprep.backend.exercise.InputGenerator;
 import com.sweprep.backend.exercise.Option;
 import com.sweprep.backend.exercise.Response;
 import com.sweprep.backend.exercise.Signature;
@@ -46,8 +49,16 @@ import java.util.List;
  *   "family":   ["BACKEND", "AIML"],                           // optional, default []
  *   "stability": "STABLE|VOLATILE",                            // optional, default STABLE
  *   "reviewed": "2026-08-07",                                  // optional ISO date (VOLATILE)
- *   "derivedFrom": "two-sum"                                   // optional; the problem
+ *   "derivedFrom": "two-sum",                                  // optional; the problem
  *                                                              // a rep is gated on (issue #18)
+ *   "complexity": {                                            // optional (issue #17)
+ *     "targetTime": "LINEAR", "targetSpace": "CONSTANT",
+ *     "generator": {                                           // optional; omit to still
+ *       "arguments": [                                         // ask + reveal but skip
+ *          { "kind": "scalingIntArray", "min": 0, "max": 1000 },// the empirical check
+ *          { "kind": "fixed", "value": 9 } ]                   // one entry per signature
+ *     }                                                        // parameter, in order
+ *   }
  * }
  * </pre>
  */
@@ -73,10 +84,82 @@ final class ExerciseParser {
         List<Hint> hints = hints(json, root);
         String explanation = json.optionalText(root, "explanation");
         String derivedFrom = json.optionalText(root, "derivedFrom");
+        ComplexityCheck complexityCheck = complexityCheck(json, root, response);
         return new Exercise(
                 id, title, statement, domain, topics, difficulty, form, response, grading, hints,
                 explanation, json.family(root), json.stability(root), json.reviewed(root),
-                derivedFrom);
+                derivedFrom, complexityCheck);
+    }
+
+    /**
+     * The complexity self-report flow's optional content metadata (issue #17): the
+     * authored target, and, optionally, how to synthesize growing-size inputs to check a
+     * claim against it. Absent entirely by default - the field is optional by design, and
+     * a missing {@code "complexity"} block skips the whole flow for this exercise, not
+     * just its measurement.
+     */
+    private static ComplexityCheck complexityCheck(ContentJson json, JsonNode root, Response response) {
+        JsonNode node = root.get("complexity");
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        if (!node.isObject()) {
+            throw json.malformed("'complexity' must be an object");
+        }
+        Complexity targetTime = json.requireEnum(node, "targetTime", Complexity.class);
+        Complexity targetSpace = json.requireEnum(node, "targetSpace", Complexity.class);
+        InputGenerator generator = inputGenerator(json, node.get("generator"), response);
+        return new ComplexityCheck(targetTime, targetSpace, generator);
+    }
+
+    /**
+     * The optional input generator inside a {@code "complexity"} block. Absent by design
+     * (issue #17's "skips the check entirely without error" criterion) - an exercise may
+     * declare a target with no generator, and this returns {@code null} for exactly that
+     * case. When present, it requires a code response (there is nothing to run growing
+     * inputs against otherwise) and exactly one argument spec per signature parameter, in
+     * order - the same "one entry per parameter" discipline a hand-authored
+     * {@code TestCase.input} follows.
+     */
+    private static InputGenerator inputGenerator(ContentJson json, JsonNode node, Response response) {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        if (!(response instanceof Response.Code code)) {
+            throw json.malformed(
+                    "'complexity.generator' requires a code response to run growing inputs against");
+        }
+        List<Parameter> parameters = code.signature().parameters();
+        JsonNode args = json.requireField(node, "arguments");
+        if (!args.isArray() || args.size() != parameters.size()) {
+            throw json.malformed(
+                    "'complexity.generator.arguments' must have exactly one entry per signature "
+                            + "parameter (" + parameters.size() + ")");
+        }
+        List<InputGenerator.Argument> arguments = new ArrayList<>();
+        for (int i = 0; i < parameters.size(); i++) {
+            arguments.add(generatorArgument(json, args.get(i), parameters.get(i)));
+        }
+        return new InputGenerator(arguments);
+    }
+
+    private static InputGenerator.Argument generatorArgument(
+            ContentJson json, JsonNode node, Parameter parameter) {
+        String kind = json.requireText(node, "kind");
+        return switch (kind) {
+            case "scalingIntArray" -> {
+                if (parameter.type() != DataType.INT_ARRAY) {
+                    throw json.malformed(
+                            "'complexity.generator' declares a scalingIntArray for parameter '"
+                                    + parameter.name() + "', which is not an INT_ARRAY");
+                }
+                yield new InputGenerator.Argument.ScalingIntArray(
+                        json.requireField(node, "min").asInt(), json.requireField(node, "max").asInt());
+            }
+            case "fixed" -> new InputGenerator.Argument.Fixed(json.requireField(node, "value"));
+            default -> throw json.malformed(
+                    "unknown complexity generator argument kind '" + kind + "'");
+        };
     }
 
     private static List<Hint> hints(ContentJson json, JsonNode root) {

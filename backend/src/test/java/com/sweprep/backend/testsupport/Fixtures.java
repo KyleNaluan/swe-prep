@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sweprep.backend.content.ContentException;
 import com.sweprep.backend.exercise.Comparison;
+import com.sweprep.backend.exercise.Complexity;
+import com.sweprep.backend.exercise.ComplexityCheck;
 import com.sweprep.backend.exercise.DataType;
 import com.sweprep.backend.exercise.Difficulty;
 import com.sweprep.backend.exercise.Exercise;
@@ -12,6 +14,7 @@ import com.sweprep.backend.exercise.Family;
 import com.sweprep.backend.exercise.Form;
 import com.sweprep.backend.exercise.Grading;
 import com.sweprep.backend.exercise.Hint;
+import com.sweprep.backend.exercise.InputGenerator;
 import com.sweprep.backend.exercise.Lesson;
 import com.sweprep.backend.exercise.Option;
 import com.sweprep.backend.exercise.Response;
@@ -80,6 +83,104 @@ public final class Fixtures {
             class Solution {
                 public int[] pair(int a, int b) {
                     return new int[] {a, b};
+                }
+            }
+            """;
+
+    /**
+     * A code exercise carrying a real complexity check (issue #17): count the distinct
+     * values in an array, genuinely O(n) time and O(n) space, with an input generator
+     * so the growing-input measurement can run end to end through the attempt
+     * lifecycle. {@link #COMPLEXITY_LINEAR_SOLUTION} and {@link
+     * #COMPLEXITY_QUADRATIC_SOLUTION} both answer its one correctness case identically;
+     * only their scaling differs, which is the whole point.
+     */
+    public static Exercise complexityChallenge() {
+        Signature signature = new Signature(
+                "distinctCount", List.of(new Parameter("nums", DataType.INT_ARRAY)), DataType.INT);
+        List<TestCase> cases = List.of(testCase("[[1, 2, 2, 3]]", "3"));
+        ComplexityCheck check = new ComplexityCheck(
+                Complexity.LINEAR,
+                Complexity.LINEAR,
+                new InputGenerator(List.of(new InputGenerator.Argument.ScalingIntArray(0, 1_000_000))));
+        return new Exercise(
+                "complexity-demo",
+                "Distinct Count",
+                "Count the distinct values in the array.",
+                "algorithms",
+                List.of("demo"),
+                Difficulty.EASY,
+                Form.CHALLENGE,
+                new Response.Code(signature),
+                new Grading.TestCases(Comparison.exact(), cases),
+                List.of(),
+                null,
+                List.of(),
+                null,
+                null,
+                null,
+                check);
+    }
+
+    /**
+     * The sibling of {@link #complexityChallenge()} whose complexity check carries a
+     * target but no input generator - the "skip the check, keep the ask-and-reveal
+     * flow" case (issue #17's explicit acceptance criterion).
+     */
+    public static Exercise complexityChallengeWithNoGenerator() {
+        Exercise withGenerator = complexityChallenge();
+        ComplexityCheck check = withGenerator.complexityCheck();
+        return new Exercise(
+                "complexity-demo-no-generator", withGenerator.title(), withGenerator.statement(),
+                withGenerator.domain(), withGenerator.topics(), withGenerator.difficulty(),
+                withGenerator.form(), withGenerator.response(), withGenerator.grading(),
+                withGenerator.hints(), withGenerator.explanation(), withGenerator.family(),
+                withGenerator.stability(), withGenerator.reviewed(), withGenerator.derivedFrom(),
+                new ComplexityCheck(check.targetTime(), check.targetSpace(), null));
+    }
+
+    /** A correct, genuinely O(n) solution to {@link #complexityChallenge()}. */
+    public static final String COMPLEXITY_LINEAR_SOLUTION =
+            """
+            import java.util.HashSet;
+            class Solution {
+                public int distinctCount(int[] nums) {
+                    HashSet<Integer> seen = new HashSet<>();
+                    int distinct = 0;
+                    for (int x : nums) {
+                        if (seen.add(x)) {
+                            distinct++;
+                        }
+                    }
+                    return distinct;
+                }
+            }
+            """;
+
+    /**
+     * A correct but genuinely O(n^2) solution to {@link #complexityChallenge()} - the
+     * same answers as {@link #COMPLEXITY_LINEAR_SOLUTION} on every case, but scanning
+     * every prior element instead of hashing, which is the single case the empirical
+     * check exists to catch when claimed as linear.
+     */
+    public static final String COMPLEXITY_QUADRATIC_SOLUTION =
+            """
+            class Solution {
+                public int distinctCount(int[] nums) {
+                    int distinct = 0;
+                    for (int i = 0; i < nums.length; i++) {
+                        boolean seenBefore = false;
+                        for (int j = 0; j < i; j++) {
+                            if (nums[j] == nums[i]) {
+                                seenBefore = true;
+                                break;
+                            }
+                        }
+                        if (!seenBefore) {
+                            distinct++;
+                        }
+                    }
+                    return distinct;
                 }
             }
             """;

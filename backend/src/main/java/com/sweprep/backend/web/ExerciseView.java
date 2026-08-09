@@ -26,8 +26,14 @@ import java.util.List;
  * correct, so shipping it here would defeat both by letting the solver read it before
  * answering.
  *
- * @param hints          the hint-ladder rung names in order, empty when there are none
- * @param hasExplanation whether the check carries an explanation to disclose
+ * @param hints              the hint-ladder rung names in order, empty when there are none
+ * @param hasExplanation     whether the check carries an explanation to disclose
+ * @param hasComplexityCheck whether this exercise runs the complexity self-report flow
+ *                           (issue #17) - never the target itself. The target is not
+ *                           knowable from this view by construction: it is disclosed
+ *                           only from {@code POST .../complexity}, after the solver's
+ *                           claim is already recorded, so it can never sit in a
+ *                           response the client holds while the claim prompt renders.
  */
 public record ExerciseView(
         String id,
@@ -38,7 +44,8 @@ public record ExerciseView(
         String form,
         ResponseView response,
         List<String> hints,
-        boolean hasExplanation) {
+        boolean hasExplanation,
+        boolean hasComplexityCheck) {
 
     static ExerciseView of(Exercise exercise, LanguageAdapter adapter, OptionShuffler shuffler) {
         return new ExerciseView(
@@ -50,7 +57,8 @@ public record ExerciseView(
                 exercise.form().name(),
                 responseView(exercise, adapter, shuffler),
                 exercise.hints().stream().map(Hint::name).toList(),
-                exercise.explanation() != null);
+                exercise.explanation() != null,
+                exercise.complexityCheck() != null);
     }
 
     private static ResponseView responseView(
