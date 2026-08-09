@@ -56,6 +56,9 @@ import java.util.List;
  *                   available cold - the pattern-identification type, whose whole point
  *                   is that recognising a shape needs no prior attempt (issue #18). Only
  *                   meaningful for a {@link Form#REP}; a challenge carries {@code null}
+ * @param complexityCheck the complexity self-report flow's authored target and optional
+ *                   input generator (issue #17), or {@code null} when this exercise
+ *                   carries none - which skips the whole flow, not just its measurement
  */
 public record Exercise(
         String id,
@@ -72,13 +75,39 @@ public record Exercise(
         List<Family> family,
         Stability stability,
         LocalDate reviewed,
-        String derivedFrom) implements Content {
+        String derivedFrom,
+        ComplexityCheck complexityCheck) implements Content {
 
     public Exercise {
         topics = List.copyOf(topics);
         hints = List.copyOf(hints);
         family = List.copyOf(family);
         stability = stability == null ? Stability.STABLE : stability;
+    }
+
+    /**
+     * Convenience constructor for a pre-issue-#17 caller with no complexity check:
+     * the self-report flow is skipped entirely for an exercise built this way.
+     */
+    public Exercise(
+            String id,
+            String title,
+            String statement,
+            String domain,
+            List<String> topics,
+            Difficulty difficulty,
+            Form form,
+            Response response,
+            Grading grading,
+            List<Hint> hints,
+            String explanation,
+            List<Family> family,
+            Stability stability,
+            LocalDate reviewed,
+            String derivedFrom) {
+        this(
+                id, title, statement, domain, topics, difficulty, form, response, grading, hints,
+                explanation, family, stability, reviewed, derivedFrom, null);
     }
 
     /**
@@ -102,6 +131,6 @@ public record Exercise(
             List<Hint> hints) {
         this(
                 id, title, statement, domain, topics, difficulty, form, response, grading, hints,
-                null, List.of(), Stability.STABLE, null, null);
+                null, List.of(), Stability.STABLE, null, null, null);
     }
 }

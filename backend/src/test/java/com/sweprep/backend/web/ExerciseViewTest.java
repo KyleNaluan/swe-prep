@@ -37,4 +37,31 @@ class ExerciseViewTest {
         // not anywhere - or produce-then-reveal is defeated before it begins.
         assertThat(view.statement()).doesNotContain("steepest descent");
     }
+
+    // --- The complexity self-report's ordering guarantee (issue #17) ----------------
+
+    @Test
+    void aComplexityCheckExerciseFlagsItButNeverShipsTheAuthoredTarget() {
+        ExerciseView view = ExerciseView.of(Fixtures.complexityChallenge(), adapter, OptionShuffler.IDENTITY);
+
+        // The editor learns only that a claim will be asked for...
+        assertThat(view.hasComplexityCheck()).isTrue();
+        // ...never the target itself: this is the real information-ordering guarantee
+        // (issue #17) - the target must not be sitting in a response the client already
+        // holds while it renders the claim prompt. Serialising the whole view and
+        // scanning for the target's own enum name (LINEAR, for this fixture) is a
+        // stronger proof than checking a named field, since it also catches a target
+        // smuggled in anywhere else - the statement, a hint, wherever.
+        assertThat(Fixtures.complexityChallenge().complexityCheck().targetTime())
+                .isEqualTo(com.sweprep.backend.exercise.Complexity.LINEAR);
+        String serialized = new com.fasterxml.jackson.databind.ObjectMapper().valueToTree(view).toString();
+        assertThat(serialized).doesNotContain("LINEAR");
+    }
+
+    @Test
+    void anExerciseWithNoComplexityCheckReportsItAbsent() {
+        ExerciseView view = ExerciseView.of(Fixtures.pairInAnyOrder(), adapter, OptionShuffler.IDENTITY);
+
+        assertThat(view.hasComplexityCheck()).isFalse();
+    }
 }

@@ -1,5 +1,9 @@
 package com.sweprep.backend.attempt;
 
+import com.sweprep.backend.complexity.ComplexityBucket;
+import com.sweprep.backend.complexity.MeasurementOutcome;
+import com.sweprep.backend.complexity.ScalingMeasurer;
+import com.sweprep.backend.exercise.ComplexityCheck;
 import com.sweprep.backend.exercise.Exercise;
 import com.sweprep.backend.exercise.ExerciseCatalog;
 import com.sweprep.backend.exercise.Grading;
@@ -44,6 +48,7 @@ public class AttemptService {
     private final ExerciseCatalog catalog;
     private final GraderRegistry graders;
     private final SelfCheckGrader selfCheckGrader;
+    private final ScalingMeasurer measurer;
     private final AttemptRepository attempts;
     private final SubmissionRepository submissions;
     private final CurrentUser currentUser;
@@ -52,12 +57,14 @@ public class AttemptService {
             ExerciseCatalog catalog,
             GraderRegistry graders,
             SelfCheckGrader selfCheckGrader,
+            ScalingMeasurer measurer,
             AttemptRepository attempts,
             SubmissionRepository submissions,
             CurrentUser currentUser) {
         this.catalog = catalog;
         this.graders = graders;
         this.selfCheckGrader = selfCheckGrader;
+        this.measurer = measurer;
         this.attempts = attempts;
         this.submissions = submissions;
         this.currentUser = currentUser;
@@ -209,6 +216,69 @@ public class AttemptService {
         Attempt explained = attempt.withOutcome(AttemptOutcome.EXPLAINED, Instant.now());
         attempts.update(explained);
         return new SelfCheckRating(withCount(explained), rating);
+    }
+
+    /**
+     * Records the solver's self-reported complexity for a solved attempt and, in the
+     * same response, reveals the authored target alongside what empirical scaling
+     * measurement found (issue #17). The order is load-bearing and enforced here, not
+     * just in the editor: the claim is written to the attempt <em>before</em> the target
+     * is read back, and the target is never returned from any earlier call - {@code
+     * ExerciseView} ships only whether a target exists, never its value - so there is no
+     * way for the client to already be holding it while this prompt renders.
+     *
+     * <p>Requires a {@code SOLVED} attempt (the acceptance criterion "after tests pass")
+     * whose exercise declares a {@link ComplexityCheck}, and only once per attempt: a
+     * second call is rejected rather than letting a solver retry claims against the same
+     * measurement. The submission measured is the one that solved the attempt - {@link
+     * #submit} refuses every further call once an attempt is {@code SOLVED}, so the last
+     * submission on a solved attempt is exactly that one.
+     *
+     * @throws AttemptNotFoundException       if the attempt or its exercise is unknown
+     * @throws IllegalAttemptStateException   if the attempt is not yet solved, or has
+     *                                        already recorded a complexity claim
+     * @throws InvalidAttemptRequestException if the exercise carries no complexity check
+     */
+    @Transactional
+    public ComplexityClaimResult claimComplexity(UUID attemptId, ComplexityClaim claim) {
+        Attempt attempt = requireOwned(attemptId);
+        if (attempt.outcome() != AttemptOutcome.SOLVED) {
+            throw new IllegalAttemptStateException(
+                    "Attempt " + attemptId + " is not solved yet; complexity is claimed only "
+                            + "after a passing submission");
+        }
+        if (attempt.complexityClaim() != null) {
+            throw new IllegalAttemptStateException(
+                    "Attempt " + attemptId + " has already recorded a complexity claim");
+        }
+        Exercise exercise = requireExercise(attempt);
+        ComplexityCheck check = exercise.complexityCheck();
+        if (check == null) {
+            throw new InvalidAttemptRequestException(
+                    "Exercise '" + exercise.id() + "' has no complexity target to claim against");
+        }
+
+        List<Submission> submitted = submissions.findByAttempt(attempt.id());
+        String passingSubmission =
+                submitted.isEmpty() ? null : submitted.get(submitted.size() - 1).response();
+
+        MeasurementOutcome measurement = measurer.measure(exercise, passingSubmission);
+        Boolean claimCorrect = switch (measurement) {
+            case MeasurementOutcome.Skipped ignored -> null;
+            case MeasurementOutcome.Inconclusive ignored -> null;
+            case MeasurementOutcome.Conclusive conclusive ->
+                    conclusive.bucket() == ComplexityBucket.of(claim.time());
+        };
+        String measuredText = switch (measurement) {
+            case MeasurementOutcome.Skipped ignored -> null;
+            case MeasurementOutcome.Inconclusive ignored -> "INCONCLUSIVE";
+            case MeasurementOutcome.Conclusive conclusive ->
+                    conclusive.bucket().name() + ":" + String.format("%.2f", conclusive.exponent());
+        };
+
+        Attempt recorded = attempt.withComplexity(claim.serialize(), measuredText, claimCorrect);
+        attempts.update(recorded);
+        return new ComplexityClaimResult(withCount(recorded), check.targetTime(), check.targetSpace(), measurement);
     }
 
     /**

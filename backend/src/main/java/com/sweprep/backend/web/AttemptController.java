@@ -1,6 +1,7 @@
 package com.sweprep.backend.web;
 
 import com.sweprep.backend.attempt.AttemptService;
+import com.sweprep.backend.attempt.ComplexityClaim;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -64,6 +65,19 @@ public class AttemptController {
     @PostMapping("/{id}/explanation")
     public ExplanationResponse explanation(@PathVariable UUID id) {
         return ExplanationResponse.of(attempts.requestExplanation(id));
+    }
+
+    /**
+     * Records the solver's complexity self-report and, in the same response, reveals
+     * the authored target and the empirical measurement result (issue #17). The target
+     * is never available from any earlier call - see {@link ExerciseView#hasComplexityCheck}
+     * - so it cannot already be in the client's hands when the claim prompt renders.
+     */
+    @PostMapping("/{id}/complexity")
+    public ComplexityResponse claimComplexity(
+            @PathVariable UUID id, @RequestBody ComplexityClaimRequest request) {
+        return ComplexityResponse.of(
+                attempts.claimComplexity(id, new ComplexityClaim(request.time(), request.space())));
     }
 
     @PostMapping("/{id}/abandon")
