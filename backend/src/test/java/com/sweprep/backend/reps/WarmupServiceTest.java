@@ -15,7 +15,9 @@ import com.sweprep.backend.exercise.ExerciseCatalog;
 import com.sweprep.backend.exercise.Family;
 import com.sweprep.backend.exercise.Lesson;
 import com.sweprep.backend.role.RoleService;
+import com.sweprep.backend.scheduler.Sm2Scheduler;
 import com.sweprep.backend.testsupport.Fixtures;
+import java.time.Clock;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -164,11 +166,17 @@ class WarmupServiceTest {
         SubmissionRepository submissions = mock(SubmissionRepository.class);
         when(submissions.failedResponses(user)).thenReturn(List.of());
         ConfusionPairService confusionPairs = new ConfusionPairService(submissions, exercises);
+        // No stubbed repReviews: Mockito's default answer is an empty list, so every rep in
+        // these tests has no review history and is due cold - due-date filtering is a no-op
+        // here, leaving every other test's assertions about family/gating unaffected. The
+        // due-date filter itself is proven separately in RepDueServiceTest.
+        RepDueService repDue = new RepDueService(attempts, new Sm2Scheduler(), Clock.systemDefaultZone());
         return new WarmupService(
                 exercises,
                 content,
                 attempts,
                 confusionPairs,
+                repDue,
                 currentUser,
                 roles,
                 new RepProperties(8, 2));
