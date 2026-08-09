@@ -139,6 +139,38 @@ class WarmupSelectorTest {
     }
 
     @Test
+    void excludesAnEligibleRepThatHasNotComeDueYet() {
+        // Issue #20's acceptance criterion: a day's warm-up is drawn from what is actually
+        // due, not from everything otherwise eligible.
+        WarmupSelector selector = new WarmupSelector(8, 2);
+        List<Exercise> catalog = List.of(
+                rep("due", "a", List.of(Family.CORE), null),
+                rep("not-due", "b", List.of(Family.CORE), null));
+
+        List<Exercise> set = selector.select(
+                catalog, ALL, Set.of(), NOTHING_ATTEMPTED, ConfusionPairs.empty(), Set.of("due"));
+
+        assertThat(set).extracting(Exercise::id).containsExactly("due");
+    }
+
+    @Test
+    void aDayWithNothingDueYieldsAnEmptySetRatherThanFallingBackToEverythingEligible() {
+        // The explicit "what does an empty due queue do" decision: nothing due means an empty
+        // warm-up, exactly like an empty eligible pool - the caller's existing empty-warm-up
+        // handling (issue #19) covers both the same way, so this method need not invent a
+        // fallback of its own.
+        WarmupSelector selector = new WarmupSelector(8, 2);
+        List<Exercise> catalog = List.of(
+                rep("r1", "a", List.of(Family.CORE), null),
+                rep("r2", "b", List.of(Family.CORE), null));
+
+        List<Exercise> set = selector.select(
+                catalog, ALL, Set.of(), NOTHING_ATTEMPTED, ConfusionPairs.empty(), Set.of());
+
+        assertThat(set).isEmpty();
+    }
+
+    @Test
     void interleavesAQueueStackedWithOneTopic() {
         WarmupSelector selector = new WarmupSelector(8, 2);
         // A deliberately stacked queue: five two-pointer reps then three sliding-window,
