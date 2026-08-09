@@ -135,7 +135,7 @@ The three-tier daily session is **the product** (issues #3, #19); everything abo
 - **Frontend** shell is `Session.tsx` (a `Today`/`Practice` tab pair, later joined by a `Learn` tab for lessons - issue #46/#41): renders the warm-up immediately (status is read in the background, never gating the first rep), and on the warm-up's `onComplete` records the day and shows the day-complete `Landing` (celebrate first, then offer the optional main). `Practice.tsx` is the uncapped main+continuation surface, reachable from the landing or the always-available Practice tab. True "which problem is worth 40 min today" selection is the priority scorer (#8/#21, not built), out of scope here - the main is just the first available challenge.
 - **An empty warm-up must never leave the day impossible to finish** (issue #19): when today's set comes back empty there are no reps to bank the day, so `Warmup`'s `onEmpty` flips the session into a fallback where solving any one `Practice` exercise (`onSolved`) routes through the same `completeWarmup`. `completeWarmup` stays the only backend path that completes a day; the empty case just gives the frontend a second trigger for it.
 
-## "Learned": the SRS criterion the scheduler reads (issue #38)
+## "Learned": the SRS criterion readiness reads (issue #38)
 
 The definition of mastery a scheduler consumes (design revision t3, section 4.1) lives in the `learned` package - a definition and a derivation, not a scheduler itself.
 "Learned" is **successive relearning, not an SM-2 ease number**: a clean machine-verdict pass in each of **N distinct spaced sessions** across an **expanding gap ladder**.
