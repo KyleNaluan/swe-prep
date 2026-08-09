@@ -53,6 +53,48 @@ type Exercise = {
   // (issue #51). The text never travels up front - it is shown automatically on a wrong
   // answer or fetched on request when correct - so only its existence is known here.
   hasExplanation: boolean
+  // Whether this exercise runs the complexity self-report flow (issue #17) - never
+  // the authored target itself. The target is not knowable from here by construction:
+  // it is disclosed only from POST .../complexity, after the claim is already
+  // recorded, so it can never sit in a response already held while the claim prompt
+  // renders (the real information-ordering guarantee the ticket asks for).
+  hasComplexityCheck: boolean
+}
+
+// The coarse complexity vocabulary the self-report and target-reveal flow is written
+// in (issue #17) - deliberately closed, not free text: the empirical check behind it
+// can only ever discriminate a polynomial degree change, never a constant factor.
+const COMPLEXITY_OPTIONS = [
+  'CONSTANT',
+  'LOGARITHMIC',
+  'LINEAR',
+  'LINEARITHMIC',
+  'QUADRATIC',
+  'CUBIC',
+  'EXPONENTIAL',
+] as const
+type Complexity = (typeof COMPLEXITY_OPTIONS)[number]
+
+const COMPLEXITY_LABELS: Record<Complexity, string> = {
+  CONSTANT: 'O(1) - constant',
+  LOGARITHMIC: 'O(log n) - logarithmic',
+  LINEAR: 'O(n) - linear',
+  LINEARITHMIC: 'O(n log n) - linearithmic',
+  QUADRATIC: 'O(n²) - quadratic',
+  CUBIC: 'O(n³) - cubic',
+  EXPONENTIAL: 'O(2ⁿ) or worse - exponential',
+}
+
+// The response from POST .../complexity: the attempt with the claim and measurement
+// recorded, the authored target - revealed here for the first time - and the coarse
+// measurement status. Per the honesty constraint (issue #17), "CONSISTENT" is worded
+// by the editor as "measured scaling is consistent with your claim", never "correct";
+// "INCONCLUSIVE" is its own first-class outcome, never silently treated as a pass.
+type ComplexityResponse = {
+  targetTime: Complexity
+  targetSpace: Complexity
+  status: 'CONSISTENT' | 'CONTRADICTED' | 'INCONCLUSIVE' | 'SKIPPED'
+  detail?: string
 }
 
 type Verdict = {
@@ -160,6 +202,15 @@ function Practice({
   const [explanation, setExplanation] = useState<string | null>(null)
   const [explanationBusy, setExplanationBusy] = useState(false)
 
+  // The complexity self-report flow (issue #17): the claim picked (before it is sent),
+  // the result once claimed (the authored target and measurement, revealed only then),
+  // and request state. Null result means "not claimed yet for this sitting".
+  const [complexityTimeClaim, setComplexityTimeClaim] = useState<Complexity>('LINEAR')
+  const [complexitySpaceClaim, setComplexitySpaceClaim] = useState<Complexity>('LINEAR')
+  const [complexityResult, setComplexityResult] = useState<ComplexityResponse | null>(null)
+  const [complexityBusy, setComplexityBusy] = useState(false)
+  const [complexityError, setComplexityError] = useState<string | null>(null)
+
   const [history, setHistory] = useState<AttemptView[]>([])
 
   const codeRef = useRef<string>('')
@@ -252,6 +303,10 @@ function Practice({
     setHypothesis('')
     setConsecutiveFailures(0)
     setExplanation(null)
+    setComplexityResult(null)
+    setComplexityError(null)
+    setComplexityTimeClaim('LINEAR')
+    setComplexitySpaceClaim('LINEAR')
     apiFetch(`/api/exercises/${selectedId}`)
       .then(async (response) => {
         if (!response.ok) throw new Error(await errorMessage(response))
@@ -259,10 +314,15 @@ function Practice({
       })
       .then((loaded) => {
         if (cancelled) return
-        // Older payloads may omit the hint ladder or the explanation flag; treat a
-        // missing ladder as empty and a missing flag as false so the rest of the UI can
-        // rely on both.
-        setExercise({ ...loaded, hints: loaded.hints ?? [], hasExplanation: loaded.hasExplanation ?? false })
+        // Older payloads may omit the hint ladder, the explanation flag, or the
+        // complexity-check flag; treat a missing ladder as empty and missing flags as
+        // false so the rest of the UI can rely on all of them.
+        setExercise({
+          ...loaded,
+          hints: loaded.hints ?? [],
+          hasExplanation: loaded.hasExplanation ?? false,
+          hasComplexityCheck: loaded.hasComplexityCheck ?? false,
+        })
         codeRef.current = loaded.response.kind === 'code' ? loaded.response.stub : ''
       })
       .catch((error: unknown) => {
@@ -405,6 +465,31 @@ function Practice({
     }
   }
 
+  // Submit the complexity self-report and, in the same response, reveal the authored
+  // target and what measurement found (issue #17). The target is not sent until this
+  // call returns - it was never in any earlier response this page holds - so stating
+  // the claim first is a real ordering guarantee, not just a UI convention.
+  async function handleClaimComplexity() {
+    if (!exercise) return
+    setComplexityBusy(true)
+    setComplexityError(null)
+    try {
+      const attemptId = await ensureAttempt(exercise.id)
+      const response = await apiFetch(`/api/attempts/${attemptId}/complexity`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ time: complexityTimeClaim, space: complexitySpaceClaim }),
+      })
+      if (!response.ok) throw new Error(await errorMessage(response))
+      setComplexityResult((await response.json()) as ComplexityResponse)
+      refreshHistory()
+    } catch (error: unknown) {
+      setComplexityError(error instanceof Error ? error.message : String(error))
+    } finally {
+      setComplexityBusy(false)
+    }
+  }
+
   // Commit the produced explanation and reveal the model answer (issue #41). Nothing is
   // machine-graded: the text is frozen server-side before the answer comes back, so a later
   // self-rating cannot be a copy of what was peeked at.
@@ -465,6 +550,8 @@ function Practice({
     setHypothesis('')
     setConsecutiveFailures(0)
     setExplanation(null)
+    setComplexityResult(null)
+    setComplexityError(null)
     refreshHistory()
   }
 
@@ -635,6 +722,19 @@ function Practice({
                     onCancel={() => setRevealPrompting(false)}
                   />
                 )}
+
+              {exercise.response.kind === 'code' && exercise.hasComplexityCheck && solved && (
+                <ComplexityPanel
+                  timeClaim={complexityTimeClaim}
+                  spaceClaim={complexitySpaceClaim}
+                  result={complexityResult}
+                  busy={complexityBusy}
+                  error={complexityError}
+                  onTimeClaimChange={setComplexityTimeClaim}
+                  onSpaceClaimChange={setComplexitySpaceClaim}
+                  onSubmit={handleClaimComplexity}
+                />
+              )}
 
               <ExplanationPanel
                 hasExplanation={exercise.hasExplanation}
@@ -942,6 +1042,109 @@ function RevealPanel({
         Revealing is recorded but never penalised. Reasoning it out first is the skill an
         interview tests.
       </p>
+    </section>
+  )
+}
+
+// The complexity self-report flow (issue #17): state a time and space complexity
+// claim, then - and only then - the authored target and the empirical measurement
+// result are revealed. Articulating complexity before seeing the answer is the
+// interview skill this trains, so the claim is a real gate, not a formality: the
+// target simply is not in this page's hands until the claim is submitted.
+function ComplexityPanel({
+  timeClaim,
+  spaceClaim,
+  result,
+  busy,
+  error,
+  onTimeClaimChange,
+  onSpaceClaimChange,
+  onSubmit,
+}: {
+  timeClaim: Complexity
+  spaceClaim: Complexity
+  result: ComplexityResponse | null
+  busy: boolean
+  error: string | null
+  onTimeClaimChange: (value: Complexity) => void
+  onSpaceClaimChange: (value: Complexity) => void
+  onSubmit: () => void
+}) {
+  if (result) {
+    return (
+      <section className="complexity">
+        <h2>Complexity</h2>
+        <dl className="complexity-target">
+          <dt>Authored target</dt>
+          <dd>
+            {COMPLEXITY_LABELS[result.targetTime]} time, {COMPLEXITY_LABELS[result.targetSpace]} space
+          </dd>
+        </dl>
+        {result.status === 'CONSISTENT' && (
+          <p className="status up">Measured scaling is consistent with your claim.</p>
+        )}
+        {result.status === 'CONTRADICTED' && (
+          <p className="status down">
+            Measured scaling does not match your claim - worth a second look at how your
+            solution scales.
+          </p>
+        )}
+        {result.status === 'INCONCLUSIVE' && (
+          <p className="status loading">
+            Measurement was inconclusive{result.detail ? `: ${result.detail}` : '.'} That is not
+            a verdict either way - some growth rates (like O(n) vs O(n log n)) genuinely cannot
+            be told apart by timing alone.
+          </p>
+        )}
+        {result.status === 'SKIPPED' && (
+          <p className="hints-note">This exercise has no automated scaling check for your claim.</p>
+        )}
+      </section>
+    )
+  }
+
+  return (
+    <section className="complexity">
+      <h2>What is your solution's complexity?</h2>
+      <p className="hints-note">
+        State it before the answer is revealed - articulating complexity is itself an
+        interview skill. Your claim is checked by measuring how your solution actually
+        scales.
+      </p>
+      <div className="complexity-claim">
+        <label htmlFor="complexity-time">Time</label>
+        <select
+          id="complexity-time"
+          value={timeClaim}
+          disabled={busy}
+          onChange={(event) => onTimeClaimChange(event.target.value as Complexity)}
+        >
+          {COMPLEXITY_OPTIONS.map((option) => (
+            <option key={option} value={option}>
+              {COMPLEXITY_LABELS[option]}
+            </option>
+          ))}
+        </select>
+        <label htmlFor="complexity-space">Space</label>
+        <select
+          id="complexity-space"
+          value={spaceClaim}
+          disabled={busy}
+          onChange={(event) => onSpaceClaimChange(event.target.value as Complexity)}
+        >
+          {COMPLEXITY_OPTIONS.map((option) => (
+            <option key={option} value={option}>
+              {COMPLEXITY_LABELS[option]}
+            </option>
+          ))}
+        </select>
+      </div>
+      {error && <p className="status down">Could not record your claim: {error}</p>}
+      <div className="actions">
+        <button type="button" className="secondary" onClick={onSubmit} disabled={busy}>
+          {busy ? 'Checking...' : 'Submit complexity claim'}
+        </button>
+      </div>
     </section>
   )
 }

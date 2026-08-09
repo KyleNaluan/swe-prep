@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sweprep.backend.exercise.Complexity;
+import com.sweprep.backend.exercise.ComplexityCheck;
 import com.sweprep.backend.exercise.Content;
 import com.sweprep.backend.exercise.ContentCatalog;
 import com.sweprep.backend.exercise.Exercise;
@@ -11,6 +13,7 @@ import com.sweprep.backend.exercise.ExerciseCatalog;
 import com.sweprep.backend.exercise.Family;
 import com.sweprep.backend.exercise.Grading;
 import com.sweprep.backend.exercise.Hint;
+import com.sweprep.backend.exercise.InputGenerator;
 import com.sweprep.backend.exercise.Lesson;
 import com.sweprep.backend.exercise.Option;
 import com.sweprep.backend.exercise.Response;
@@ -73,6 +76,25 @@ class FileExerciseCatalogTest {
               "response": { "kind": "freeText" },
               "grading": { "kind": "selfCheck", "modelAnswer": "The model answer." },
               "family": ["AIML"], "stability": "VOLATILE", "reviewed": "2026-08-07"
+            }
+            """;
+
+    // A code exercise with a scalable INT_ARRAY parameter and a fixed INT one, for the
+    // complexity input-generator tests (issue #17).
+    private static final String CODE_EXERCISE_WITH_ARRAY =
+            """
+            {
+              "id": "sum-demo", "title": "Sum", "statement": "Sum the array up to target.",
+              "domain": "algorithms", "topics": ["demo"],
+              "difficulty": "EASY", "form": "CHALLENGE",
+              "response": { "kind": "code", "signature": {
+                "method": "sum",
+                "parameters": [
+                  { "name": "nums", "type": "INT_ARRAY" },
+                  { "name": "target", "type": "INT" } ],
+                "returns": "INT" } },
+              "grading": { "kind": "testCases", "comparison": "exact",
+                "cases": [ { "input": [[1, 2, 3], 5], "expected": 6 } ] }
             }
             """;
 
@@ -605,5 +627,149 @@ class FileExerciseCatalogTest {
         write(dir, "echo.json", CODE_EXERCISE);
 
         assertThat(catalog(dir).contentById("echo-demo")).get().isInstanceOf(Exercise.class);
+    }
+
+    // --- Complexity self-report metadata (issue #17) ----------------------------------
+
+    @Test
+    void parsesAComplexityCheckWithAnInputGenerator(@TempDir Path dir) throws IOException {
+        String withComplexity = CODE_EXERCISE_WITH_ARRAY.replaceFirst(
+                "\\}\\s*$",
+                """
+                ,
+                  "complexity": {
+                    "targetTime": "LINEAR", "targetSpace": "CONSTANT",
+                    "generator": { "arguments": [
+                      { "kind": "scalingIntArray", "min": 0, "max": 1000 },
+                      { "kind": "fixed", "value": 5 } ] }
+                  }
+                }
+                """);
+        write(dir, "sum.json", withComplexity);
+
+        Exercise loaded = catalog(dir).byId("sum-demo").orElseThrow();
+
+        ComplexityCheck check = loaded.complexityCheck();
+        assertThat(check).isNotNull();
+        assertThat(check.targetTime()).isEqualTo(Complexity.LINEAR);
+        assertThat(check.targetSpace()).isEqualTo(Complexity.CONSTANT);
+        assertThat(check.generator()).isNotNull();
+        assertThat(check.generator().arguments()).hasSize(2);
+        assertThat(check.generator().arguments().get(0))
+                .isInstanceOf(InputGenerator.Argument.ScalingIntArray.class);
+        assertThat(check.generator().arguments().get(1))
+                .isInstanceOfSatisfying(
+                        InputGenerator.Argument.Fixed.class,
+                        fixed -> assertThat(fixed.value().asInt()).isEqualTo(5));
+    }
+
+    @Test
+    void anExerciseWithNoComplexityBlockLoadsWithNullComplexityCheck(@TempDir Path dir) throws IOException {
+        write(dir, "echo.json", CODE_EXERCISE);
+
+        assertThat(catalog(dir).byId("echo-demo").orElseThrow().complexityCheck()).isNull();
+    }
+
+    @Test
+    void aComplexityCheckWithNoGeneratorStillLoadsAndSkipsOnlyMeasurement(@TempDir Path dir)
+            throws IOException {
+        // A target with no generator: the ask-and-reveal flow still applies, only the
+        // empirical check is skipped (issue #17's explicit acceptance criterion).
+        String targetOnly = CODE_EXERCISE_WITH_ARRAY.replaceFirst(
+                "\\}\\s*$",
+                """
+                ,
+                  "complexity": { "targetTime": "LINEAR", "targetSpace": "LINEAR" }
+                }
+                """);
+        write(dir, "sum.json", targetOnly);
+
+        ComplexityCheck check = catalog(dir).byId("sum-demo").orElseThrow().complexityCheck();
+        assertThat(check).isNotNull();
+        assertThat(check.generator()).isNull();
+    }
+
+    @Test
+    void aComplexityGeneratorOnANonCodeResponseFailsTheGate(@TempDir Path dir) throws IOException {
+        String badGenerator = CHOICE_EXERCISE.replaceFirst(
+                "\\}\\s*$",
+                """
+                ,
+                  "complexity": {
+                    "targetTime": "LINEAR", "targetSpace": "CONSTANT",
+                    "generator": { "arguments": [ { "kind": "fixed", "value": 1 } ] }
+                  }
+                }
+                """);
+        write(dir, "pick.json", badGenerator);
+
+        assertThatThrownBy(catalog(dir)::all)
+                .isInstanceOf(ContentException.class)
+                .hasMessageContaining("pick.json")
+                .hasMessageContaining("code response");
+    }
+
+    @Test
+    void aComplexityGeneratorArgumentCountMismatchFailsTheGate(@TempDir Path dir) throws IOException {
+        // Only one argument spec for a two-parameter signature.
+        String mismatched = CODE_EXERCISE_WITH_ARRAY.replaceFirst(
+                "\\}\\s*$",
+                """
+                ,
+                  "complexity": {
+                    "targetTime": "LINEAR", "targetSpace": "CONSTANT",
+                    "generator": { "arguments": [
+                      { "kind": "scalingIntArray", "min": 0, "max": 1000 } ] }
+                  }
+                }
+                """);
+        write(dir, "sum.json", mismatched);
+
+        assertThatThrownBy(catalog(dir)::all)
+                .isInstanceOf(ContentException.class)
+                .hasMessageContaining("sum.json")
+                .hasMessageContaining("one entry per signature parameter");
+    }
+
+    @Test
+    void aScalingIntArrayOnANonArrayParameterFailsTheGate(@TempDir Path dir) throws IOException {
+        // "target" is an INT, not an INT_ARRAY - declaring it as a scaling array is wrong.
+        String badType = CODE_EXERCISE_WITH_ARRAY.replaceFirst(
+                "\\}\\s*$",
+                """
+                ,
+                  "complexity": {
+                    "targetTime": "LINEAR", "targetSpace": "CONSTANT",
+                    "generator": { "arguments": [
+                      { "kind": "scalingIntArray", "min": 0, "max": 1000 },
+                      { "kind": "scalingIntArray", "min": 0, "max": 1000 } ] }
+                  }
+                }
+                """);
+        write(dir, "sum.json", badType);
+
+        assertThatThrownBy(catalog(dir)::all)
+                .isInstanceOf(ContentException.class)
+                .hasMessageContaining("sum.json")
+                .hasMessageContaining("target")
+                .hasMessageContaining("INT_ARRAY");
+    }
+
+    @Test
+    void anUnknownComplexityTargetIsAClearError(@TempDir Path dir) throws IOException {
+        String badTarget = CODE_EXERCISE_WITH_ARRAY.replaceFirst(
+                "\\}\\s*$",
+                """
+                ,
+                  "complexity": { "targetTime": "SLOW", "targetSpace": "CONSTANT" }
+                }
+                """);
+        write(dir, "sum.json", badTarget);
+
+        assertThatThrownBy(catalog(dir)::all)
+                .isInstanceOf(ContentException.class)
+                .hasMessageContaining("sum.json")
+                .hasMessageContaining("targetTime")
+                .hasMessageContaining("SLOW");
     }
 }

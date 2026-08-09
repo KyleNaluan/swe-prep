@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.Mockito.when;
 
+import com.sweprep.backend.exercise.Complexity;
 import com.sweprep.backend.exercise.ContentCatalog;
 import com.sweprep.backend.exercise.Exercise;
 import com.sweprep.backend.exercise.ExerciseCatalog;
@@ -68,6 +69,8 @@ class AttemptPersistenceTest {
     private Exercise concept;
     private Exercise pair;
     private Exercise predict;
+    private Exercise complexity;
+    private Exercise complexityNoGenerator;
 
     @BeforeEach
     void setUp() {
@@ -75,9 +78,13 @@ class AttemptPersistenceTest {
         pair = Fixtures.pairInAnyOrder();
         // predict-number carries no explanation - the sibling to concept-demo, which does.
         predict = Fixtures.predictNumber();
+        complexity = Fixtures.complexityChallenge();
+        complexityNoGenerator = Fixtures.complexityChallengeWithNoGenerator();
         when(catalog.byId("concept-demo")).thenReturn(Optional.of(concept));
         when(catalog.byId("pair-in-any-order")).thenReturn(Optional.of(pair));
         when(catalog.byId("predict-number")).thenReturn(Optional.of(predict));
+        when(catalog.byId("complexity-demo")).thenReturn(Optional.of(complexity));
+        when(catalog.byId("complexity-demo-no-generator")).thenReturn(Optional.of(complexityNoGenerator));
         when(catalog.byId("missing")).thenReturn(Optional.empty());
     }
 
@@ -341,5 +348,102 @@ class AttemptPersistenceTest {
         UUID id = started.id();
         assertThatThrownBy(() -> service.submit(id, "B"))
                 .isInstanceOf(IllegalAttemptStateException.class);
+    }
+
+    // --- Complexity self-report (issue #17) ---------------------------------------
+
+    @Test
+    void claimingComplexityRecordsTheClaimAndRevealsTheAuthoredTarget() {
+        Attempt started = service.start("complexity-demo");
+        service.submit(started.id(), Fixtures.COMPLEXITY_LINEAR_SOLUTION);
+
+        ComplexityClaimResult result =
+                service.claimComplexity(started.id(), new ComplexityClaim(Complexity.LINEAR, Complexity.LINEAR));
+
+        // The target is revealed here - and only here.
+        assertThat(result.targetTime()).isEqualTo(Complexity.LINEAR);
+        assertThat(result.targetSpace()).isEqualTo(Complexity.LINEAR);
+        // Never asserted as flatly "correct" - a false contradiction is the one thing
+        // that must never happen; inconclusive is an acceptable, honest outcome.
+        assertThat(result.attempt().attempt().complexityClaimCorrect()).isNotEqualTo(Boolean.FALSE);
+
+        Attempt reloaded = attempts.findById(started.id()).orElseThrow();
+        assertThat(reloaded.complexityClaim()).isEqualTo("time=LINEAR;space=LINEAR");
+        assertThat(reloaded.measuredComplexity()).isNotNull();
+    }
+
+    @Test
+    void aQuadraticSolutionClaimingLinearIsReliablyCaught() {
+        Attempt started = service.start("complexity-demo");
+        // Passes the same correctness case as the linear solution - only its scaling differs.
+        service.submit(started.id(), Fixtures.COMPLEXITY_QUADRATIC_SOLUTION);
+
+        ComplexityClaimResult result =
+                service.claimComplexity(started.id(), new ComplexityClaim(Complexity.LINEAR, Complexity.LINEAR));
+
+        assertThat(result.measurement()).isInstanceOfSatisfying(
+                com.sweprep.backend.complexity.MeasurementOutcome.Conclusive.class,
+                conclusive -> assertThat(conclusive.bucket())
+                        .isEqualTo(com.sweprep.backend.complexity.ComplexityBucket.QUADRATIC));
+        assertThat(result.attempt().attempt().complexityClaimCorrect()).isFalse();
+
+        Attempt reloaded = attempts.findById(started.id()).orElseThrow();
+        assertThat(reloaded.complexityClaimCorrect()).isFalse();
+        assertThat(reloaded.measuredComplexity()).startsWith("QUADRATIC");
+    }
+
+    @Test
+    void anExerciseWithNoInputGeneratorStillAsksAndRevealsButSkipsMeasurement() {
+        Attempt started = service.start("complexity-demo-no-generator");
+        service.submit(started.id(), Fixtures.COMPLEXITY_LINEAR_SOLUTION);
+
+        ComplexityClaimResult result = service.claimComplexity(
+                started.id(), new ComplexityClaim(Complexity.LINEAR, Complexity.LINEAR));
+
+        // The target is still asked for and revealed...
+        assertThat(result.targetTime()).isEqualTo(Complexity.LINEAR);
+        // ...but measurement is skipped entirely, without error, and nothing is asserted.
+        assertThat(result.measurement()).isInstanceOf(
+                com.sweprep.backend.complexity.MeasurementOutcome.Skipped.class);
+        assertThat(result.attempt().attempt().complexityClaimCorrect()).isNull();
+
+        Attempt reloaded = attempts.findById(started.id()).orElseThrow();
+        assertThat(reloaded.complexityClaim()).isEqualTo("time=LINEAR;space=LINEAR");
+        assertThat(reloaded.measuredComplexity()).isNull();
+        assertThat(reloaded.complexityClaimCorrect()).isNull();
+    }
+
+    @Test
+    void claimingComplexityBeforeSolvingIsRejected() {
+        Attempt started = service.start("complexity-demo");
+        // Never submitted - still IN_PROGRESS, so the claim comes before any pass.
+
+        UUID id = started.id();
+        assertThatThrownBy(() -> service.claimComplexity(
+                        id, new ComplexityClaim(Complexity.LINEAR, Complexity.LINEAR)))
+                .isInstanceOf(IllegalAttemptStateException.class);
+    }
+
+    @Test
+    void claimingComplexityTwiceIsRejected() {
+        Attempt started = service.start("complexity-demo");
+        service.submit(started.id(), Fixtures.COMPLEXITY_LINEAR_SOLUTION);
+        service.claimComplexity(started.id(), new ComplexityClaim(Complexity.LINEAR, Complexity.LINEAR));
+
+        UUID id = started.id();
+        assertThatThrownBy(() -> service.claimComplexity(
+                        id, new ComplexityClaim(Complexity.QUADRATIC, Complexity.LINEAR)))
+                .isInstanceOf(IllegalAttemptStateException.class);
+    }
+
+    @Test
+    void claimingComplexityOnAnExerciseWithNoComplexityCheckIsRejected() {
+        Attempt started = service.start("concept-demo");
+        service.submit(started.id(), "B");
+
+        UUID id = started.id();
+        assertThatThrownBy(() -> service.claimComplexity(
+                        id, new ComplexityClaim(Complexity.LINEAR, Complexity.LINEAR)))
+                .isInstanceOf(InvalidAttemptRequestException.class);
     }
 }
