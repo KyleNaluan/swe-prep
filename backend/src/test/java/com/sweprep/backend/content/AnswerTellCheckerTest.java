@@ -86,6 +86,157 @@ class AnswerTellCheckerTest {
     }
 
     @Test
+    void flagsWordCountRatioTooShortEvenWhenCharacterRatioIsFine() {
+        // Issue #67: the exploit measured in production is word-count-only - a check can
+        // sit fine on characters (compact technical notation) while its word count is a
+        // dead giveaway (few dense tokens vs many short ones). Character ratio alone would
+        // never see this.
+        Exercise wordShort = choice(
+                "aiml-complexity-brute-force",
+                Option.correct("O(n^2)-time nested-loop pairwise-comparison brute-force"),
+                Option.distractor(
+                        "It checks every pair of elements one by one to find a match", "m1"),
+                Option.distractor(
+                        "It compares each item against every other item in the list", "m2"),
+                Option.distractor(
+                        "It scans the whole list twice to find any matching pair", "m3"));
+
+        List<Finding> findings = checker.check(wordShort);
+
+        assertThat(findings).extracting(Finding::tell).contains(Tell.LENGTH_IMBALANCE);
+        Finding finding = findings.stream()
+                .filter(f -> f.tell() == Tell.LENGTH_IMBALANCE)
+                .findFirst()
+                .orElseThrow();
+        assertThat(finding.message())
+                .contains("aiml-complexity-brute-force")
+                .containsIgnoringCase("word count")
+                .containsIgnoringCase("shortest")
+                .containsIgnoringCase("do NOT");
+    }
+
+    @Test
+    void flagsCharacterRatioTooShortWithEqualSeverityToTooLong() {
+        // The mirror of flagsACheckWhoseCorrectOptionIsConspicuouslyLonger: a correct
+        // option far shorter than its distractors is exactly as exploitable (issue #67's
+        // "1/1.3 is as much a failure as 1.3") and must be caught, not just the long side.
+        Exercise tooShort = choice(
+                "aiml-metrics-auc-threshold-independent",
+                Option.correct("It is threshold-independent"),
+                Option.distractor(
+                        "It measures the probability a random positive is ranked above a "
+                                + "random negative across every threshold",
+                        "m1"),
+                Option.distractor(
+                        "It summarizes classifier performance without committing to any "
+                                + "single decision threshold up front",
+                        "m2"),
+                Option.distractor(
+                        "It is computed by integrating the true positive rate over the false "
+                                + "positive rate curve",
+                        "m3"));
+
+        List<Finding> findings = checker.check(tooShort);
+
+        assertThat(findings).extracting(Finding::tell).contains(Tell.LENGTH_IMBALANCE);
+        Finding finding = findings.stream()
+                .filter(f -> f.tell() == Tell.LENGTH_IMBALANCE)
+                .findFirst()
+                .orElseThrow();
+        assertThat(finding.message())
+                .contains("aiml-metrics-auc-threshold-independent")
+                .contains("characters")
+                .containsIgnoringCase("shortest");
+    }
+
+    @Test
+    void flagsTheCorrectOptionAsTheUniquelyShortestOptionByWordCountEvenInsideTheRatioBar() {
+        // Issue #67's rank criterion: a key can sit comfortably inside the 1.3x ratio bar
+        // and still be the uniquely shortest option - a distinct, cheaper-to-exploit
+        // signal ratio alone cannot see.
+        Exercise uniqueShortest = choice(
+                "cache-latency-rank-shortest",
+                Option.correct("A cache reduces average latency for hot keys"),
+                Option.distractor(
+                        "A cache reduces average latency for the hottest keys", "m1"),
+                Option.distractor(
+                        "A cache reduces average latency for popular keys today", "m2"),
+                Option.distractor(
+                        "A cache reduces average latency for most frequent keys now", "m3"));
+
+        List<Finding> findings = checker.check(uniqueShortest);
+
+        assertThat(findings).extracting(Finding::tell).contains(Tell.LENGTH_IMBALANCE);
+        Finding finding = findings.stream()
+                .filter(f -> f.tell() == Tell.LENGTH_IMBALANCE)
+                .findFirst()
+                .orElseThrow();
+        assertThat(finding.message())
+                .contains("cache-latency-rank-shortest")
+                .containsIgnoringCase("uniquely shortest")
+                .containsIgnoringCase("word count")
+                .containsIgnoringCase("must not be a unique extreme");
+    }
+
+    @Test
+    void flagsWithEqualSeverityWhenTheCorrectOptionIsTheUniquelyLongestOptionByWordCount() {
+        Exercise uniqueLongest = choice(
+                "cache-latency-rank-longest",
+                Option.correct("A cache reduces average latency for the busiest keys today"),
+                Option.distractor("A cache reduces average latency for hot keys", "m1"),
+                Option.distractor("A cache reduces average latency for popular keys", "m2"),
+                Option.distractor("A cache reduces average latency for common keys", "m3"));
+
+        List<Finding> findings = checker.check(uniqueLongest);
+
+        assertThat(findings).extracting(Finding::tell).contains(Tell.LENGTH_IMBALANCE);
+        Finding finding = findings.stream()
+                .filter(f -> f.tell() == Tell.LENGTH_IMBALANCE)
+                .findFirst()
+                .orElseThrow();
+        assertThat(finding.message())
+                .contains("cache-latency-rank-longest")
+                .containsIgnoringCase("uniquely longest")
+                .containsIgnoringCase("word count")
+                .containsIgnoringCase("must not be a unique extreme");
+    }
+
+    @Test
+    void passesWhenTheKeySitsMidPackOnBothMetricsDespiteUnevenOptionLengths() {
+        // Acceptance criterion: mid-pack passes, and the check must not push authors
+        // toward a uniform-length template - these options are all different lengths.
+        Exercise midPack = choice(
+                "cache-latency-mid-pack",
+                Option.correct("A cache lowers read latency for frequently accessed data"),
+                Option.distractor("A cache trades memory for lower average latency", "m1"),
+                Option.distractor(
+                        "A cache reduces read latency by serving hot data from memory "
+                                + "instead of disk",
+                        "m2"),
+                Option.distractor("A cache lowers latency only when the working set fits", "m3"));
+
+        assertThat(checker.check(midPack))
+                .extracting(Finding::tell)
+                .doesNotContain(Tell.LENGTH_IMBALANCE);
+    }
+
+    @Test
+    void passesWhenEveryOptionSharesTheSameWordCount() {
+        // The degenerate tie case: no option is a unique extreme, so it passes - but
+        // nothing in the checker rewards this, it is simply one way of many to pass.
+        Exercise tied = choice(
+                "hashmap-tied-lengths",
+                Option.correct("A hash map gives O(1) average lookup"),
+                Option.distractor("A sorted array gives O(log n) lookup", "m1"),
+                Option.distractor("A linked list gives O(n) scan lookup", "m2"),
+                Option.distractor("A balanced tree gives O(log n) search", "m3"));
+
+        assertThat(checker.check(tied))
+                .extracting(Finding::tell)
+                .doesNotContain(Tell.LENGTH_IMBALANCE);
+    }
+
+    @Test
     void flagsTheLoneQualifiedOptionAmongAbsolutes() {
         Exercise loneQualifier = choice(
                 "lone-qualifier",
