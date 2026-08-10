@@ -10,12 +10,16 @@ import com.sweprep.backend.exercise.Form;
 import com.sweprep.backend.exercise.Lesson;
 import com.sweprep.backend.learned.LearnedService;
 import com.sweprep.backend.learned.LearnedState;
+import java.time.Clock;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Predicate;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 
 /**
@@ -40,6 +44,12 @@ import org.springframework.stereotype.Service;
  * attempt.family} migration the revision costed out was not taken, so a family whose
  * content is not in the local clone simply is not counted, which is the accepted
  * trade-off for needing no migration.
+ *
+ * <p>Issue #22 adds two topic-level axes on top of #45's picture, computed by the pure
+ * {@link TopicReadinessCalculator} from data already read here: {@code shakyTopics}
+ * (attempted patterns not yet reliable) and {@code staleTopics} (patterns not touched
+ * in a while), both scoped to only ever flag a topic that has actually been attempted -
+ * an untouched topic is "not covered" ({@link #checksToCriterion}), a different axis.
  */
 @Service
 public class ReadinessService {
@@ -48,16 +58,22 @@ public class ReadinessService {
     private final LearnedService learned;
     private final AttemptRepository attempts;
     private final CurrentUser currentUser;
+    private final ReadinessProperties properties;
+    private final ZoneId zone;
 
     public ReadinessService(
             ContentCatalog catalog,
             LearnedService learned,
             AttemptRepository attempts,
-            CurrentUser currentUser) {
+            CurrentUser currentUser,
+            ReadinessProperties properties,
+            Clock clock) {
         this.catalog = catalog;
         this.learned = learned;
         this.attempts = attempts;
         this.currentUser = currentUser;
+        this.properties = properties;
+        this.zone = clock.getZone();
     }
 
     /** The current user's readiness picture. */
@@ -81,6 +97,7 @@ public class ReadinessService {
         Set<String> solvedColdIds = attempts.solvedColdExerciseIds(userId);
         Set<String> readLessonIds = attempts.readLessonIds(userId);
         Set<String> explainedIds = attempts.explainedExerciseIds(userId);
+        Set<String> attemptedIds = attempts.attemptedExerciseIds(userId);
 
         Progress checksToCriterion = checksToCriterion(exercises, learnedStates, e -> true);
         Progress solvedCold = solvedCold(exercises, solvedColdIds, e -> true);
@@ -95,8 +112,22 @@ public class ReadinessService {
                         solvedCold(exercises, solvedColdIds, e -> e.family().contains(family))))
                 .toList();
 
+        Map<String, LocalDate> lastTouchedDates = attempts.lastAttemptDates(userId).entrySet().stream()
+                .collect(Collectors.toMap(Map.Entry::getKey, e -> LocalDate.ofInstant(e.getValue(), zone)));
+        LocalDate today = LocalDate.now(zone);
+        List<String> shakyTopics =
+                TopicReadinessCalculator.shakyTopics(exercises, learnedStates, attemptedIds, properties);
+        List<StaleTopic> staleTopics = TopicReadinessCalculator.staleTopics(
+                exercises, attemptedIds, lastTouchedDates, today, properties);
+
         return new ReadinessSummary(
-                checksToCriterion, solvedCold, conceptsCovered, explainedIds.size(), families);
+                checksToCriterion,
+                solvedCold,
+                conceptsCovered,
+                explainedIds.size(),
+                families,
+                shakyTopics,
+                staleTopics);
     }
 
     private static Progress checksToCriterion(

@@ -1,13 +1,14 @@
 package com.sweprep.backend.session;
 
+import com.sweprep.backend.attempt.AttemptRepository;
 import com.sweprep.backend.attempt.CurrentUser;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,13 +31,22 @@ import org.springframework.transaction.annotation.Transactional;
 public class SessionService {
 
     private final DayCompletionRepository days;
+    private final AttemptRepository attempts;
     private final CurrentUser currentUser;
     private final Clock clock;
+    private final StreakProperties streakProperties;
 
-    public SessionService(DayCompletionRepository days, CurrentUser currentUser, Clock clock) {
+    public SessionService(
+            DayCompletionRepository days,
+            AttemptRepository attempts,
+            CurrentUser currentUser,
+            Clock clock,
+            StreakProperties streakProperties) {
         this.days = days;
+        this.attempts = attempts;
         this.currentUser = currentUser;
         this.clock = clock;
+        this.streakProperties = streakProperties;
     }
 
     /**
@@ -50,32 +60,31 @@ public class SessionService {
         return status();
     }
 
-    /** Today's session status: whether the day is done, when, and the current streak. */
+    /**
+     * Today's session status: whether the day is done, when, the current streak (a
+     * repaired gap does not break it - issue #22), and the repair ledger for this
+     * calendar month.
+     */
     public SessionStatus status() {
         UUID user = currentUser.id();
         LocalDate today = today();
-        List<LocalDate> completed = days.completedDates(user);
-        Set<LocalDate> asSet = new HashSet<>(completed);
+        Set<LocalDate> completed = new HashSet<>(days.completedDates(user));
+        Set<LocalDate> challengeSolved = attempts.challengeSolvedInstants(user).stream()
+                .map(instant -> LocalDate.ofInstant(instant, clock.getZone()))
+                .collect(Collectors.toSet());
 
-        boolean dayComplete = asSet.contains(today);
+        boolean dayComplete = completed.contains(today);
         Instant completedAt = dayComplete
                 ? days.find(user, today).map(DayCompletion::completedAt).orElse(null)
                 : null;
-        return new SessionStatus(dayComplete, completedAt, streak(asSet, today, dayComplete));
-    }
-
-    // The run of consecutive completed days ending at the reference day. If today is not
-    // yet complete we count from yesterday, so a streak earned through yesterday is still
-    // shown as live before today's warm-up is done (and completing it then extends it),
-    // rather than reading as zero until the day's rep is in.
-    private int streak(Set<LocalDate> completed, LocalDate today, boolean dayComplete) {
-        LocalDate cursor = dayComplete ? today : today.minusDays(1);
-        int streak = 0;
-        while (completed.contains(cursor)) {
-            streak++;
-            cursor = cursor.minusDays(1);
-        }
-        return streak;
+        StreakResult streak =
+                StreakCalculator.evaluate(completed, challengeSolved, today, dayComplete, streakProperties);
+        return new SessionStatus(
+                dayComplete,
+                completedAt,
+                streak.streak(),
+                streak.repairsRemainingThisMonth(),
+                streak.repairPending());
     }
 
     private LocalDate today() {

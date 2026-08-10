@@ -17,6 +17,38 @@ sweprep:
     fixture-database: ${SWEPREP_SQL_FIXTURE_DATABASE:sweprep_fixtures}
     reader-username: ${SWEPREP_SQL_READER_USERNAME:sweprep_fixture_reader}
     reader-password: ${SWEPREP_SQL_READER_PASSWORD:sweprep_fixture_reader}
+  commit:
+    # Solution auto-commit (issue #22, decision issue #7 item 1): every solved coding
+    # problem is committed - and, by default, pushed - to the private content repo's
+    # local clone, so the GitHub contribution graph is a real record the app cannot
+    # fake. Deliberately reuses the same clone as sweprep.content.path above, not a
+    # second one - decision #7 is explicit that solutions live in the same private
+    # swe-prep-content repo, just under a different directory (solutionsDir below).
+    enabled: ${SWEPREP_AUTOCOMMIT_ENABLED:true}
+    repo-path: ${SWEPREP_COMMIT_REPO_PATH:${sweprep.content.path}}
+    push: ${SWEPREP_AUTOCOMMIT_PUSH:true}
+    # learner-solutions/, deliberately NOT solutions/ - the content-authoring tool
+    # (issue #24's ContentWriter/AuthorContentCli) writes authored reference solutions
+    # to solutions/<id>.java in this same clone, so a learner solution must land in its
+    # own directory to never overwrite or commit over one.
+    solutions-dir: learner-solutions
+    # Commit identity (author-name/author-email) is deliberately absent here, so JGit
+    # resolves it from the clone's own git config - its real committer identity,
+    # already configured on a genuine clone - rather than a value here overriding it.
+    # Set SWEPREP_COMMIT_AUTHOR_NAME/SWEPREP_COMMIT_AUTHOR_EMAIL to force a specific
+    # identity - most useful for tests pointed at a throwaway repo fixture.
+  readiness:
+    # Shaky/stale topic thresholds (issue #22), applied only to topics that have been
+    # attempted at least once - an untouched topic is "not covered", a different axis
+    # (checksToCriterion), not "shaky" or "stale".
+    shaky-threshold: ${SWEPREP_READINESS_SHAKY_THRESHOLD:0.5}
+    stale-after-days: ${SWEPREP_READINESS_STALE_AFTER_DAYS:14}
+  streak:
+    # The capped repair mechanic (issue #22, decision #7 item 5): a missed day can be
+    # repaired by a double session (warm-up plus a solved challenge) the next day, so
+    # the streak survives one bad evening. Capped "roughly twice a month" per the
+    # decision's own wording.
+    max-repairs-per-month: ${SWEPREP_STREAK_MAX_REPAIRS_PER_MONTH:2}
   web:
     # Browser origins allowed to call the backend directly, comma-separated. The single
     # source for both WebConfig's CORS mapping and the actuator's CORS config below - it

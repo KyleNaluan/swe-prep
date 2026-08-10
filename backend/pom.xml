@@ -43,6 +43,17 @@
       <artifactId>postgresql</artifactId>
       <scope>runtime</scope>
     </dependency>
+    <dependency>
+      <!--
+        Solution auto-commit (issue #22) writes and commits to the private content
+        repo's local clone. JGit is a pure-Java git implementation: it needs no `git`
+        binary on PATH, and it lets tests create and push to a throwaway local bare
+        repo fixture without ever touching a real remote (see SolutionCommitServiceTest).
+      -->
+      <groupId>org.eclipse.jgit</groupId>
+      <artifactId>org.eclipse.jgit</artifactId>
+      <version>6.10.0.202406032230-r</version>
+    </dependency>
 
     <dependency>
       <groupId>org.springframework.boot</groupId>

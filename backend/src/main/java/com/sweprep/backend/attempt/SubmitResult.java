@@ -13,7 +13,11 @@ package com.sweprep.backend.attempt;
  * automatic, not a request, so nothing is recorded on the attempt and nothing is
  * penalised.
  *
- * @param submission  the persisted submission and its verdict
- * @param explanation the explanation to show automatically, or {@code null}
+ * @param submission        the persisted submission and its verdict
+ * @param explanation       the explanation to show automatically, or {@code null}
+ * @param solutionCommitted whether this submission's solution was just committed to the
+ *                          private content repo (issue #22) - {@code true} only on a
+ *                          fresh solve that was actually written and committed; honest
+ *                          user-visible confirmation that the mechanic ran, not a score
  */
-public record SubmitResult(Submission submission, String explanation) {}
+public record SubmitResult(Submission submission, String explanation, boolean solutionCommitted) {}
