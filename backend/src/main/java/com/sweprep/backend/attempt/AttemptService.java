@@ -127,7 +127,7 @@ public class AttemptService {
      * never affects grading (see {@link com.sweprep.backend.commit.SolutionCommitService}).
      */
     public SubmitResult submit(UUID attemptId, String response) {
-        Submitted recorded = recordSubmission(attemptId, response);
+        Submitted recorded = transactionTemplate.execute(status -> recordSubmission(attemptId, response));
         SolutionCommitResult commitResult = recorded.freshSolve()
                 ? solutionCommitService.commitSolution(recorded.exercise(), response)
                 : null;
@@ -135,7 +135,6 @@ public class AttemptService {
         return new SubmitResult(recorded.submission(), recorded.explanationOnWrong(), committed);
     }
 
-    @Transactional
     Submitted recordSubmission(UUID attemptId, String response) {
         Attempt attempt = requireOwned(attemptId);
         if (attempt.outcome() != AttemptOutcome.IN_PROGRESS) {
