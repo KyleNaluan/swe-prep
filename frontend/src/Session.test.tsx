@@ -56,7 +56,10 @@ type Calls = { completeWarmup: number; abandons: string[] }
 
 // Drives every fetch the session makes. `status` is what GET /api/session returns before
 // the warm-up is finished; completing it flips the reported status to complete.
-function mockFetch(calls: Calls, options: { warmup?: unknown[]; failComplete?: boolean } = {}) {
+function mockFetch(
+  calls: Calls,
+  options: { warmup?: unknown[]; failComplete?: boolean; repairPending?: boolean } = {},
+) {
   let dayComplete = false
   return vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
     const href = String(url)
@@ -92,7 +95,13 @@ function mockFetch(calls: Calls, options: { warmup?: unknown[]; failComplete?: b
     if (href.endsWith('/api/session')) {
       return {
         ok: true,
-        json: async () => ({ dayComplete, completedAt: null, streak: dayComplete ? 3 : 2 }),
+        json: async () => ({
+          dayComplete,
+          completedAt: null,
+          streak: dayComplete ? 3 : 2,
+          repairsRemainingThisMonth: 2,
+          repairPending: options.repairPending ?? false,
+        }),
       } as Response
     }
     if (href.endsWith('/api/readiness')) {
@@ -329,6 +338,15 @@ describe('Session (daily loop, issue #19)', () => {
     expect(screen.getByText('Explain it.')).toBeInTheDocument()
     // Opening Learn never completes the day.
     await waitFor(() => expect(calls.completeWarmup).toBe(0))
+  })
+
+  it('shows the repair nudge in the header badge when a repair is available (issue #22)', async () => {
+    vi.stubGlobal('fetch', mockFetch({ completeWarmup: 0, abandons: [] }, { repairPending: true }))
+    render(<Session />)
+    await screen.findByRole('heading', { name: 'Rep One' })
+
+    expect(await screen.findByText(/repair it/i)).toBeInTheDocument()
+    expect(screen.getByText(/2 left this month/i)).toBeInTheDocument()
   })
 
   it('keeps the landing and the header badge consistent when saving the completion fails', async () => {

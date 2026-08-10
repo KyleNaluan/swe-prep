@@ -22,7 +22,17 @@ import Readiness from './Readiness'
 // today's status (streak, whether the day is already done) is read in the background, never
 // between the user and their first rep.
 
-type SessionStatus = { dayComplete: boolean; completedAt: string | null; streak: number }
+type SessionStatus = {
+  dayComplete: boolean
+  completedAt: string | null
+  streak: number
+  // The capped repair mechanic (issue #22): a missed day can be repaired by a double
+  // session (the warm-up plus a solved challenge) the next day. Both are plain facts,
+  // never a currency - repairsRemainingThisMonth is a bare count, repairPending is a
+  // bare boolean nudge, and neither is ever framed as a loss.
+  repairsRemainingThisMonth: number
+  repairPending: boolean
+}
 
 // The four surfaces: the guided daily flow (warm-up, then the day-complete landing), the
 // honest readiness picture (issue #45 - the primary progress surface, not tucked behind
@@ -88,6 +98,8 @@ function Session() {
             dayComplete: true,
             completedAt: prev?.completedAt ?? null,
             streak: prev?.streak ?? 0,
+            repairsRemainingThisMonth: prev?.repairsRemainingThisMonth ?? 0,
+            repairPending: prev?.repairPending ?? false,
           }))
         }),
     [],
@@ -188,6 +200,13 @@ function Session() {
 function DayBadge({ status }: { status: SessionStatus | null }) {
   if (!status) return null
   const streakLabel = status.streak > 0 ? `${status.streak}-day streak` : null
+  const repairNote = status.repairPending ? (
+    <span className="repair-note">
+      {' '}
+      · missed yesterday - solve a challenge today to repair it (
+      {status.repairsRemainingThisMonth} left this month)
+    </span>
+  ) : null
   if (status.dayComplete) {
     return (
       <span className="day-badge complete">
@@ -195,12 +214,14 @@ function DayBadge({ status }: { status: SessionStatus | null }) {
           ✓
         </span>{' '}
         Day complete{streakLabel ? ` · ${streakLabel}` : ''}
+        {repairNote}
       </span>
     )
   }
   return (
     <span className="day-badge">
       {streakLabel ? `${streakLabel} · warm up to keep it` : 'Warm up to start a streak'}
+      {repairNote}
     </span>
   )
 }

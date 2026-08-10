@@ -112,6 +112,10 @@ type Verdict = {
   // Present only on a wrong answer: the check's explanation, disclosed automatically
   // (issue #51). Withheld on a pass, where it is one keystroke away on request instead.
   explanation?: string
+  // Whether this solve was just committed to the private content repo (issue #22) - an
+  // honest confirmation the mechanic ran, not an invented reward. False/absent on
+  // anything but a fresh solve of a coding challenge.
+  solutionCommitted?: boolean
 }
 
 // One revealed hint rung: its name and the body disclosed when it was taken.
@@ -912,6 +916,9 @@ function VerdictView({
         <p className={`status ${verdict.outcome === 'PASSED' ? 'up' : 'down'}`}>
           {label}
           <Runtime millis={verdict.runtimeMillis} />
+          {verdict.solutionCommitted && (
+            <span className="solution-committed"> · committed to your solutions repo</span>
+          )}
         </p>
       )
     }

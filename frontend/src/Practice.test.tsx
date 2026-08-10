@@ -142,7 +142,10 @@ describe('Practice complexity self-report (issue #17)', () => {
     vi.unstubAllGlobals()
   })
 
-  function mockCodeFetch(claimedBody: { time: string; space: string }[]) {
+  function mockCodeFetch(
+    claimedBody: { time: string; space: string }[],
+    options: { solutionCommitted?: boolean } = {},
+  ) {
     return vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       const href = String(url)
       const method = init?.method ?? 'GET'
@@ -155,7 +158,14 @@ describe('Practice complexity self-report (issue #17)', () => {
       if (href.endsWith('/submissions'))
         return {
           ok: true,
-          json: async () => ({ outcome: 'PASSED', passed: 1, total: 1, detail: '', runtimeMillis: 5 }),
+          json: async () => ({
+            outcome: 'PASSED',
+            passed: 1,
+            total: 1,
+            detail: '',
+            runtimeMillis: 5,
+            solutionCommitted: options.solutionCommitted ?? false,
+          }),
         } as Response
       if (href.endsWith('/complexity')) {
         claimedBody.push(JSON.parse(String(init?.body)))
@@ -193,6 +203,27 @@ describe('Practice complexity self-report (issue #17)', () => {
     expect(await screen.findByText(/Authored target/)).toBeInTheDocument()
     expect(screen.getByText('Measured scaling is consistent with your claim.')).toBeInTheDocument()
     expect(claims).toEqual([{ time: 'LINEAR', space: 'LINEAR' }])
+  })
+
+  it('shows an honest note when the solution was auto-committed (issue #22)', async () => {
+    vi.stubGlobal('fetch', mockCodeFetch([], { solutionCommitted: true }))
+    render(<Practice />)
+    await screen.findByRole('heading', { name: 'Sum Demo' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Run' }))
+
+    expect(await screen.findByText(/committed to your solutions repo/i)).toBeInTheDocument()
+  })
+
+  it('shows no commit note when the solution was not committed', async () => {
+    vi.stubGlobal('fetch', mockCodeFetch([], { solutionCommitted: false }))
+    render(<Practice />)
+    await screen.findByRole('heading', { name: 'Sum Demo' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Run' }))
+
+    await screen.findByText('1 of 1 tests passed')
+    expect(screen.queryByText(/committed to your solutions repo/i)).not.toBeInTheDocument()
   })
 })
 
