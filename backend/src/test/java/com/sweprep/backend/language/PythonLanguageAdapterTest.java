@@ -86,7 +86,11 @@ class PythonLanguageAdapterTest {
         String harness =
                 adapter.generateTimingHarness(signature).sourceFiles().values().iterator().next();
 
-        assertThat(harness).contains("arg0 = case_input[0]");
+        // Each repetition works on a fresh deep copy of the input, so a solution that
+        // mutates its argument in place is timed fairly on every repetition, not only the
+        // first - the Python analogue of the Java harness re-binding via convertValue.
+        assertThat(harness).contains("import copy");
+        assertThat(harness).contains("arg0 = copy.deepcopy(case_input[0])");
         assertThat(harness).contains("solution.twoSum(arg0, arg1)");
         // Timing mode: repetitions and elapsed time, never a comparison against an
         // expected value - there is no Comparison in play here.

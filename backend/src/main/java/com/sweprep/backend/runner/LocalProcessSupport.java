@@ -112,7 +112,7 @@ final class LocalProcessSupport {
      * backpressure - but keeps at most {@link #MAX_CAPTURED_BYTES} in memory so a
      * runaway print loop cannot exhaust the backend heap.
      */
-    private static String drainCapped(InputStream stream) throws IOException {
+    static String drainCapped(InputStream stream) throws IOException {
         ByteArrayOutputStream captured = new ByteArrayOutputStream();
         byte[] chunk = new byte[8192];
         boolean truncated = false;

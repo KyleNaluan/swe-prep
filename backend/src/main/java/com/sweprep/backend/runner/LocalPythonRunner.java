@@ -4,6 +4,9 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -71,22 +74,39 @@ public class LocalPythonRunner implements Runner {
     private String checkSyntax(Path workDir, Iterable<String> sourceNames)
             throws IOException, InterruptedException {
         StringBuilder diagnostics = new StringBuilder();
-        for (String name : sourceNames) {
-            List<String> command = List.of(pythonExecutable, "-m", "py_compile", name);
-            Process process = new ProcessBuilder(command).directory(workDir.toFile()).start();
-            String stderr = new String(process.getErrorStream().readAllBytes());
-            boolean finished = process.waitFor(30, TimeUnit.SECONDS);
-            if (!finished) {
-                process.destroyForcibly();
-                process.waitFor();
-                diagnostics.append(name).append(": syntax check timed out\n");
-                continue;
+        ExecutorService drain = Executors.newSingleThreadExecutor();
+        try {
+            for (String name : sourceNames) {
+                List<String> command = List.of(pythonExecutable, "-m", "py_compile", name);
+                Process process = new ProcessBuilder(command)
+                        .directory(workDir.toFile())
+                        .redirectErrorStream(true)
+                        .start();
+                Future<String> output = drain.submit(() -> LocalProcessSupport.drainCapped(process.getInputStream()));
+                boolean finished = process.waitFor(30, TimeUnit.SECONDS);
+                if (!finished) {
+                    process.destroyForcibly();
+                    process.waitFor();
+                    diagnostics.append(name).append(": syntax check timed out\n");
+                    continue;
+                }
+                if (process.exitValue() != 0) {
+                    String captured = readQuietly(output);
+                    diagnostics.append(captured.isBlank() ? name + ": failed to compile\n" : captured);
+                }
             }
-            if (process.exitValue() != 0) {
-                diagnostics.append(stderr.isBlank() ? name + ": failed to compile\n" : stderr);
-            }
+        } finally {
+            drain.shutdownNow();
         }
         return diagnostics.isEmpty() ? null : diagnostics.toString().strip();
+    }
+
+    private static String readQuietly(Future<String> future) {
+        try {
+            return future.get(5, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            return "";
+        }
     }
 
     private List<String> runCommand(ExecutionRequest request) {
