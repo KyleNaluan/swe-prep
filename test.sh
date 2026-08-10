@@ -9,6 +9,9 @@ echo "== no committed content =="
 ./scripts/check-no-content.sh
 ./scripts/check-no-content.test.sh
 
+echo "== daily cue =="
+./scripts/daily-cue.test.sh
+
 echo "== backend =="
 (cd backend && ./mvnw test)
 
