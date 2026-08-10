@@ -55,7 +55,7 @@ Prerequisites: Java 21 on `PATH`, Docker running, Node 24.
    ```
 
 5. Open `http://localhost:5173`. The app opens straight on the daily warm-up, with
-   Today/Practice/Learn tabs to switch surfaces and a role picker in the header for
+   Today/Readiness/Practice/Learn tabs to switch surfaces and a role picker in the header for
    choosing which roles you are preparing for (issue #40): the required warm-up and
    auto-seeding then draw only from those families (plus the always-on core), while
    everything stays reachable through the Practice/Learn browse tabs - it hides nothing.
@@ -66,7 +66,8 @@ Prerequisites: Java 21 on `PATH`, Docker running, Node 24.
    in the set, while a correct answer withholds the explanation but keeps it one
    keystroke away. Finishing the warm-up completes the day (issue #19): a
    day-complete landing celebrates that first, then offers an optional ~30-minute
-   main exercise as a bonus - declining keeps the day done and the streak intact. The
+   main exercise as a bonus - declining keeps the day done and the streak intact, and the
+   landing links straight into the Readiness surface at the moment progress is most salient. The
    Practice tab is the free-practice editor: pick an exercise
    from the selector. A coding
    exercise opens in a Monaco editor: write a solution and press Run to have the
@@ -93,7 +94,12 @@ Prerequisites: Java 21 on `PATH`, Docker running, Node 24.
    so it lives only in the optional tiers, never the required warm-up. The Learn tab
    (issue #46) is the reading surface: a lesson is read, never attempted, and its
    embedded self-explanation prompts each ask you to answer in your own words before
-   revealing a model answer. Each sitting and every press of Run is
+   revealing a model answer. The Readiness tab (issue #45) is the honest progress
+   picture, a first-class surface rather than a screen tucked behind Practice: plain
+   X/Y counts of checks retrieved to criterion and challenges solved cold (no hints, no
+   failing case revealed), concepts (lessons) read, and a per-family breakdown - never a
+   score, points, badges, or levels, and a broken streak is only ever described, never
+   framed as a loss. Each sitting and every press of Run is
    recorded as durable practice history, shown in a History panel below the editor
    (with the hints taken) and surviving a restart; a Give up button abandons an
    unsolved sitting.
