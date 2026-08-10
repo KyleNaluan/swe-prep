@@ -15,7 +15,9 @@ import com.sweprep.backend.exercise.Response;
 import com.sweprep.backend.exercise.Signature;
 import com.sweprep.backend.exercise.Signature.Parameter;
 import com.sweprep.backend.language.JavaLanguageAdapter;
+import com.sweprep.backend.language.LanguageAdapterRegistry;
 import com.sweprep.backend.runner.LocalJavaRunner;
+import com.sweprep.backend.runner.RunnerRegistry;
 import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -53,8 +55,8 @@ class ScalingMeasurerTest {
 
     private ScalingMeasurer measurer() {
         return new ScalingMeasurer(
-                new JavaLanguageAdapter(),
-                new LocalJavaRunner(),
+                new LanguageAdapterRegistry(List.of(new JavaLanguageAdapter())),
+                new RunnerRegistry(List.of(new LocalJavaRunner())),
                 mapper,
                 new ComplexityProperties(FAST_SIZES, 0, 1),
                 Duration.ofSeconds(10));
@@ -68,8 +70,8 @@ class ScalingMeasurerTest {
      */
     private ScalingMeasurer defaultsMeasurer() {
         return new ScalingMeasurer(
-                new JavaLanguageAdapter(),
-                new LocalJavaRunner(),
+                new LanguageAdapterRegistry(List.of(new JavaLanguageAdapter())),
+                new RunnerRegistry(List.of(new LocalJavaRunner())),
                 mapper,
                 new ComplexityProperties(null, null, null),
                 Duration.ofSeconds(10));
@@ -135,7 +137,7 @@ class ScalingMeasurerTest {
                 }
                 """;
 
-        MeasurementOutcome outcome = defaultsMeasurer().measure(exerciseWithGenerator(), quadratic);
+        MeasurementOutcome outcome = defaultsMeasurer().measure(exerciseWithGenerator(), quadratic, "java");
 
         // The exact-bucket guarantee (a clean quadratic curve classifies as QUADRATIC) is
         // proven deterministically against synthetic curves in ComplexityClassifierTest.
@@ -179,7 +181,7 @@ class ScalingMeasurerTest {
                 }
                 """;
 
-        MeasurementOutcome outcome = defaultsMeasurer().measure(exerciseWithGenerator(), linear);
+        MeasurementOutcome outcome = defaultsMeasurer().measure(exerciseWithGenerator(), linear, "java");
 
         // Inconclusive is an acceptable outcome here (never a false contradiction either);
         // what must never happen is measurement confidently calling genuinely linear code
@@ -197,7 +199,7 @@ class ScalingMeasurerTest {
                 "solve", List.of(new Parameter("nums", DataType.INT_ARRAY)), DataType.INT);
         ComplexityCheck targetOnly = new ComplexityCheck(Complexity.LINEAR, Complexity.CONSTANT, null);
 
-        MeasurementOutcome outcome = measurer().measure(exercise(signature, targetOnly), "irrelevant");
+        MeasurementOutcome outcome = measurer().measure(exercise(signature, targetOnly), "irrelevant", "java");
 
         assertThat(outcome).isInstanceOf(MeasurementOutcome.Skipped.class);
     }
@@ -207,7 +209,7 @@ class ScalingMeasurerTest {
         Signature signature = new Signature(
                 "solve", List.of(new Parameter("nums", DataType.INT_ARRAY)), DataType.INT);
 
-        MeasurementOutcome outcome = measurer().measure(exercise(signature, null), "irrelevant");
+        MeasurementOutcome outcome = measurer().measure(exercise(signature, null), "irrelevant", "java");
 
         assertThat(outcome).isInstanceOf(MeasurementOutcome.Skipped.class);
     }
@@ -223,7 +225,7 @@ class ScalingMeasurerTest {
                 }
                 """;
 
-        MeasurementOutcome outcome = measurer().measure(exerciseWithGenerator(), alwaysThrows);
+        MeasurementOutcome outcome = measurer().measure(exerciseWithGenerator(), alwaysThrows, "java");
 
         assertThat(outcome).isInstanceOf(MeasurementOutcome.Inconclusive.class);
     }

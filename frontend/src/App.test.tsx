@@ -77,10 +77,10 @@ function mockFetch(run: unknown, runOk = true) {
     if (href.endsWith('/api/exercises')) {
       return { ok: true, json: async () => CATALOG } as Response
     }
-    if (href.endsWith('/api/exercises/two-sum')) {
+    if (href.includes('/api/exercises/two-sum')) {
       return { ok: true, json: async () => CODE_EXERCISE } as Response
     }
-    if (href.endsWith('/api/exercises/hashmap-lookup')) {
+    if (href.includes('/api/exercises/hashmap-lookup')) {
       return { ok: true, json: async () => CHOICE_EXERCISE } as Response
     }
     // GET history / POST start both target /api/attempts.
@@ -196,7 +196,7 @@ describe('App', () => {
         if (href.endsWith('/api/reps/warmup')) return { ok: true, json: async () => [] } as Response
         if (href.endsWith('/api/session')) return { ok: true, json: async () => ({ dayComplete: false, completedAt: null, streak: 0 }) } as Response
         if (href.endsWith('/api/exercises')) return { ok: true, json: async () => CATALOG } as Response
-        if (href.endsWith('/api/exercises/two-sum'))
+        if (href.includes('/api/exercises/two-sum'))
           return { ok: true, json: async () => CODE_EXERCISE } as Response
         if (href.endsWith('/api/attempts')) return { ok: true, json: async () => attempts } as Response
         throw new Error(`unexpected fetch to ${href}`)
@@ -220,7 +220,7 @@ describe('App', () => {
         if (href.endsWith('/api/reps/warmup')) return { ok: true, json: async () => [] } as Response
         if (href.endsWith('/api/session')) return { ok: true, json: async () => ({ dayComplete: false, completedAt: null, streak: 0 }) } as Response
         if (href.endsWith('/api/exercises')) return { ok: true, json: async () => CATALOG } as Response
-        if (href.endsWith('/api/exercises/two-sum'))
+        if (href.includes('/api/exercises/two-sum'))
           return { ok: true, json: async () => exerciseWithHints } as Response
         if (href.endsWith('/api/attempts')) {
           if (init?.method === 'POST')
@@ -261,7 +261,7 @@ describe('App', () => {
         if (href.endsWith('/api/reps/warmup')) return { ok: true, json: async () => [] } as Response
         if (href.endsWith('/api/session')) return { ok: true, json: async () => ({ dayComplete: false, completedAt: null, streak: 0 }) } as Response
         if (href.endsWith('/api/exercises')) return { ok: true, json: async () => CATALOG } as Response
-        if (href.endsWith('/api/exercises/two-sum'))
+        if (href.includes('/api/exercises/two-sum'))
           return { ok: true, json: async () => CODE_EXERCISE } as Response
         if (href.endsWith('/api/attempts')) {
           if (init?.method === 'POST')
@@ -313,9 +313,9 @@ describe('App', () => {
         if (href.endsWith('/api/reps/warmup')) return { ok: true, json: async () => [] } as Response
         if (href.endsWith('/api/session')) return { ok: true, json: async () => ({ dayComplete: false, completedAt: null, streak: 0 }) } as Response
         if (href.endsWith('/api/exercises')) return { ok: true, json: async () => CATALOG } as Response
-        if (href.endsWith('/api/exercises/two-sum'))
+        if (href.includes('/api/exercises/two-sum'))
           return { ok: true, json: async () => CODE_EXERCISE } as Response
-        if (href.endsWith('/api/exercises/hashmap-lookup'))
+        if (href.includes('/api/exercises/hashmap-lookup'))
           return { ok: true, json: async () => explainingCheck } as Response
         if (href.endsWith('/api/attempts')) {
           if (init?.method === 'POST')
@@ -360,9 +360,9 @@ describe('App', () => {
         if (href.endsWith('/api/reps/warmup')) return { ok: true, json: async () => [] } as Response
         if (href.endsWith('/api/session')) return { ok: true, json: async () => ({ dayComplete: false, completedAt: null, streak: 0 }) } as Response
         if (href.endsWith('/api/exercises')) return { ok: true, json: async () => CATALOG } as Response
-        if (href.endsWith('/api/exercises/two-sum'))
+        if (href.includes('/api/exercises/two-sum'))
           return { ok: true, json: async () => CODE_EXERCISE } as Response
-        if (href.endsWith('/api/exercises/hashmap-lookup'))
+        if (href.includes('/api/exercises/hashmap-lookup'))
           return { ok: true, json: async () => explainingCheck } as Response
         if (href.endsWith('/explanation')) {
           explanationRequested = true

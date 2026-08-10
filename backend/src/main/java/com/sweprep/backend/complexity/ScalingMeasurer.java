@@ -8,11 +8,12 @@ import com.sweprep.backend.exercise.InputGenerator;
 import com.sweprep.backend.exercise.Response;
 import com.sweprep.backend.exercise.Signature;
 import com.sweprep.backend.language.GeneratedHarness;
-import com.sweprep.backend.language.JavaLanguageAdapter;
 import com.sweprep.backend.language.LanguageAdapter;
+import com.sweprep.backend.language.LanguageAdapterRegistry;
 import com.sweprep.backend.runner.ExecutionRequest;
 import com.sweprep.backend.runner.ExecutionResult;
 import com.sweprep.backend.runner.Runner;
+import com.sweprep.backend.runner.RunnerRegistry;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -44,6 +45,11 @@ import org.springframework.stereotype.Component;
  * MeasurementOutcome.Inconclusive} rather than a guess: a submission that throws on
  * generated inputs, one whose result is unreadable, one that never produces enough
  * usable sizes. Never {@link MeasurementOutcome.Conclusive} without genuine signal.
+ *
+ * <p>Which language the submission is measured as is resolved per call through {@link
+ * LanguageAdapterRegistry}/{@link RunnerRegistry} (issue #26), the same seam {@code
+ * TestCaseGrader} uses - a submission solved in a second language gets its scaling
+ * measured with that language's own timing harness, not assumed to be Java.
  */
 @Component
 public class ScalingMeasurer {
@@ -51,37 +57,37 @@ public class ScalingMeasurer {
     private static final String INPUT_FILE = "input.json";
     private static final String RESULT_FILE = "timing.json";
 
-    private final LanguageAdapter adapter;
-    private final Runner runner;
+    private final LanguageAdapterRegistry adapters;
+    private final RunnerRegistry runners;
     private final ObjectMapper mapper;
     private final ComplexityProperties properties;
     private final Duration timeout;
 
     public ScalingMeasurer(
-            LanguageAdapter adapter,
-            Runner runner,
+            LanguageAdapterRegistry adapters,
+            RunnerRegistry runners,
             ObjectMapper mapper,
             ComplexityProperties properties,
             @Value("${sweprep.grader.timeout:PT10S}") Duration timeout) {
-        this.adapter = adapter;
-        this.runner = runner;
+        this.adapters = adapters;
+        this.runners = runners;
         this.mapper = mapper;
         this.properties = properties;
         this.timeout = timeout;
     }
 
     /**
-     * Measures {@code submission}'s time-scaling against {@code exercise}, or {@link
-     * MeasurementOutcome.Skipped} when the exercise carries no {@link InputGenerator} -
-     * optional content metadata, never an error (issue #17's explicit acceptance
-     * criterion: "an exercise with no input generator skips the check entirely without
-     * error").
+     * Measures {@code submission} (written in {@code language})'s time-scaling against
+     * {@code exercise}, or {@link MeasurementOutcome.Skipped} when the exercise carries
+     * no {@link InputGenerator} - optional content metadata, never an error (issue
+     * #17's explicit acceptance criterion: "an exercise with no input generator skips
+     * the check entirely without error").
      *
      * @throws IllegalStateException if the exercise declares a generator but has no code
      *                                response to run it against - an authoring error, not
      *                                the optional-metadata case above
      */
-    public MeasurementOutcome measure(Exercise exercise, String submission) {
+    public MeasurementOutcome measure(Exercise exercise, String submission, String language) {
         ComplexityCheck check = exercise.complexityCheck();
         if (check == null || check.generator() == null) {
             return new MeasurementOutcome.Skipped();
@@ -94,12 +100,14 @@ public class ScalingMeasurer {
 
         Signature signature = code.signature();
         InputGenerator generator = check.generator();
+        LanguageAdapter adapter = adapters.forLanguage(language);
+        Runner runner = runners.forLanguage(language);
         GeneratedHarness harness = adapter.generateTimingHarness(signature);
 
         List<ComplexityClassifier.SizeTiming> points = new ArrayList<>();
         for (int size : properties.sizes()) {
             JsonNode input = generator.generate(size, seedFor(exercise.id(), size));
-            SizeSample sample = runOneSize(harness, submission, input);
+            SizeSample sample = runOneSize(adapter, runner, harness, submission, input);
             if (sample instanceof SizeSample.TimedOut) {
                 // Ascending sizes: nothing larger is worth attempting either.
                 break;
@@ -129,9 +137,10 @@ public class ScalingMeasurer {
         record Unusable() implements SizeSample {}
     }
 
-    private SizeSample runOneSize(GeneratedHarness harness, String submission, JsonNode input) {
+    private SizeSample runOneSize(
+            LanguageAdapter adapter, Runner runner, GeneratedHarness harness, String submission, JsonNode input) {
         Map<String, String> sources = new HashMap<>(harness.sourceFiles());
-        sources.put(JavaLanguageAdapter.SUBMISSION_CLASS + ".java", submission == null ? "" : submission);
+        sources.put(adapter.submissionFileName(), submission == null ? "" : submission);
 
         ExecutionRequest request = new ExecutionRequest(
                 sources,
