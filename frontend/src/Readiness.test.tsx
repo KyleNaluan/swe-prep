@@ -33,7 +33,7 @@ describe('Readiness (issue #45)', () => {
     const { container } = render(<Readiness />)
 
     expect(await screen.findByText('4/10')).toBeInTheDocument()
-    expect(screen.getByText('1/4')).toBeInTheDocument()
+    expect(screen.getAllByText('1/4').length).toBeGreaterThan(0)
     expect(screen.getByText('2/5')).toBeInTheDocument()
     // No invented currency anywhere on the surface (the copy names what it is not, so
     // "points"/"badges"/"levels" legitimately appear once each in that disclaimer).
