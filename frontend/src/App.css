@@ -693,3 +693,147 @@
   font-size: 0.9rem;
   cursor: pointer;
 }
+
+/* The readiness picture (issue #45): the primary progress surface that stands in for an
+   invented currency. Three plain "X of Y" cards for the objective competence axes and the
+   concepts-covered axis, a visually distinct self-check count that is never blended into
+   them, and a per-family table so a chosen role's preparation is legible on its own. */
+.readiness h1 {
+  margin: 0 0 0.4rem;
+  font-size: 1.6rem;
+}
+
+.readiness-intro {
+  color: #64748b;
+  line-height: 1.6;
+  margin: 0 0 1.5rem;
+  max-width: 40rem;
+}
+
+.readiness-axes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.readiness-card {
+  padding: 1rem 1.15rem;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 0.75rem;
+  background: rgba(148, 163, 184, 0.06);
+}
+
+.readiness-card h2 {
+  margin: 0 0 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.readiness-count {
+  margin: 0 0 0.4rem;
+  font-size: 1.6rem;
+  font-weight: 700;
+}
+
+.readiness-note {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: #64748b;
+}
+
+/* Deliberately set apart (dashed border, no fill) from the machine-verdict cards above -
+   this count is self-reported and must never read as one more objective axis. */
+.self-check-count {
+  padding: 0.9rem 1.15rem;
+  border: 1px dashed rgba(148, 163, 184, 0.5);
+  border-radius: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.self-check-count h2 {
+  margin: 0 0 0.35rem;
+  font-size: 1.05rem;
+}
+
+.self-check-count p {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: #64748b;
+}
+
+.readiness-streak {
+  font-size: 0.9rem;
+  color: #64748b;
+  margin: 0 0 1.5rem;
+}
+
+.family-breakdown h2 {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.6rem;
+}
+
+.family-table-wrap {
+  overflow-x: auto;
+}
+
+.family-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.family-table th,
+.family-table td {
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.25);
+  white-space: nowrap;
+}
+
+.family-table th {
+  color: #64748b;
+  font-weight: 600;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.family-always {
+  color: #64748b;
+  font-size: 0.8rem;
+}
+
+.link-button {
+  background: none;
+  border: none;
+  color: #6366f1;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+}
+
+.readiness-link {
+  margin-top: 1.5rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  .readiness-intro,
+  .readiness-note,
+  .self-check-count p,
+  .readiness-streak,
+  .family-table th,
+  .family-always {
+    color: #94a3b8;
+  }
+}

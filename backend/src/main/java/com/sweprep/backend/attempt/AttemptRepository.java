@@ -198,6 +198,44 @@ public class AttemptRepository {
     }
 
     /**
+     * The distinct ids of every {@code CHALLENGE}-form exercise this user has ever solved
+     * with no help taken - no hint climbed, no failing case revealed (issues #16/#45). This
+     * is the "solved-cold" objective competence axis the readiness picture reads: like
+     * {@link com.sweprep.backend.attempt.SubmissionRepository#cleanPassInstants}'s {@code
+     * outcome = 'PASSED'} boundary, the query alone keeps it a machine-verdict signal - a
+     * solve that needed help still counts as solved, but not as solved cold.
+     */
+    public java.util.Set<String> solvedColdExerciseIds(UUID userId) {
+        return new java.util.HashSet<>(
+                jdbc.sql(
+                                """
+                                SELECT DISTINCT exercise_id FROM attempt
+                                WHERE user_id = :userId AND form = 'CHALLENGE' AND outcome = 'SOLVED'
+                                  AND hints_taken = 0 AND failing_case_revealed = false
+                                """)
+                        .param("userId", userId)
+                        .query(String.class)
+                        .list());
+    }
+
+    /**
+     * The distinct ids of every exercise this user has completed as a self-check
+     * "explain in your own words" item (issue #41: an attempt ending {@code EXPLAINED}).
+     * The readiness picture (#45) counts these separately, as "explained N concepts" -
+     * never folded into an objective competence axis, since a self-rating is not a
+     * machine verdict.
+     */
+    public java.util.Set<String> explainedExerciseIds(UUID userId) {
+        return new java.util.HashSet<>(
+                jdbc.sql(
+                                "SELECT DISTINCT exercise_id FROM attempt "
+                                        + "WHERE user_id = :userId AND outcome = 'EXPLAINED'")
+                        .param("userId", userId)
+                        .query(String.class)
+                        .list());
+    }
+
+    /**
      * One terminal {@code REP}-form attempt's outcome - the raw material {@code RepDueService}
      * (issue #20) reduces to a spaced-repetition {@code Review}. {@code solved} is the
      * correctness signal; {@code explanationRequested} is the "asked why" confidence signal
