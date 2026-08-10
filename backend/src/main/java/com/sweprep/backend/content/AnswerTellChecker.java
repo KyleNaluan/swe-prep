@@ -126,9 +126,28 @@ public final class AnswerTellChecker {
      * exact-lexeme imbalance that a learner could actually exploit. An ordered list, not a
      * {@code Set}, so the lexeme scanned first (and therefore reported first, when more
      * than one trips) is deterministic.
+     *
+     * <p><b>{@code as} was dropped (issue #69)</b> after it was measured to be
+     * responsible for 3 of this axis's 4 flags on the 29 real four-option items in
+     * production content - and every one of those 3 a false alarm, not just the "at
+     * least two" #69 confirmed by hand. {@code as} is the most polysemous word ever in
+     * this list: a full scan of every {@code as} occurrence across that same corpus
+     * found it firing on comparison ("as well as", "just as directly as"), labelling
+     * ("flags it as positive", "treated as stale", "another name for … as"), and
+     * temporal senses ("as the world changes") - never once on a genuine causal use.
+     * With zero true positives measured anywhere in the corpus to weigh against three
+     * confirmed false ones, a causal-context heuristic (e.g. only count sentence-initial
+     * "As " or ", as ") had nothing left to preserve: the corpus's temporal and
+     * comparison uses ("as the world changes", ", as if the two independent stores
+     * could be…") sit right where such a heuristic would still fire, so it would not
+     * even have closed the gap cheaply. The one genuine catch in the same measurement
+     * was a "because" tell (every distractor opened with "Because", the key did not) -
+     * untouched by this change, since it never depended on {@code as}. Keeping a lexeme
+     * whose flags a reviewer learns to skim past - #65's own stated rationale for this
+     * axis - trains them to skim past the real ones too.
      */
     private static final List<String> CONNECTIVES =
-            List.of("since", "because", "as", "so that");
+            List.of("since", "because", "so that");
 
     private final ObjectMapper mapper;
     private final double lengthRatio;
