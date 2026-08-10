@@ -1,0 +1,156 @@
+package com.sweprep.backend.challenge;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.when;
+
+import com.sweprep.backend.attempt.Attempt;
+import com.sweprep.backend.attempt.AttemptRepository;
+import com.sweprep.backend.attempt.AttemptRepository.ChallengeAttemptRow;
+import com.sweprep.backend.attempt.AttemptService;
+import com.sweprep.backend.attempt.CurrentUser;
+import com.sweprep.backend.attempt.SubmissionRepository;
+import com.sweprep.backend.exercise.ContentCatalog;
+import com.sweprep.backend.exercise.Exercise;
+import com.sweprep.backend.exercise.ExerciseCatalog;
+import com.sweprep.backend.scheduler.ChallengeQuality;
+import com.sweprep.backend.testsupport.Fixtures;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.transaction.annotation.Transactional;
+import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
+
+/**
+ * Proves the priority scorer (issue #21) against a real, disposable Postgres, through the
+ * same real grade path a solved challenge actually takes: {@link
+ * AttemptRepository#challengeReviews} and {@link AttemptRepository#firstChallengeAttemptDates}
+ * read back what {@link AttemptService#submit} and {@link AttemptService#abandon} actually
+ * wrote, and {@link ChallengeService} turns that into a selection. The scoring arithmetic
+ * itself is proven in isolation by {@code ChallengePriorityTest}; this test's job is the
+ * plumbing those pure rules cannot check for themselves, mirroring {@code
+ * RepDueServicePersistenceTest}'s shape for the sibling rep scheduler.
+ */
+@SpringBootTest
+@Testcontainers
+@Transactional
+class ChallengeServicePersistenceTest {
+
+    @Container
+    @ServiceConnection
+    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine");
+
+    @Autowired
+    private AttemptService attemptService;
+
+    @Autowired
+    private AttemptRepository attempts;
+
+    @Autowired
+    private SubmissionRepository submissions;
+
+    @Autowired
+    private ChallengeService challengeService;
+
+    @Autowired
+    private CurrentUser currentUser;
+
+    @MockitoBean
+    private ExerciseCatalog catalog;
+
+    // Mocking ExerciseCatalog replaces the shared FileExerciseCatalog bean, so the wider
+    // ContentCatalog (LessonController's dependency) must be supplied for the context to load.
+    @MockitoBean
+    private ContentCatalog contentCatalog;
+
+    private Exercise challenge;
+
+    @BeforeEach
+    void setUp() {
+        challenge = Fixtures.pairInAnyOrder(); // Form.CHALLENGE, Code + TestCases.
+        when(catalog.byId(challenge.id())).thenReturn(Optional.of(challenge));
+        when(catalog.all()).thenReturn(List.of(challenge));
+    }
+
+    @Test
+    void aChallengeNeverAttemptedIsSelected() {
+        assertThat(challengeService.selectMain(currentUser.id())).contains(challenge);
+    }
+
+    @Test
+    void aChallengeJustSolvedThroughTheRealGradePathIsNotSelectedToday() {
+        Attempt attempt = attemptService.start(challenge.id());
+        attemptService.submit(attempt.id(), Fixtures.PAIR_SOLUTION);
+
+        // The minimum-interval floor excludes anything attempted today, whatever its score.
+        assertThat(challengeService.selectMain(currentUser.id())).isEmpty();
+    }
+
+    @Test
+    void solvingCleanlyOnTheFirstTryReducesToAPerfectQualityReview() {
+        Attempt attempt = attemptService.start(challenge.id());
+        attemptService.submit(attempt.id(), Fixtures.PAIR_SOLUTION);
+
+        List<ChallengeAttemptRow> reviews = attempts.challengeReviews(currentUser.id());
+        assertThat(reviews).hasSize(1);
+        ChallengeAttemptRow review = reviews.get(0);
+        assertThat(review.exerciseId()).isEqualTo(challenge.id());
+        assertThat(review.solved()).isTrue();
+        assertThat(review.hintsTaken()).isZero();
+        assertThat(review.failingCaseRevealed()).isFalse();
+
+        int submissionCount = submissions.countByAttempt(review.attemptId());
+        int quality = ChallengeQuality.derive(
+                review.solved(),
+                submissionCount,
+                review.hintsTaken(),
+                review.failingCaseRevealed(),
+                review.complexityClaimCorrect());
+        assertThat(quality).isEqualTo(ChallengeQuality.PERFECT);
+    }
+
+    @Test
+    void abandoningAnUnsolvedChallengeRecordsAnIncorrectReview() {
+        Attempt attempt = attemptService.start(challenge.id());
+        attemptService.abandon(attempt.id());
+
+        ChallengeAttemptRow review = attempts.challengeReviews(currentUser.id()).get(0);
+        assertThat(review.exerciseId()).isEqualTo(challenge.id());
+        assertThat(review.solved()).isFalse();
+    }
+
+    @Test
+    void anAttemptStillInProgressIsNotYetACompletedReviewAndIsStillSelectable() {
+        attemptService.start(challenge.id());
+
+        assertThat(attempts.challengeReviews(currentUser.id())).isEmpty();
+        assertThat(challengeService.selectMain(currentUser.id())).contains(challenge);
+    }
+
+    @Test
+    void startingAnAttemptRecordsTodayAsItsFirstIntroduction() {
+        attemptService.start(challenge.id());
+
+        assertThat(attempts.firstChallengeAttemptDates(currentUser.id())).containsKey(challenge.id());
+    }
+
+    @Test
+    void unrelatedUsersHistoryNeverLeaksIntoAnotherUsersSelection() {
+        UUID otherUser = UUID.randomUUID();
+        assertThat(otherUser).isNotEqualTo(currentUser.id());
+
+        Attempt attempt = attemptService.start(challenge.id());
+        attemptService.submit(attempt.id(), Fixtures.PAIR_SOLUTION);
+
+        // The current user just solved it (excluded by the floor); a different user's
+        // selection is computed independently and must still see it as never attempted.
+        assertThat(challengeService.selectMain(otherUser)).contains(challenge);
+    }
+}
