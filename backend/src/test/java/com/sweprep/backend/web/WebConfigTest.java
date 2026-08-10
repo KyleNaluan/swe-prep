@@ -7,6 +7,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.sweprep.backend.attempt.CurrentUser;
 import com.sweprep.backend.exercise.ExerciseCatalog;
 import com.sweprep.backend.language.JavaLanguageAdapter;
+import com.sweprep.backend.language.LanguageAdapterRegistry;
 import com.sweprep.backend.session.SessionConfig;
 import com.sweprep.backend.testsupport.Fixtures;
 import org.junit.jupiter.api.Test;
@@ -27,6 +28,7 @@ import org.springframework.test.web.servlet.MockMvc;
 @WebMvcTest(ExerciseController.class)
 @Import({
     JavaLanguageAdapter.class,
+    LanguageAdapterRegistry.class,
     WebConfig.class,
     DeterministicOptionShuffler.class,
     CurrentUser.class,

@@ -12,5 +12,7 @@ package com.sweprep.backend.web;
  *
  * @param submission the answer to grade for the failing case
  * @param hypothesis the solver's one-line guess at the bug, or {@code null}/blank
+ * @param language   the language {@code submission} is written in (issue #26);
+ *                   {@code null}/blank defaults to Java, same as {@link RunRequest}
  */
-public record RevealRequest(String submission, String hypothesis) {}
+public record RevealRequest(String submission, String hypothesis, String language) {}

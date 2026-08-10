@@ -10,11 +10,12 @@ import com.sweprep.backend.exercise.Response;
 import com.sweprep.backend.exercise.Signature;
 import com.sweprep.backend.exercise.TestCase;
 import com.sweprep.backend.language.GeneratedHarness;
-import com.sweprep.backend.language.JavaLanguageAdapter;
 import com.sweprep.backend.language.LanguageAdapter;
+import com.sweprep.backend.language.LanguageAdapterRegistry;
 import com.sweprep.backend.runner.ExecutionRequest;
 import com.sweprep.backend.runner.ExecutionResult;
 import com.sweprep.backend.runner.Runner;
+import com.sweprep.backend.runner.RunnerRegistry;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
@@ -30,6 +31,14 @@ import org.springframework.stereotype.Component;
  * exercises whose grading spec is {@link Grading.TestCases}; the generic
  * pass-counting logic lives here and nothing about it is Java-specific, which is
  * the whole point of the adapter seam.
+ *
+ * <p>Which language a submission is graded as is resolved per call, through {@link
+ * LanguageAdapterRegistry}/{@link RunnerRegistry} (issue #26) - never a single
+ * injected adapter/runner pair - so the exact same stored {@link
+ * com.sweprep.backend.exercise.TestCase}s run under whichever language the solver
+ * chose. The 2-arg {@link #grade(Exercise, String)}/{@link
+ * #firstFailingCase(Exercise, String)} overloads (declared by {@link Grader}) default
+ * to Java, matching "Java remains the default" (issue #26's explicit criterion).
  */
 @Component
 public class TestCaseGrader implements Grader {
@@ -43,18 +52,18 @@ public class TestCaseGrader implements Grader {
      */
     private static final String RESULT_FILE = "results.json";
 
-    private final LanguageAdapter adapter;
-    private final Runner runner;
+    private final LanguageAdapterRegistry adapters;
+    private final RunnerRegistry runners;
     private final ObjectMapper mapper;
     private final Duration timeout;
 
     public TestCaseGrader(
-            LanguageAdapter adapter,
-            Runner runner,
+            LanguageAdapterRegistry adapters,
+            RunnerRegistry runners,
             ObjectMapper mapper,
             @Value("${sweprep.grader.timeout:PT10S}") Duration timeout) {
-        this.adapter = adapter;
-        this.runner = runner;
+        this.adapters = adapters;
+        this.runners = runners;
         this.mapper = mapper;
         this.timeout = timeout;
     }
@@ -66,10 +75,15 @@ public class TestCaseGrader implements Grader {
 
     @Override
     public Verdict grade(Exercise exercise, String submission) {
+        return grade(exercise, submission, LanguageAdapterRegistry.DEFAULT_LANGUAGE);
+    }
+
+    @Override
+    public Verdict grade(Exercise exercise, String submission, String language) {
         Grading.TestCases spec = (Grading.TestCases) exercise.grading();
         int total = spec.cases().size();
 
-        Run run = execute(exercise, submission);
+        Run run = execute(exercise, submission, language);
         ExecutionResult result = run.result();
         // Runtime is attached to every verdict for interest only; it never changes the
         // pass/fail decision (issue #16/#5).
@@ -92,10 +106,15 @@ public class TestCaseGrader implements Grader {
      */
     @Override
     public Optional<FailingCase> firstFailingCase(Exercise exercise, String submission) {
+        return firstFailingCase(exercise, submission, LanguageAdapterRegistry.DEFAULT_LANGUAGE);
+    }
+
+    @Override
+    public Optional<FailingCase> firstFailingCase(Exercise exercise, String submission, String language) {
         Grading.TestCases spec = (Grading.TestCases) exercise.grading();
         int total = spec.cases().size();
 
-        ExecutionResult result = execute(exercise, submission).result();
+        ExecutionResult result = execute(exercise, submission, language).result();
         if (result.outcome() != ExecutionResult.Outcome.COMPLETED) {
             return Optional.empty();
         }
@@ -125,13 +144,15 @@ public class TestCaseGrader implements Grader {
     }
 
     /** Compiles and runs the submission against the exercise's cases, timing the run. */
-    private Run execute(Exercise exercise, String submission) {
+    private Run execute(Exercise exercise, String submission, String language) {
         Grading.TestCases spec = (Grading.TestCases) exercise.grading();
         Signature signature = codeSignature(exercise);
+        LanguageAdapter adapter = adapters.forLanguage(language);
+        Runner runner = runners.forLanguage(language);
         GeneratedHarness harness = adapter.generateHarness(signature);
 
         Map<String, String> sources = new HashMap<>(harness.sourceFiles());
-        sources.put(JavaLanguageAdapter.SUBMISSION_CLASS + ".java", submission == null ? "" : submission);
+        sources.put(adapter.submissionFileName(), submission == null ? "" : submission);
 
         ExecutionRequest request = new ExecutionRequest(
                 sources,

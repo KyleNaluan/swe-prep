@@ -32,10 +32,10 @@ public class SubmissionRepository {
                         """
                         INSERT INTO submission (
                             id, attempt_id, submitted_at, response, outcome, passed, total, detail,
-                            runtime_millis)
+                            runtime_millis, language)
                         VALUES (
                             :id, :attemptId, :submittedAt, :response, :outcome, :passed, :total, :detail,
-                            :runtimeMillis)
+                            :runtimeMillis, :language)
                         """)
                 .param("id", submission.id())
                 .param("attemptId", submission.attemptId())
@@ -46,6 +46,7 @@ public class SubmissionRepository {
                 .param("total", submission.total())
                 .param("detail", submission.detail())
                 .param("runtimeMillis", submission.runtimeMillis())
+                .param("language", submission.language())
                 .update();
     }
 
@@ -212,6 +213,7 @@ public class SubmissionRepository {
                 rs.getInt("passed"),
                 rs.getInt("total"),
                 rs.getString("detail"),
-                rs.getLong("runtime_millis"));
+                rs.getLong("runtime_millis"),
+                rs.getString("language"));
     }
 }

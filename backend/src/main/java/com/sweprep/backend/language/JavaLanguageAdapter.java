@@ -42,6 +42,11 @@ public class JavaLanguageAdapter implements LanguageAdapter {
     }
 
     @Override
+    public String submissionFileName() {
+        return SUBMISSION_CLASS + ".java";
+    }
+
+    @Override
     public String generateStub(Signature signature) {
         String params = signature.parameters().stream()
                 .map(p -> declaredType(p.type()) + " " + p.name())

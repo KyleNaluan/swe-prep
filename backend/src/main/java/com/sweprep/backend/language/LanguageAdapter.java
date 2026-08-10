@@ -18,6 +18,15 @@ public interface LanguageAdapter {
     String languageId();
 
     /**
+     * The filename the submission's own source is written to alongside the generated
+     * harness, e.g. {@code "Solution.java"} or {@code "Solution.py"}. A caller that
+     * assembles an {@link com.sweprep.backend.runner.ExecutionRequest} writes the
+     * submission under this name rather than a language hardcoded one, which is what
+     * lets the same grading code run any adapter's submission.
+     */
+    String submissionFileName();
+
+    /**
      * The editable stub shown in the editor: a compiling skeleton of the method
      * to implement, derived from the signature.
      */

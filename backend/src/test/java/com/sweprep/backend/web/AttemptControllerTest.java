@@ -99,13 +99,13 @@ class AttemptControllerTest {
         UUID id = UUID.randomUUID();
         Submission submission = new Submission(
                 UUID.randomUUID(), id, Instant.now(), "class Solution {}",
-                SubmissionOutcome.FAILED, 3, 4, "", 12L);
+                SubmissionOutcome.FAILED, 3, 4, "", 12L, "java");
         // A wrong answer here carries no explanation (this check has none).
-        when(service.submit(eq(id), any())).thenReturn(new SubmitResult(submission, null, false));
+        when(service.submit(eq(id), any(), any())).thenReturn(new SubmitResult(submission, null, false));
 
         mockMvc.perform(post("/api/attempts/" + id + "/submissions")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(mapper.writeValueAsString(new RunRequest("class Solution {}"))))
+                        .content(mapper.writeValueAsString(new RunRequest("class Solution {}", "java"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.outcome").value("FAILED"))
                 .andExpect(jsonPath("$.passed").value(3))
@@ -124,13 +124,13 @@ class AttemptControllerTest {
         UUID id = UUID.randomUUID();
         Submission submission = new Submission(
                 UUID.randomUUID(), id, Instant.now(), "B",
-                SubmissionOutcome.FAILED, 0, 1, "", 0L);
-        when(service.submit(eq(id), any()))
+                SubmissionOutcome.FAILED, 0, 1, "", 0L, "java");
+        when(service.submit(eq(id), any(), any()))
                 .thenReturn(new SubmitResult(submission, "Because B holds in every case.", false));
 
         mockMvc.perform(post("/api/attempts/" + id + "/submissions")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(mapper.writeValueAsString(new RunRequest("A"))))
+                        .content(mapper.writeValueAsString(new RunRequest("A", "java"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.outcome").value("FAILED"))
                 .andExpect(jsonPath("$.explanation").value("Because B holds in every case."));
@@ -195,13 +195,13 @@ class AttemptControllerTest {
         AttemptWithCount withCount = new AttemptWithCount(attempt(id, AttemptOutcome.IN_PROGRESS), 1);
         FailingCase failing = new FailingCase(
                 IntNode.valueOf(3), IntNode.valueOf(9), IntNode.valueOf(6), null);
-        when(service.revealFailingCase(eq(id), any(), any()))
+        when(service.revealFailingCase(eq(id), any(), any(), any()))
                 .thenReturn(new RevealResult(withCount, failing));
 
         mockMvc.perform(post("/api/attempts/" + id + "/reveal")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(mapper.writeValueAsString(
-                                new RevealRequest("class Solution {}", "off-by-one on the last index"))))
+                        .content(mapper.writeValueAsString(new RevealRequest(
+                                "class Solution {}", "off-by-one on the last index", "java"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.failingCase.input").value(3))
                 .andExpect(jsonPath("$.failingCase.expected").value(9))
@@ -213,12 +213,12 @@ class AttemptControllerTest {
     void revealingWithNoFailingCaseOmitsIt() throws Exception {
         UUID id = UUID.randomUUID();
         AttemptWithCount withCount = new AttemptWithCount(attempt(id, AttemptOutcome.IN_PROGRESS), 0);
-        when(service.revealFailingCase(eq(id), any(), any()))
+        when(service.revealFailingCase(eq(id), any(), any(), any()))
                 .thenReturn(new RevealResult(withCount, null));
 
         mockMvc.perform(post("/api/attempts/" + id + "/reveal")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(mapper.writeValueAsString(new RevealRequest("x", null))))
+                        .content(mapper.writeValueAsString(new RevealRequest("x", null, null))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.failingCase").doesNotExist());
     }
@@ -226,12 +226,12 @@ class AttemptControllerTest {
     @Test
     void submittingToAnEndedAttemptConflicts() throws Exception {
         UUID id = UUID.randomUUID();
-        when(service.submit(eq(id), any()))
+        when(service.submit(eq(id), any(), any()))
                 .thenThrow(new IllegalAttemptStateException("Attempt " + id + " has already ended (SOLVED)"));
 
         mockMvc.perform(post("/api/attempts/" + id + "/submissions")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(mapper.writeValueAsString(new RunRequest("x"))))
+                        .content(mapper.writeValueAsString(new RunRequest("x", "java"))))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("already ended")));
     }
@@ -242,7 +242,7 @@ class AttemptControllerTest {
         UUID submissionId = UUID.randomUUID();
         Submission committed = new Submission(
                 submissionId, id, Instant.now(), "my explanation",
-                SubmissionOutcome.SELF_RATED, 0, 0, "", 0L);
+                SubmissionOutcome.SELF_RATED, 0, 0, "", 0L, "java");
         when(service.revealSelfCheck(eq(id), any()))
                 .thenReturn(new SelfCheckReveal(committed, "The model answer."));
 

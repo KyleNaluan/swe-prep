@@ -14,6 +14,7 @@ import com.sweprep.backend.grader.FailingCase;
 import com.sweprep.backend.grader.GraderRegistry;
 import com.sweprep.backend.grader.SelfCheckGrader;
 import com.sweprep.backend.grader.Verdict;
+import com.sweprep.backend.language.LanguageAdapterRegistry;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -110,13 +111,24 @@ public class AttemptService {
     }
 
     /**
-     * Grades one press of Run within an attempt and stores it as a submission. If the
-     * verdict passes, the attempt is marked solved. Returns the stored submission and,
-     * when a wrong answer earns it, the check's explanation to show automatically
-     * (issue #51): the explanation is disclosed on a {@code FAILED} verdict when the
-     * check carries one, and withheld otherwise (a passing answer offers it on request
-     * instead, and an execution problem is not a wrong answer). This automatic
-     * disclosure is not a request and records nothing.
+     * {@link #submit(UUID, String, String)} against the default language (issue #26:
+     * Java remains the default when a caller does not specify one).
+     */
+    public SubmitResult submit(UUID attemptId, String response) {
+        return submit(attemptId, response, LanguageAdapterRegistry.DEFAULT_LANGUAGE);
+    }
+
+    /**
+     * Grades one press of Run within an attempt and stores it as a submission written
+     * in {@code language} (issue #26: the user can choose which language to solve in -
+     * meaningful only for a code response; every other response kind ignores it and is
+     * still recorded under the default). If the verdict passes, the attempt is marked
+     * solved. Returns the stored submission and, when a wrong answer earns it, the
+     * check's explanation to show automatically (issue #51): the explanation is
+     * disclosed on a {@code FAILED} verdict when the check carries one, and withheld
+     * otherwise (a passing answer offers it on request instead, and an execution
+     * problem is not a wrong answer). This automatic disclosure is not a request and
+     * records nothing.
      *
      * <p>When this submission freshly solves the attempt, the solution is committed to
      * the private content repo afterward (issue #22) - deliberately <em>outside</em> the
@@ -126,8 +138,8 @@ public class AttemptService {
      * submission is durable either way; the commit is a best-effort side effect that
      * never affects grading (see {@link com.sweprep.backend.commit.SolutionCommitService}).
      */
-    public SubmitResult submit(UUID attemptId, String response) {
-        Submitted recorded = transactionTemplate.execute(status -> recordSubmission(attemptId, response));
+    public SubmitResult submit(UUID attemptId, String response, String language) {
+        Submitted recorded = transactionTemplate.execute(status -> recordSubmission(attemptId, response, language));
         SolutionCommitResult commitResult = recorded.freshSolve()
                 ? solutionCommitService.commitSolution(recorded.exercise(), response)
                 : null;
@@ -135,7 +147,7 @@ public class AttemptService {
         return new SubmitResult(recorded.submission(), recorded.explanationOnWrong(), committed);
     }
 
-    Submitted recordSubmission(UUID attemptId, String response) {
+    Submitted recordSubmission(UUID attemptId, String response, String language) {
         Attempt attempt = requireOwned(attemptId);
         if (attempt.outcome() != AttemptOutcome.IN_PROGRESS) {
             throw new IllegalAttemptStateException(
@@ -146,7 +158,8 @@ public class AttemptService {
                 .orElseThrow(() -> new AttemptNotFoundException(
                         "Exercise '" + attempt.exerciseId() + "' is no longer available"));
 
-        Verdict verdict = graders.grade(exercise, response);
+        String resolvedLanguage = normalizeLanguage(language);
+        Verdict verdict = graders.grade(exercise, response, resolvedLanguage);
         Submission submission = new Submission(
                 UUID.randomUUID(),
                 attempt.id(),
@@ -156,7 +169,8 @@ public class AttemptService {
                 verdict.passed(),
                 verdict.total(),
                 verdict.detail(),
-                verdict.runtimeMillis());
+                verdict.runtimeMillis(),
+                resolvedLanguage);
         submissions.insert(submission);
 
         boolean freshSolve = verdict.outcome() == Verdict.Outcome.PASSED;
@@ -213,7 +227,8 @@ public class AttemptService {
                 0,
                 0,
                 "",
-                0);
+                0,
+                LanguageAdapterRegistry.DEFAULT_LANGUAGE);
         submissions.insert(submission);
         return new SelfCheckReveal(submission, modelAnswer);
     }
@@ -287,10 +302,13 @@ public class AttemptService {
         }
 
         List<Submission> submitted = submissions.findByAttempt(attempt.id());
-        String passingSubmission =
-                submitted.isEmpty() ? null : submitted.get(submitted.size() - 1).response();
+        Submission lastSubmission = submitted.isEmpty() ? null : submitted.get(submitted.size() - 1);
+        String passingSubmission = lastSubmission == null ? null : lastSubmission.response();
+        String passingLanguage = lastSubmission == null
+                ? LanguageAdapterRegistry.DEFAULT_LANGUAGE
+                : lastSubmission.language();
 
-        MeasurementOutcome measurement = measurer.measure(exercise, passingSubmission);
+        MeasurementOutcome measurement = measurer.measure(exercise, passingSubmission, passingLanguage);
         Boolean claimCorrect = switch (measurement) {
             case MeasurementOutcome.Skipped ignored -> null;
             case MeasurementOutcome.Inconclusive ignored -> null;
@@ -358,6 +376,12 @@ public class AttemptService {
      */
     @Transactional
     public RevealResult revealFailingCase(UUID attemptId, String submission, String hypothesis) {
+        return revealFailingCase(attemptId, submission, hypothesis, LanguageAdapterRegistry.DEFAULT_LANGUAGE);
+    }
+
+    /** {@link #revealFailingCase(UUID, String, String)}, for a submission written in {@code language}. */
+    @Transactional
+    public RevealResult revealFailingCase(UUID attemptId, String submission, String hypothesis, String language) {
         Attempt attempt = requireOwned(attemptId);
         if (attempt.outcome() != AttemptOutcome.IN_PROGRESS) {
             throw new IllegalAttemptStateException(
@@ -368,7 +392,9 @@ public class AttemptService {
                 .orElseThrow(() -> new AttemptNotFoundException(
                         "Exercise '" + attempt.exerciseId() + "' is no longer available"));
 
-        FailingCase failingCase = graders.firstFailingCase(exercise, submission).orElse(null);
+        FailingCase failingCase = graders
+                .firstFailingCase(exercise, submission, normalizeLanguage(language))
+                .orElse(null);
         Attempt revealed = attempt.withFailingCaseRevealed(blankToNull(hypothesis));
         attempts.update(revealed);
         return new RevealResult(withCount(revealed), failingCase);
@@ -500,5 +526,11 @@ public class AttemptService {
 
     private static String blankToNull(String value) {
         return value == null || value.isBlank() ? null : value.strip();
+    }
+
+    // Java remains the default whenever a caller does not specify a language
+    // (issue #26's explicit acceptance criterion), and the stored value is never null.
+    private static String normalizeLanguage(String language) {
+        return language == null || language.isBlank() ? LanguageAdapterRegistry.DEFAULT_LANGUAGE : language;
     }
 }
