@@ -40,11 +40,6 @@ function familyLabel(family: string): string {
   return FAMILY_LABELS[family] ?? family
 }
 
-function pct(progress: Progress): string {
-  if (progress.total === 0) return '-'
-  return `${Math.round((progress.achieved / progress.total) * 100)}%`
-}
-
 function Readiness({ streak }: { streak?: number }) {
   const [summary, setSummary] = useState<ReadinessSummary | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -156,11 +151,10 @@ function Readiness({ streak }: { streak?: number }) {
                     )}
                   </td>
                   <td>
-                    {f.checksToCriterion.achieved}/{f.checksToCriterion.total} (
-                    {pct(f.checksToCriterion)})
+                    {f.checksToCriterion.achieved}/{f.checksToCriterion.total}
                   </td>
                   <td>
-                    {f.solvedCold.achieved}/{f.solvedCold.total} ({pct(f.solvedCold)})
+                    {f.solvedCold.achieved}/{f.solvedCold.total}
                   </td>
                 </tr>
               ))}
@@ -186,7 +180,6 @@ function ReadinessCard({
       <h2>{label}</h2>
       <p className="readiness-count">
         {progress.achieved}/{progress.total}
-        <span className="readiness-pct"> {pct(progress)}</span>
       </p>
       <p className="readiness-note">{note}</p>
     </div>
