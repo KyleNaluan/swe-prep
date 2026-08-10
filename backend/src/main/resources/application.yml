@@ -7,6 +7,16 @@ sweprep:
     # the content repo is cloned into <repo-root>/content. Override with the
     # SWEPREP_CONTENT_PATH env var to point at a clone elsewhere.
     path: ${SWEPREP_CONTENT_PATH:../content}
+  sql:
+    # The SQL domain's fixture database and read-only role (issue #25, decision #10),
+    # provisioned automatically on the same Postgres instance the moment a SQL exercise
+    # is first attempted. Left at their defaults: this is a single-user local app and the
+    # role can only SELECT inside fixture schemas, so these are no more a secret than the
+    # docker-compose Postgres password already is. Override with SWEPREP_SQL_* if ever
+    # pointed at a shared instance.
+    fixture-database: ${SWEPREP_SQL_FIXTURE_DATABASE:sweprep_fixtures}
+    reader-username: ${SWEPREP_SQL_READER_USERNAME:sweprep_fixture_reader}
+    reader-password: ${SWEPREP_SQL_READER_PASSWORD:sweprep_fixture_reader}
   web:
     # Browser origins allowed to call the backend directly, comma-separated. The single
     # source for both WebConfig's CORS mapping and the actuator's CORS config below - it

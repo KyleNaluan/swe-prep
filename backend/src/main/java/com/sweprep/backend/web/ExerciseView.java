@@ -83,6 +83,10 @@ public record ExerciseView(
             case Response.FreeText ignored -> exercise.grading() instanceof Grading.SelfCheck
                     ? ResponseView.selfCheck()
                     : ResponseView.freeText();
+            // A blank SQL editor (issue #25) - no stub is generated, since there is no
+            // Signature to generate one from; the fixture schema the query targets is part
+            // of the exercise's own statement, not disclosed as a separate field.
+            case Response.Query ignored -> ResponseView.query("");
         };
     }
 }
