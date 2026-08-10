@@ -209,6 +209,46 @@ class RepDeriverTest {
     }
 
     @Test
+    void fillBlankIsSkippedWhenEveryLineVariantIsBehaviorPreserving() throws Exception {
+        // Cases keep the first two elements equal and positive, so no mutation of the
+        // scanning loop's boundary/increment/seed is ever reached before the early return:
+        // `i <= a.length` never OOBs (returns at i=0), `i--` never runs, and starting at
+        // i=1 still returns an equal value. Every fill-blank candidate is therefore
+        // behavior-preserving on these cases, so the empirical gate must reject them all
+        // and skip the rep rather than shipping a distractor that is a second correct answer.
+        String preservingSpec =
+                """
+                {
+                  "id": "demo-first-positive",
+                  "title": "First Positive",
+                  "statement": "Return the first positive element, or -1.",
+                  "domain": "algorithms",
+                  "topics": ["array"],
+                  "difficulty": "EASY",
+                  "signature": {
+                    "method": "firstPositive",
+                    "parameters": [ { "name": "a", "type": "INT_ARRAY" } ],
+                    "returns": "INT"
+                  },
+                  "comparison": "exact",
+                  "cases": [
+                    { "input": [[3, 3]], "expected": 3 },
+                    { "input": [[5, 5]], "expected": 5 },
+                    { "input": [[7, 7, 2]], "expected": 7 },
+                    { "input": [[9, 9, 9]], "expected": 9 }
+                  ],
+                  "referenceSolution": "class Solution {\\n    public int firstPositive(int[] a) {\\n        for (int i = 0; i < a.length; i++) {\\n            if (a[i] > 0) {\\n                return a[i];\\n            }\\n        }\\n        return -1;\\n    }\\n}\\n",
+                  "explanation": "Scan left to right and return the first positive value."
+                }
+                """;
+
+        DerivationResult result = deriver.derive(parse(preservingSpec));
+
+        assertThat(result.reps()).noneMatch(r -> r.id().endsWith("-fill-blank"));
+        assertThat(result.skipped()).anyMatch(s -> s.startsWith("fill-in-the-blank"));
+    }
+
+    @Test
     void recursiveReferenceSolutionSkipsTheComplexityRepRatherThanGuessing() throws Exception {
         String recursiveSpec =
                 """

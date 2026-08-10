@@ -98,7 +98,7 @@ public final class AuthorContentCli {
         SafetyGuard.requireSafeContentDir(contentDir);
 
         DerivationResult derived = new RepDeriver().derive(spec);
-        requireNoCollisions(derived, contentDir);
+        requireNoCollisions(derived, spec, contentDir);
 
         new ReviewPresenter(out).present(derived);
 
@@ -123,13 +123,13 @@ public final class AuthorContentCli {
         return new AuthorResult(true, List.copyOf(written));
     }
 
-    /** Refuses to silently clobber a file that already exists for any id this run would write. */
-    private static void requireNoCollisions(DerivationResult derived, Path contentDir) {
-        List<String> ids = new ArrayList<>();
-        ids.add(derived.challenge().id());
-        derived.reps().forEach(rep -> ids.add(rep.id()));
-        List<String> collisions =
-                ids.stream().filter(id -> Files.exists(contentDir.resolve(id + ".json"))).toList();
+    /** Refuses to silently clobber a file that already exists for any path this run would write. */
+    private static void requireNoCollisions(DerivationResult derived, ProblemSpec spec, Path contentDir) {
+        List<Path> targets = new ArrayList<>();
+        targets.add(contentDir.resolve(derived.challenge().id() + ".json"));
+        derived.reps().forEach(rep -> targets.add(contentDir.resolve(rep.id() + ".json")));
+        targets.add(contentDir.resolve("solutions").resolve(spec.id() + ".java"));
+        List<Path> collisions = targets.stream().filter(Files::exists).toList();
         if (!collisions.isEmpty()) {
             throw new AuthoringException(
                     "refusing to overwrite existing content file(s) already in " + contentDir + ": "

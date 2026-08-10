@@ -38,7 +38,9 @@ import java.util.Optional;
  *       ({@link ComplexityHeuristic}); skipped rather than guessed when the
  *       solution is recursive or its nesting is not confidently classifiable.
  *   <li><b>Fill-in-the-blank</b> - a line of the reference solution is blanked;
- *       the distractors are {@link MutationCatalog} variants of that same line.
+ *       the distractors are {@link MutationCatalog} variants of that same line,
+ *       each empirically verified (like spot-the-bug) to break a declared case, so
+ *       a behavior-preserving mutation can never become a second correct answer.
  *   <li><b>Spot-the-bug</b> - {@link MutationCatalog} candidates are tried in a
  *       fixed order until one both <em>compiles</em> and <em>empirically fails a
  *       declared case</em> when run through the exact same {@link
@@ -82,7 +84,7 @@ final class RepDeriver {
                         + "loop nesting could not be confidently classified"));
         deriveFillBlankRep(spec).ifPresentOrElse(
                 reps::add, () -> skipped.add("fill-in-the-blank: no line of the reference solution "
-                        + "yielded three distinct near-miss variants"));
+                        + "yielded three distinct variants that each empirically break a declared case"));
         deriveSpotBugRep(spec).ifPresentOrElse(
                 reps::add, () -> skipped.add("spot-the-bug: no candidate mutation both compiled and "
                         + "empirically failed a declared case"));
@@ -186,9 +188,10 @@ final class RepDeriver {
             byLine.computeIfAbsent(candidate.lineIndex(), k -> new ArrayList<>()).add(candidate);
         }
         for (Map.Entry<Integer, List<MutationCandidate>> entry : byLine.entrySet()) {
-            List<MutationCandidate> distinctByMutatedLine = dedupeByMutatedLine(entry.getValue());
-            if (distinctByMutatedLine.size() >= 3) {
-                return Optional.of(buildFillBlankRep(spec, entry.getKey(), distinctByMutatedLine));
+            List<MutationCandidate> verified =
+                    verifiedBreakingVariants(spec, dedupeByMutatedLine(entry.getValue()), 3);
+            if (verified.size() >= 3) {
+                return Optional.of(buildFillBlankRep(spec, entry.getKey(), verified));
             }
         }
         return Optional.empty();
@@ -200,6 +203,32 @@ final class RepDeriver {
             byMutated.putIfAbsent(candidate.mutatedLine().strip(), candidate);
         }
         return List.copyOf(byMutated.values());
+    }
+
+    /**
+     * The candidates whose mutated source actually breaks a declared case - the same
+     * empirical gate spot-the-bug applies, so a fill-in-the-blank distractor is never a
+     * behavior-preserving change that would make the rep have two correct answers. A
+     * candidate is accepted only when its mutated source is not a completed run that
+     * still passes every case (a compile error, a timeout, or any failing case all
+     * count as broken). Returns as soon as {@code limit} are found.
+     */
+    private List<MutationCandidate> verifiedBreakingVariants(
+            ProblemSpec spec, List<MutationCandidate> candidates, int limit) {
+        List<MutationCandidate> verified = new ArrayList<>();
+        for (MutationCandidate candidate : candidates) {
+            RunResult result = executor.run(
+                    spec.signature(), candidate.applyTo(spec.referenceSolution()), spec.cases());
+            boolean breaksSolution =
+                    !(result instanceof RunResult.Completed completed) || completed.anyFail(spec.comparison());
+            if (breaksSolution) {
+                verified.add(candidate);
+                if (verified.size() == limit) {
+                    break;
+                }
+            }
+        }
+        return verified;
     }
 
     private Exercise buildFillBlankRep(ProblemSpec spec, int lineIndex, List<MutationCandidate> variants) {
