@@ -95,6 +95,18 @@ function mockFetch(calls: Calls, options: { warmup?: unknown[]; failComplete?: b
         json: async () => ({ dayComplete, completedAt: null, streak: dayComplete ? 3 : 2 }),
       } as Response
     }
+    if (href.endsWith('/api/readiness')) {
+      return {
+        ok: true,
+        json: async () => ({
+          checksToCriterion: { achieved: 1, total: 3 },
+          solvedCold: { achieved: 0, total: 1 },
+          conceptsCovered: { achieved: 0, total: 1 },
+          selfCheckExplainedCount: 0,
+          families: [],
+        }),
+      } as Response
+    }
     if (href.endsWith('/api/exercises')) {
       return { ok: true, json: async () => CATALOG } as Response
     }
@@ -250,6 +262,28 @@ describe('Session (daily loop, issue #19)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Submit' }))
 
     await waitFor(() => expect(calls.completeWarmup).toBe(1))
+  })
+
+  it('reaches the readiness picture via its own tab, as a primary surface not tucked behind Practice', async () => {
+    vi.stubGlobal('fetch', mockFetch({ completeWarmup: 0, abandons: [] }))
+    render(<Session />)
+    await screen.findByRole('heading', { name: 'Rep One' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Readiness' }))
+
+    expect(await screen.findByRole('heading', { name: 'Readiness' })).toBeInTheDocument()
+    expect(await screen.findByText('1/3')).toBeInTheDocument()
+  })
+
+  it('links straight to readiness from the day-complete landing', async () => {
+    vi.stubGlobal('fetch', mockFetch({ completeWarmup: 0, abandons: [] }))
+    render(<Session />)
+    await finishWarmup()
+    await screen.findByRole('heading', { name: 'Day complete' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'See your readiness' }))
+
+    expect(await screen.findByRole('heading', { name: 'Readiness' })).toBeInTheDocument()
   })
 
   it('reaches the Learn surface via the Learn tab, without touching the warm-up', async () => {

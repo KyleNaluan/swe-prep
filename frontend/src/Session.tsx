@@ -4,6 +4,7 @@ import Warmup from './Warmup'
 import Practice from './Practice'
 import Lesson from './Lesson'
 import RolePicker from './RolePicker'
+import Readiness from './Readiness'
 
 // The daily session loop (issue #19) - the product the rest of the machinery serves.
 //
@@ -23,11 +24,12 @@ import RolePicker from './RolePicker'
 
 type SessionStatus = { dayComplete: boolean; completedAt: string | null; streak: number }
 
-// The three surfaces: the guided daily flow (warm-up, then the day-complete landing), the
-// uncapped practice/browse surface (the main exercise and continuation), and the Learn
-// surface (lessons, read never attempted - issue #46/#41). Practice and Learn are always
-// reachable - neither is gated behind finishing the warm-up.
-type Mode = 'today' | 'practice' | 'learn'
+// The four surfaces: the guided daily flow (warm-up, then the day-complete landing), the
+// honest readiness picture (issue #45 - the primary progress surface, not tucked behind
+// Practice), the uncapped practice/browse surface (the main exercise and continuation), and
+// the Learn surface (lessons, read never attempted - issue #46/#41). Readiness, Practice and
+// Learn are always reachable - none is gated behind finishing the warm-up.
+type Mode = 'today' | 'readiness' | 'practice' | 'learn'
 type Tier = 'warmup' | 'landing'
 
 function Session() {
@@ -131,6 +133,14 @@ function Session() {
         </button>
         <button
           type="button"
+          className={mode === 'readiness' ? 'active' : ''}
+          aria-pressed={mode === 'readiness'}
+          onClick={() => setMode('readiness')}
+        >
+          Readiness
+        </button>
+        <button
+          type="button"
           className={mode === 'practice' ? 'active' : ''}
           aria-pressed={mode === 'practice'}
           onClick={() => setMode('practice')}
@@ -155,8 +165,14 @@ function Session() {
             onEmpty={handleWarmupEmpty}
           />
         ) : (
-          <Landing status={status} onStartMain={() => setMode('practice')} />
+          <Landing
+            status={status}
+            onStartMain={() => setMode('practice')}
+            onViewReadiness={() => setMode('readiness')}
+          />
         )
+      ) : mode === 'readiness' ? (
+        <Readiness streak={status?.streak} />
       ) : mode === 'practice' ? (
         <Practice dayComplete={status?.dayComplete ?? false} onSolved={handleMainSolved} />
       ) : (
@@ -195,9 +211,11 @@ function DayBadge({ status }: { status: SessionStatus | null }) {
 function Landing({
   status,
   onStartMain,
+  onViewReadiness,
 }: {
   status: SessionStatus | null
   onStartMain: () => void
+  onViewReadiness: () => void
 }) {
   const [closed, setClosed] = useState(false)
   const streak = status?.streak ?? 0
@@ -209,9 +227,14 @@ function Landing({
         <p className="status up">
           Nice work.{streak > 0 ? ` ${streak}-day streak.` : ''} See you tomorrow.
         </p>
-        <button type="button" className="secondary" onClick={onStartMain}>
-          Actually, keep practicing
-        </button>
+        <div className="actions">
+          <button type="button" className="secondary" onClick={onStartMain}>
+            Actually, keep practicing
+          </button>
+          <button type="button" className="secondary" onClick={onViewReadiness}>
+            See your readiness
+          </button>
+        </div>
       </section>
     )
   }
@@ -243,6 +266,10 @@ function Landing({
           </button>
         </div>
       </section>
+
+      <button type="button" className="link-button readiness-link" onClick={onViewReadiness}>
+        See your readiness
+      </button>
     </section>
   )
 }
