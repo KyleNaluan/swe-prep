@@ -40,7 +40,7 @@ function mockFetch(calls: Calls) {
     const href = String(url)
     const method = init?.method ?? 'GET'
     if (href.endsWith('/api/exercises')) return { ok: true, json: async () => CATALOG } as Response
-    if (href.endsWith('/api/exercises/explain-gd'))
+    if (href.includes('/api/exercises/explain-gd'))
       return { ok: true, json: async () => EXPLAIN } as Response
     if (href.endsWith('/api/attempts') && method === 'POST')
       return { ok: true, json: async () => ({ id: 'att-1' }) } as Response
@@ -150,7 +150,7 @@ describe('Practice complexity self-report (issue #17)', () => {
       const href = String(url)
       const method = init?.method ?? 'GET'
       if (href.endsWith('/api/exercises')) return { ok: true, json: async () => CODE_CATALOG } as Response
-      if (href.endsWith('/api/exercises/sum-demo'))
+      if (href.includes('/api/exercises/sum-demo'))
         return { ok: true, json: async () => CODE_EXERCISE } as Response
       if (href.endsWith('/api/attempts') && method === 'POST')
         return { ok: true, json: async () => ({ id: 'att-1' }) } as Response
@@ -227,6 +227,96 @@ describe('Practice complexity self-report (issue #17)', () => {
   })
 })
 
+// Language selection (issue #26): Java is the default, a second language (Python) is
+// offered from the backend's own list, and switching regenerates the stub for the
+// exact same exercise - proving the picker drives the language-neutral adapter seam
+// rather than a second, parallel exercise.
+describe('Practice language selection (issue #26)', () => {
+  const LANG_CATALOG = [
+    { id: 'pair-demo', title: 'Pair Demo', domain: 'algorithms', difficulty: 'EASY', form: 'CHALLENGE' },
+  ]
+  const JAVA_EXERCISE = {
+    id: 'pair-demo',
+    title: 'Pair Demo',
+    statement: 'Return the two arguments.',
+    domain: 'algorithms',
+    difficulty: 'EASY',
+    response: { kind: 'code', language: 'java', stub: 'class Solution {}' },
+    hints: [],
+    hasExplanation: false,
+  }
+  const PYTHON_EXERCISE = {
+    ...JAVA_EXERCISE,
+    response: { kind: 'code', language: 'python', stub: 'class Solution:\n    pass\n' },
+  }
+
+  beforeEach(() => vi.stubGlobal('fetch', vi.fn()))
+  afterEach(() => {
+    cleanup()
+    vi.unstubAllGlobals()
+  })
+
+  function mockLanguageFetch(submittedBodies: Record<string, unknown>[]) {
+    return vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const href = String(url)
+      const method = init?.method ?? 'GET'
+      if (href.endsWith('/api/exercises')) return { ok: true, json: async () => LANG_CATALOG } as Response
+      if (href.endsWith('/api/languages'))
+        return { ok: true, json: async () => ['java', 'python'] } as Response
+      if (href.includes('/api/exercises/pair-demo')) {
+        const requested = new URL(href, 'http://localhost').searchParams.get('language')
+        return {
+          ok: true,
+          json: async () => (requested === 'python' ? PYTHON_EXERCISE : JAVA_EXERCISE),
+        } as Response
+      }
+      if (href.endsWith('/api/attempts') && method === 'POST')
+        return { ok: true, json: async () => ({ id: 'att-1' }) } as Response
+      if (href.endsWith('/api/attempts')) return { ok: true, json: async () => [] } as Response
+      if (href.endsWith('/submissions')) {
+        submittedBodies.push(JSON.parse(String(init?.body)))
+        return {
+          ok: true,
+          json: async () => ({ outcome: 'PASSED', passed: 1, total: 1, detail: '' }),
+        } as Response
+      }
+      throw new Error(`unexpected fetch to ${method} ${href}`)
+    })
+  }
+
+  it('defaults to Java, and switching to Python regenerates the stub for the same exercise', async () => {
+    const submitted: Record<string, unknown>[] = []
+    vi.stubGlobal('fetch', mockLanguageFetch(submitted))
+    render(<Practice />)
+    await screen.findByRole('heading', { name: 'Pair Demo' })
+
+    // Java is the default, with no language chosen up front.
+    expect(screen.getByLabelText('Language')).toHaveValue('java')
+    expect(screen.getByLabelText('editor')).toHaveValue('class Solution {}')
+
+    fireEvent.change(screen.getByLabelText('Language'), { target: { value: 'python' } })
+
+    // Same exercise, same heading - only the stub (now Python) changed.
+    expect(await screen.findByRole('heading', { name: 'Pair Demo' })).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByLabelText('editor')).toHaveValue('class Solution:\n    pass\n'))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Run' }))
+    await waitFor(() => expect(submitted).toHaveLength(1))
+    expect(submitted[0].language).toBe('python')
+  })
+
+  it('offers every language the backend reports, Java first', async () => {
+    vi.stubGlobal('fetch', mockLanguageFetch([]))
+    render(<Practice />)
+    await screen.findByRole('heading', { name: 'Pair Demo' })
+
+    const options = screen
+      .getAllByRole('option', { name: /^(java|python)$/ })
+      .map((option) => (option as HTMLOptionElement).value)
+    expect(options).toEqual(['java', 'python'])
+  })
+})
+
 // The SQL query response (issue #25): it renders through the exact same editor and
 // attempt-submission flow as a code exercise, proving the session loop needed no
 // SQL-specific path, but its verdict is worded in rows rather than tests - the minimal
@@ -257,7 +347,7 @@ describe('Practice SQL query response (issue #25)', () => {
       const href = String(url)
       const method = init?.method ?? 'GET'
       if (href.endsWith('/api/exercises')) return { ok: true, json: async () => SQL_CATALOG } as Response
-      if (href.endsWith('/api/exercises/top-customers'))
+      if (href.includes('/api/exercises/top-customers'))
         return { ok: true, json: async () => SQL_EXERCISE } as Response
       if (href.endsWith('/api/attempts') && method === 'POST')
         return { ok: true, json: async () => ({ id: 'att-1' }) } as Response

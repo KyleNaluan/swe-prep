@@ -211,6 +211,13 @@ function Practice({
   const [catalogError, setCatalogError] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
+  // The language a code exercise is solved in (issue #26). Java is the default,
+  // matching the backend's own default when none is sent; a SQL/choice/free-text
+  // exercise ignores this entirely. `languages` is the picker's option list, fetched
+  // once - a failure there just leaves Java as the only option, never blocking the page.
+  const [language, setLanguage] = useState('java')
+  const [languages, setLanguages] = useState<string[]>(['java'])
+
   const [exercise, setExercise] = useState<Exercise | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [run, setRun] = useState<RunState>({ phase: 'idle' })
@@ -300,14 +307,28 @@ function Practice({
       .catch((error: unknown) => {
         if (!cancelled) setCatalogError(error instanceof Error ? error.message : String(error))
       })
+    apiFetch(`/api/languages`)
+      .then(async (response) => {
+        if (!response.ok) throw new Error(await errorMessage(response))
+        return (await response.json()) as string[]
+      })
+      .then((loaded) => {
+        if (!cancelled && loaded.length > 0) setLanguages(loaded)
+      })
+      .catch(() => {
+        // Best-effort: the picker just stays at its Java-only default.
+      })
     refreshHistory()
     return () => {
       cancelled = true
     }
   }, [refreshHistory])
 
-  // Load the selected exercise whenever the selection changes, and abandon the
-  // sitting we are leaving if it was never solved.
+  // Load the selected exercise whenever the selection - or the chosen language
+  // (issue #26) - changes, and abandon the sitting we are leaving if it was never
+  // solved. A language switch is treated as starting fresh on this exercise, the
+  // same as switching exercises: the stub, and everything about the prior sitting,
+  // is specific to the language just left.
   useEffect(() => {
     if (!selectedId) return
     let cancelled = false
@@ -330,7 +351,7 @@ function Practice({
     setComplexityError(null)
     setComplexityTimeClaim('LINEAR')
     setComplexitySpaceClaim('LINEAR')
-    apiFetch(`/api/exercises/${selectedId}`)
+    apiFetch(`/api/exercises/${selectedId}?language=${encodeURIComponent(language)}`)
       .then(async (response) => {
         if (!response.ok) throw new Error(await errorMessage(response))
         return (await response.json()) as Exercise
@@ -359,7 +380,7 @@ function Practice({
       // Leaving an unsolved sitting records it as abandoned, then refresh history.
       void abandonActive().then(refreshHistory)
     }
-  }, [selectedId, abandonActive, refreshHistory])
+  }, [selectedId, language, abandonActive, refreshHistory])
 
   // Ensure a sitting is open for the current exercise, starting one lazily on the
   // first Run so glancing at an exercise never creates an empty attempt.
@@ -396,7 +417,9 @@ function Practice({
       const response = await apiFetch(`/api/attempts/${attemptId}/submissions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ submission }),
+        // `language` (issue #26) is meaningful only to a code submission; the backend
+        // simply ignores it for every other response kind.
+        body: JSON.stringify({ submission, language }),
       })
       if (!response.ok) throw new Error(await errorMessage(response))
       const verdict = (await response.json()) as Verdict
@@ -456,7 +479,7 @@ function Practice({
       const response = await apiFetch(`/api/attempts/${attemptId}/reveal`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ submission, hypothesis }),
+        body: JSON.stringify({ submission, hypothesis, language }),
       })
       if (!response.ok) throw new Error(await errorMessage(response))
       const revealed = (await response.json()) as RevealResponse
@@ -629,11 +652,18 @@ function Practice({
         <>
           <header>
             <h1>{exercise.title}</h1>
-            <span className="language-tag">
-              {exercise.response.kind === 'code' || exercise.response.kind === 'query'
-                ? exercise.response.language
-                : exercise.domain}
-            </span>
+            {exercise.response.kind === 'code' ? (
+              <LanguagePicker
+                language={language}
+                languages={languages}
+                disabled={run.phase === 'running'}
+                onChange={setLanguage}
+              />
+            ) : (
+              <span className="language-tag">
+                {exercise.response.kind === 'query' ? exercise.response.language : exercise.domain}
+              </span>
+            )}
           </header>
           <p className="statement">{exercise.statement}</p>
 
@@ -653,7 +683,10 @@ function Practice({
               {exercise.response.kind === 'code' || exercise.response.kind === 'query' ? (
                 <div className="editor">
                   <Editor
-                    key={exercise.id}
+                    // Keyed on language too (issue #26): switching languages regenerates
+                    // the stub, and Monaco only applies defaultValue/defaultLanguage on
+                    // mount, so the editor must remount to actually show the new one.
+                    key={`${exercise.id}:${exercise.response.language}`}
                     height="360px"
                     defaultLanguage={exercise.response.language}
                     defaultValue={exercise.response.stub}
@@ -947,6 +980,40 @@ function VerdictView({
 function Runtime({ millis }: { millis?: number }) {
   if (millis === undefined || millis <= 0) return null
   return <span className="runtime"> · {millis} ms</span>
+}
+
+// The language picker (issue #26): every code exercise can be solved in any language
+// the backend reports as available, Java selected by default. Changing it regenerates
+// the stub and harness from the exercise's own language-neutral signature - nothing
+// about the stored problem or its test cases changes, only which adapter renders it.
+function LanguagePicker({
+  language,
+  languages,
+  disabled,
+  onChange,
+}: {
+  language: string
+  languages: string[]
+  disabled: boolean
+  onChange: (language: string) => void
+}) {
+  return (
+    <label className="language-picker">
+      <span className="visually-hidden">Language</span>
+      <select
+        aria-label="Language"
+        value={language}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value)}
+      >
+        {languages.map((id) => (
+          <option key={id} value={id}>
+            {id}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
 }
 
 // The hint ladder (issue #16): help is always available, always chosen, always

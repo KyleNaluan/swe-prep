@@ -14,5 +14,13 @@ package com.sweprep.backend.runner;
  */
 public interface Runner {
 
+    /**
+     * The language this runner compiles and runs, e.g. {@code "java"}. Matches the
+     * {@link com.sweprep.backend.language.LanguageAdapter#languageId()} of the adapter
+     * whose generated harness it is meant to execute - {@code RunnerRegistry} routes on
+     * this the same way {@code LanguageAdapterRegistry} routes on the adapter's id.
+     */
+    String languageId();
+
     ExecutionResult execute(ExecutionRequest request);
 }

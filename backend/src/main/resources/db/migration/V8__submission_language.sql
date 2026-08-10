@@ -1,0 +1,17 @@
+-- Record which language a submission was written in (issue #26: a second language
+-- adapter, chosen per submission).
+--
+-- A submission's `response` column (V3) holds the raw source text a solver wrote, but
+-- that text is only interpretable once you know which language it is in - and now
+-- that more than one adapter exists, that is no longer implied. NOT NULL DEFAULT
+-- 'java' backfills every existing row (all of which really were Java, the only
+-- language before this ticket) and keeps every future write required to say which
+-- language it used, Java remaining the default when a caller does not specify one.
+--
+-- This is additive persistence metadata about a *submission*, not a change to the
+-- language-neutral exercise content model (Signature/TestCase/Grading) that issue #26
+-- set out to prove needs no change to run in a second language - and it does not:
+-- no exercise content, and nothing this column's absence would have broken, changed.
+-- It exists so a later read of a stored submission (the complexity self-report's
+-- scaling re-measurement, `ScalingMeasurer`) knows which adapter/runner to use.
+ALTER TABLE submission ADD COLUMN language TEXT NOT NULL DEFAULT 'java';

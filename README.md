@@ -21,7 +21,7 @@ See `AGENTS.md` for the repo layout decision and other project-intrinsic notes.
 
 ## Running locally
 
-Prerequisites: Java 21 on `PATH`, Docker running, Node 24.
+Prerequisites: Java 21 on `PATH`, Docker running, Node 24, Python 3 on `PATH` (for solving in Python - Java remains the default language and needs no extra setup).
 
 1. Start Postgres:
 
@@ -72,7 +72,10 @@ Prerequisites: Java 21 on `PATH`, Docker running, Node 24.
    from the selector. A coding
    exercise opens in a Monaco editor: write a solution and press Run to have the
    backend compile and execute it against the test cases and report
-   `N of M tests passed`. A failing run reports only that count, never a case's
+   `N of M tests passed`. Java is the default language; a code exercise's header also
+   offers a language picker (issue #26) - switching languages regenerates the stub from
+   the exercise's own language-neutral signature, with no change to its test cases. A
+   failing run reports only that count, never a case's
    input, expected, or actual value: reasoning about your own code without an oracle
    is the interview skill being trained. Help is always available and never penalised
    - an ordered hint ladder whose rungs you reveal one at a time, and, after a failing
