@@ -121,6 +121,28 @@ all - the browser only ever talks to whatever origin loaded the page. The backen
 own CORS list (`sweprep.web.allowed-origins`, `backend/src/main/resources/application.yml`)
 only matters for a client that talks to it directly, bypassing the frontend.
 
+### Daily cue (optional)
+
+`scripts/daily-cue/install.sh` installs a systemd user timer that fires a
+notification at a time you choose, on any day today's session (issue #19)
+isn't complete yet - so the decision to practise isn't made fresh each day
+(issue #23). It reuses the same scheduled-user-service mechanism the app's own
+autostart already relies on (decision issue #2), rather than a separate one.
+
+```sh
+scripts/daily-cue/install.sh --time 09:00
+```
+
+This only installs a user-level unit for your account
+(`~/.config/systemd/user/`) and needs the backend reachable at
+`http://localhost:8080` when the timer fires (override with
+`SWEPREP_DAILY_CUE_BASE_URL` in the installed service unit). `install.sh`
+prints how to change the time later, how to check the schedule survived a
+reboot without a login session (`loginctl enable-linger`), and where the logs
+are; `notify-send` is the default notification command and is swappable per
+machine via `SWEPREP_DAILY_CUE_NOTIFY_CMD` in the service unit's
+`Environment=` line.
+
 ## Content
 
 Problem content — statements, test data, reference solutions, generators — lives

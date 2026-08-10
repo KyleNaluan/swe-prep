@@ -1,0 +1,20 @@
+[Unit]
+Description=swe-prep daily cue check (issue #23)
+# No hard dependency on the app's own autostart unit (decision issue #2): that
+# unit's name isn't fixed by this repo, since it is installed on the host as a
+# separate deploy step. network-online.target is enough for the loopback call
+# this makes to the backend.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=SWEPREP_DAILY_CUE_BASE_URL=http://localhost:8080
+# notify-send (the script's default) is a normal Linux desktop notification.
+# If that isn't the right delivery channel on this machine (e.g. a WSL host
+# with no notification daemon), point this at something that is - a script
+# that shells out to a Windows toast bridge, a push service reachable over the
+# tailnet, etc. - without touching daily-cue.sh itself.
+#Environment=SWEPREP_DAILY_CUE_NOTIFY_CMD=notify-send
+# The path below is filled in by install.sh at install time.
+ExecStart=__REPO_PATH__/scripts/daily-cue.sh
