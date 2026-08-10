@@ -59,6 +59,7 @@ public class ChallengeService {
     private final SubmissionRepository submissions;
     private final CurrentUser currentUser;
     private final ChallengeSchedulerProperties properties;
+    private final Clock clock;
     private final ZoneId zone;
 
     public ChallengeService(
@@ -73,6 +74,7 @@ public class ChallengeService {
         this.submissions = submissions;
         this.currentUser = currentUser;
         this.properties = properties;
+        this.clock = clock;
         this.zone = clock.getZone();
     }
 
@@ -93,7 +95,7 @@ public class ChallengeService {
             return Optional.empty();
         }
 
-        LocalDate today = LocalDate.now(zone);
+        LocalDate today = LocalDate.now(clock);
         Map<String, List<Review>> reviewsByExercise = reviewsByExercise(userId);
         Map<String, Double> topicCoverage = topicCoverageByExercise(challenges, userId);
         int newIntroductionsThisWeek = newIntroductionsThisWeek(userId, today);
