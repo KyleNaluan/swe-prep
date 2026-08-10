@@ -159,10 +159,11 @@ decision, [issue #4](https://github.com/KyleNaluan/swe-prep/issues/4).
 ./test.sh
 ```
 
-First asserts no private content is committed (`scripts/check-no-content.sh`),
-then runs the backend suite (Spring Boot tests against a real, disposable Postgres
-container via Testcontainers — needs Docker) and then the frontend suite
-(Vitest).
+First asserts no private content is committed (`scripts/check-no-content.sh`)
+and runs the shell-script suites (the content guard's own tests and the
+daily-cue check, `scripts/daily-cue.test.sh`), then runs the backend suite
+(Spring Boot tests against a real, disposable Postgres container via
+Testcontainers — needs Docker) and then the frontend suite (Vitest).
 
 CI runs this same `./test.sh` on every push and pull request; see `AGENTS.md`.
 
