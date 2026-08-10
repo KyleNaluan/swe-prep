@@ -269,6 +269,86 @@ public class AttemptRepository {
                 .list();
     }
 
+    /**
+     * One terminal {@code CHALLENGE}-form attempt's outcome and help/complexity fields -
+     * the raw material {@link com.sweprep.backend.challenge.ChallengeService} (issue #21)
+     * reduces to a {@link com.sweprep.backend.scheduler.ChallengeQuality} score. Carries
+     * the attempt id (not just the exercise id) because the 0-5 derivation also needs the
+     * submission count, which lives per-attempt in {@link SubmissionRepository} and is
+     * batched in separately rather than joined here. Carries the raw {@link AttemptOutcome}
+     * rather than a {@code solved} boolean, because {@link #challengeReviews} returns three
+     * distinct outcomes (see there) and a caller needs to tell them apart.
+     */
+    public record ChallengeAttemptRow(
+            UUID attemptId,
+            String exerciseId,
+            Instant endedAt,
+            AttemptOutcome outcome,
+            int hintsTaken,
+            boolean failingCaseRevealed,
+            Boolean complexityClaimCorrect) {}
+
+    /**
+     * Every terminal {@code CHALLENGE}-form attempt this user has ever ended, across every
+     * exercise - the challenge priority scorer's (issue #21) raw material, the same shape
+     * {@link #repReviews} plays for the rep due-date queue. {@code SOLVED} and {@code
+     * ABANDONED} are the two outcomes a machine-graded challenge reaches; a self-check
+     * challenge (issue #41, produce-then-reveal-then-self-rate) reaches a third, {@code
+     * EXPLAINED}, and is included here too - excluding it would leave such a challenge
+     * permanently invisible to the scorer (always {@code reviews.isEmpty()}), silently
+     * defeating the minimum-interval floor for it. An attempt still {@code IN_PROGRESS} is
+     * not yet a completed review and stays excluded, the same structural boundary {@link
+     * #repReviews} enforces.
+     */
+    public List<ChallengeAttemptRow> challengeReviews(UUID userId) {
+        return jdbc.sql(
+                        """
+                        SELECT id, exercise_id, ended_at, outcome, hints_taken,
+                               failing_case_revealed, complexity_claim_correct
+                        FROM attempt
+                        WHERE user_id = :userId AND form = 'CHALLENGE'
+                          AND outcome IN ('SOLVED', 'ABANDONED', 'EXPLAINED')
+                        ORDER BY ended_at
+                        """)
+                .param("userId", userId)
+                .query((ResultSet rs, int rowNum) -> {
+                    Object claimCorrect = rs.getObject("complexity_claim_correct");
+                    return new ChallengeAttemptRow(
+                            rs.getObject("id", UUID.class),
+                            rs.getString("exercise_id"),
+                            rs.getTimestamp("ended_at").toInstant(),
+                            AttemptOutcome.valueOf(rs.getString("outcome")),
+                            rs.getInt("hints_taken"),
+                            rs.getBoolean("failing_case_revealed"),
+                            claimCorrect == null ? null : (Boolean) claimCorrect);
+                })
+                .list();
+    }
+
+    /**
+     * The earliest sitting this user ever opened with each {@code CHALLENGE}-form
+     * exercise, whatever its outcome - the raw material the weekly new-introduction cap
+     * (issue #21) counts against. Like {@link #attemptedExerciseIds}, any sitting counts
+     * as having met the exercise; unlike it, this keeps the date rather than collapsing
+     * to a set, since the cap only cares about introductions that fell within the current
+     * week.
+     */
+    public java.util.Map<String, Instant> firstChallengeAttemptDates(UUID userId) {
+        java.util.Map<String, Instant> firstAttempts = new java.util.HashMap<>();
+        jdbc.sql(
+                        """
+                        SELECT exercise_id, MIN(started_at) AS first_started
+                        FROM attempt
+                        WHERE user_id = :userId AND form = 'CHALLENGE'
+                        GROUP BY exercise_id
+                        """)
+                .param("userId", userId)
+                .query((ResultSet rs, int rowNum) -> firstAttempts.put(
+                        rs.getString("exercise_id"), rs.getTimestamp("first_started").toInstant()))
+                .list();
+        return firstAttempts;
+    }
+
     private static java.sql.Timestamp toTimestamp(Instant instant) {
         return instant == null ? null : java.sql.Timestamp.from(instant);
     }
