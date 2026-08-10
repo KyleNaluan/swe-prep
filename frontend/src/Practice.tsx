@@ -31,6 +31,11 @@ type ResponseSpec =
   // A self-graded "explain in your own words" produce-then-reveal item (issue #41). The
   // model answer is never in this spec - it is disclosed only after the learner commits.
   | { kind: 'selfCheck' }
+  // A SQL query against a shared fixture schema (issue #25). Shares `language`/`stub`
+  // with `code` on purpose - the editor renders both the same Monaco box, just with a
+  // different syntax mode - but is graded through the SQL runner/grader seam, never the
+  // language one, and its verdict is worded in rows rather than tests.
+  | { kind: 'query'; language: string; stub: string }
 
 // A self-rating of a revealed self-check answer (issue #41). Never a score, never graded.
 type SelfRating = 'NAILED_IT' | 'PARTIAL' | 'MISSED'
@@ -337,7 +342,10 @@ function Practice({
           hasExplanation: loaded.hasExplanation ?? false,
           hasComplexityCheck: loaded.hasComplexityCheck ?? false,
         })
-        codeRef.current = loaded.response.kind === 'code' ? loaded.response.stub : ''
+        codeRef.current =
+          loaded.response.kind === 'code' || loaded.response.kind === 'query'
+            ? loaded.response.stub
+            : ''
       })
       .catch((error: unknown) => {
         if (!cancelled) setLoadError(error instanceof Error ? error.message : String(error))
@@ -367,7 +375,7 @@ function Practice({
   async function handleSubmit() {
     if (!exercise) return
     const submission =
-      exercise.response.kind === 'code'
+      exercise.response.kind === 'code' || exercise.response.kind === 'query'
         ? codeRef.current
         : exercise.response.kind === 'choice'
           ? (choice ?? '')
@@ -618,7 +626,9 @@ function Practice({
           <header>
             <h1>{exercise.title}</h1>
             <span className="language-tag">
-              {exercise.response.kind === 'code' ? exercise.response.language : exercise.domain}
+              {exercise.response.kind === 'code' || exercise.response.kind === 'query'
+                ? exercise.response.language
+                : exercise.domain}
             </span>
           </header>
           <p className="statement">{exercise.statement}</p>
@@ -636,7 +646,7 @@ function Practice({
             />
           ) : (
             <>
-              {exercise.response.kind === 'code' ? (
+              {exercise.response.kind === 'code' || exercise.response.kind === 'query' ? (
                 <div className="editor">
                   <Editor
                     key={exercise.id}
@@ -692,7 +702,7 @@ function Practice({
                 >
                   {run.phase === 'running'
                     ? 'Checking...'
-                    : exercise.response.kind === 'code'
+                    : exercise.response.kind === 'code' || exercise.response.kind === 'query'
                       ? 'Run'
                       : 'Submit'}
                 </button>
@@ -706,7 +716,11 @@ function Practice({
                 </button>
               </div>
 
-              <VerdictView run={run} scored={exercise.response.kind !== 'code'} />
+              <VerdictView
+                run={run}
+                scored={exercise.response.kind !== 'code' && exercise.response.kind !== 'query'}
+                unit={exercise.response.kind === 'query' ? 'rows' : 'tests'}
+              />
 
               {!solved && (
                 <HintLadder
@@ -862,7 +876,19 @@ function SelfCheckView({
   )
 }
 
-function VerdictView({ run, scored }: { run: RunState; scored: boolean }) {
+function VerdictView({
+  run,
+  scored,
+  unit = 'tests',
+}: {
+  run: RunState
+  scored: boolean
+  // Which noun the unscored count is reported in - 'tests' for a code exercise,
+  // 'rows' for a SQL query (issue #25), where the disclosed signal is literally the
+  // actual row count against the expected one, not "rows matched" (withhold-by-default
+  // judging never implies partial credit by content, issues #16/#5).
+  unit?: 'tests' | 'rows'
+}) {
   if (run.phase === 'idle') return null
   if (run.phase === 'running') {
     return <p className="status loading">Checking your answer...</p>
@@ -879,7 +905,9 @@ function VerdictView({ run, scored }: { run: RunState; scored: boolean }) {
         ? verdict.outcome === 'PASSED'
           ? 'Correct'
           : 'Incorrect'
-        : `${verdict.passed} of ${verdict.total} tests passed`
+        : unit === 'rows'
+          ? `Returned ${verdict.passed} row${verdict.passed === 1 ? '' : 's'}, expected ${verdict.total}`
+          : `${verdict.passed} of ${verdict.total} tests passed`
       return (
         <p className={`status ${verdict.outcome === 'PASSED' ? 'up' : 'down'}`}>
           {label}
@@ -890,7 +918,7 @@ function VerdictView({ run, scored }: { run: RunState; scored: boolean }) {
     case 'COMPILE_ERROR':
       return (
         <div className="verdict-block down">
-          <p className="status down">Compile error</p>
+          <p className="status down">{unit === 'rows' ? 'Query error' : 'Compile error'}</p>
           <pre className="detail">{verdict.detail}</pre>
         </div>
       )

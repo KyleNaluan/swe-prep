@@ -195,3 +195,83 @@ describe('Practice complexity self-report (issue #17)', () => {
     expect(claims).toEqual([{ time: 'LINEAR', space: 'LINEAR' }])
   })
 })
+
+// The SQL query response (issue #25): it renders through the exact same editor and
+// attempt-submission flow as a code exercise, proving the session loop needed no
+// SQL-specific path, but its verdict is worded in rows rather than tests - the minimal
+// failure signal decision issue #10 settled on.
+describe('Practice SQL query response (issue #25)', () => {
+  const SQL_CATALOG = [
+    { id: 'top-customers', title: 'Top Customers', domain: 'sql', difficulty: 'EASY', form: 'CHALLENGE' },
+  ]
+  const SQL_EXERCISE = {
+    id: 'top-customers',
+    title: 'Top Customers',
+    statement: 'Return every customer id and name.',
+    domain: 'sql',
+    difficulty: 'EASY',
+    response: { kind: 'query', language: 'sql', stub: '' },
+    hints: [],
+    hasExplanation: false,
+  }
+
+  beforeEach(() => vi.stubGlobal('fetch', vi.fn()))
+  afterEach(() => {
+    cleanup()
+    vi.unstubAllGlobals()
+  })
+
+  function mockSqlFetch(verdict: Record<string, unknown>) {
+    return vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const href = String(url)
+      const method = init?.method ?? 'GET'
+      if (href.endsWith('/api/exercises')) return { ok: true, json: async () => SQL_CATALOG } as Response
+      if (href.endsWith('/api/exercises/top-customers'))
+        return { ok: true, json: async () => SQL_EXERCISE } as Response
+      if (href.endsWith('/api/attempts') && method === 'POST')
+        return { ok: true, json: async () => ({ id: 'att-1' }) } as Response
+      if (href.endsWith('/api/attempts')) return { ok: true, json: async () => [] } as Response
+      if (href.endsWith('/submissions')) return { ok: true, json: async () => verdict } as Response
+      throw new Error(`unexpected fetch to ${method} ${href}`)
+    })
+  }
+
+  it('renders the same Monaco editor and Run flow as a code exercise, worded in rows', async () => {
+    vi.stubGlobal(
+      'fetch',
+      mockSqlFetch({ outcome: 'FAILED', passed: 3, total: 5, detail: '', runtimeMillis: 4 }),
+    )
+    render(<Practice />)
+    await screen.findByRole('heading', { name: 'Top Customers' })
+
+    // Same editor, same action button label as a code exercise - no parallel surface.
+    expect(screen.getByLabelText('editor')).toBeInTheDocument()
+    const runButton = screen.getByRole('button', { name: 'Run' })
+
+    fireEvent.click(runButton)
+
+    // The minimal failure signal is a bare row count, never "N of M matched" (issue #25).
+    expect(await screen.findByText('Returned 3 rows, expected 5')).toBeInTheDocument()
+  })
+
+  it('reports a refused write as a query error, not a compile error', async () => {
+    vi.stubGlobal(
+      'fetch',
+      mockSqlFetch({
+        outcome: 'COMPILE_ERROR',
+        passed: 0,
+        total: 0,
+        detail: 'ERROR: cannot execute DROP TABLE in a read-only transaction',
+        runtimeMillis: 0,
+      }),
+    )
+    render(<Practice />)
+    await screen.findByRole('heading', { name: 'Top Customers' })
+    fireEvent.click(screen.getByRole('button', { name: 'Run' }))
+
+    expect(await screen.findByText('Query error')).toBeInTheDocument()
+    expect(
+      screen.getByText('ERROR: cannot execute DROP TABLE in a read-only transaction'),
+    ).toBeInTheDocument()
+  })
+})

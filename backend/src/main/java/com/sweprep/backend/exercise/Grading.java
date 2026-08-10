@@ -13,7 +13,8 @@ import java.util.Objects;
  * <p>A sealed hierarchy, so a genuinely new way to judge an answer is added as one
  * more permitted record with a matching {@code Grader}, not by reshaping the model.
  */
-public sealed interface Grading permits Grading.TestCases, Grading.AnswerKey, Grading.SelfCheck {
+public sealed interface Grading
+        permits Grading.TestCases, Grading.AnswerKey, Grading.SelfCheck, Grading.ResultSet {
 
     /**
      * Judged by running the submission against language-neutral {@link TestCase}s
@@ -55,6 +56,33 @@ public sealed interface Grading permits Grading.TestCases, Grading.AnswerKey, Gr
 
         public SelfCheck {
             Objects.requireNonNull(modelAnswer, "modelAnswer");
+        }
+    }
+
+    /**
+     * Judged by running the submitted SQL query against a named fixture database and
+     * comparing the returned result set to {@code expected} (issue #25, the second
+     * domain the exercise abstraction was designed to hold - decision issues #6/#10).
+     * {@code expected} is a JSON array of rows, each row itself a JSON array of column
+     * values in position: column <em>names</em> are never part of the model, matching how
+     * the grader reads a JDBC result set back, and the same {@link Comparison} rule every
+     * other grading spec declares decides whether row order matters -
+     * {@link Comparison#exact()} when the exercise requires a particular sequence (an
+     * authored {@code ORDER BY}), {@link Comparison#orderInsensitiveSequence()} (the
+     * default here, unlike {@link TestCases}/{@link AnswerKey}) otherwise, since SQL result
+     * order is unspecified unless a query asks for it. Numeric type and {@code NULL} are
+     * already normalised for free by the shared {@code JsonEquality} primitive every
+     * {@link Comparison} rule is built on - nothing new was needed there. This grading
+     * needs the SQL runner seam, never the language {@code Runner}/adapter {@link
+     * TestCases} uses, which is the whole proof this ticket asks for: a second domain
+     * landed by adding one more permitted record, not by reshaping the model.
+     */
+    record ResultSet(String fixture, JsonNode expected, Comparison comparison) implements Grading {
+
+        public ResultSet {
+            Objects.requireNonNull(fixture, "fixture");
+            Objects.requireNonNull(expected, "expected");
+            comparison = comparison == null ? Comparison.orderInsensitiveSequence() : comparison;
         }
     }
 }
