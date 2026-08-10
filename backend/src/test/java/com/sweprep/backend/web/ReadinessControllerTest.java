@@ -10,6 +10,7 @@ import com.sweprep.backend.readiness.FamilyReadiness;
 import com.sweprep.backend.readiness.Progress;
 import com.sweprep.backend.readiness.ReadinessService;
 import com.sweprep.backend.readiness.ReadinessSummary;
+import com.sweprep.backend.readiness.StaleTopic;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -39,7 +40,9 @@ class ReadinessControllerTest {
                 new Progress(2, 5),
                 new Progress(1, 3),
                 7,
-                List.of(new FamilyReadiness(Family.BACKEND, new Progress(2, 4), new Progress(1, 2)))));
+                List.of(new FamilyReadiness(Family.BACKEND, new Progress(2, 4), new Progress(1, 2))),
+                List.of("graphs"),
+                List.of(new StaleTopic("dp", 21))));
 
         mockMvc.perform(get("/api/readiness"))
                 .andExpect(status().isOk())
@@ -49,6 +52,9 @@ class ReadinessControllerTest {
                 .andExpect(jsonPath("$.conceptsCovered.achieved").value(1))
                 .andExpect(jsonPath("$.selfCheckExplainedCount").value(7))
                 .andExpect(jsonPath("$.families[0].family").value("BACKEND"))
-                .andExpect(jsonPath("$.families[0].checksToCriterion.achieved").value(2));
+                .andExpect(jsonPath("$.families[0].checksToCriterion.achieved").value(2))
+                .andExpect(jsonPath("$.shakyTopics[0]").value("graphs"))
+                .andExpect(jsonPath("$.staleTopics[0].topic").value("dp"))
+                .andExpect(jsonPath("$.staleTopics[0].daysSinceTouched").value(21));
     }
 }

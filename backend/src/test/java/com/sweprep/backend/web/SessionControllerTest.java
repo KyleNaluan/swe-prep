@@ -32,24 +32,36 @@ class SessionControllerTest {
 
     @Test
     void statusReportsAnIncompleteDay() throws Exception {
-        when(service.status()).thenReturn(new SessionStatus(false, null, 4));
+        when(service.status()).thenReturn(new SessionStatus(false, null, 4, 2, false));
 
         mockMvc.perform(get("/api/session"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.dayComplete").value(false))
                 .andExpect(jsonPath("$.completedAt").doesNotExist())
-                .andExpect(jsonPath("$.streak").value(4));
+                .andExpect(jsonPath("$.streak").value(4))
+                .andExpect(jsonPath("$.repairsRemainingThisMonth").value(2))
+                .andExpect(jsonPath("$.repairPending").value(false));
     }
 
     @Test
     void completingTheWarmupReturnsTheCompletedStatus() throws Exception {
         when(service.completeWarmup())
-                .thenReturn(new SessionStatus(true, Instant.parse("2026-08-07T09:00:00Z"), 5));
+                .thenReturn(new SessionStatus(true, Instant.parse("2026-08-07T09:00:00Z"), 5, 1, false));
 
         mockMvc.perform(post("/api/session/complete-warmup"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.dayComplete").value(true))
                 .andExpect(jsonPath("$.completedAt").value("2026-08-07T09:00:00Z"))
-                .andExpect(jsonPath("$.streak").value(5));
+                .andExpect(jsonPath("$.streak").value(5))
+                .andExpect(jsonPath("$.repairsRemainingThisMonth").value(1));
+    }
+
+    @Test
+    void statusReportsARepairIsAvailableToday() throws Exception {
+        when(service.status()).thenReturn(new SessionStatus(false, null, 3, 2, true));
+
+        mockMvc.perform(get("/api/session"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.repairPending").value(true));
     }
 }
