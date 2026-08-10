@@ -1,0 +1,18 @@
+[Unit]
+Description=Fire the swe-prep daily cue at a configured time (issue #23)
+
+[Timer]
+# The one user-configurable knob issue #23 asks for. Set by install.sh's
+# --time flag; to change it later, edit this file directly (it lives at
+# ~/.config/systemd/user/swe-prep-daily-cue.timer once installed) and run
+# `systemctl --user daemon-reload && systemctl --user restart swe-prep-daily-cue.timer`.
+OnCalendar=*-*-* __TIME__:00
+# This is what makes the schedule survive a reboot in the sense that matters:
+# if the machine was off or asleep at __TIME__, systemd fires the timer once
+# shortly after the next boot instead of silently skipping that day's cue.
+# (`systemctl --user enable`, run by install.sh, is what makes the timer come
+# back after a reboot at all - this is the other half.)
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -189,6 +189,15 @@ The map's "no invented currency" ruling (issue #7) is completed, not just defend
 - **Per-family breakdown** (`FamilyReadiness`) reruns both competence axes once per `Family`, scoped by `Exercise.family().contains(family)` read live from `ContentCatalog` - the optional `attempt.family` snapshot design revision t3 costed out was not taken (per the role-families section above), so a family with no content in the local clone reports `0/0` rather than being silently omitted or estimated.
 - **Frontend**: `Readiness.tsx` is a top-level tab in `Session.tsx` (alongside Today/Practice/Learn, not tucked under Practice), and the day-complete `Landing` screen links straight into it - the two ways the ticket's "primary surface, not a secondary screen" criterion is made concrete rather than asserted. The self-check count renders in a visually distinct dashed box with its own "never added into the checks above" note; the streak line (when shown here) reuses `SessionStatus.streak` and is worded descriptively, never as a loss, matching `DayBadge`/`Landing` (issue #19).
 
+## Daily cue: an outside-the-JVM scheduled notification (issue #23)
+
+The "scheduled surfacing" leg of the streak decision (issue #7) is a standalone shell mechanism, not backend code: it needed no new endpoint, since `GET /api/session` (issue #19's `SessionService.status()`) already answers "is today done" from the real session record.
+
+- `scripts/daily-cue.sh` calls that endpoint and decides `notify`/`skip` (a pure, sourced-and-unit-tested `decide()` function); on `notify` it shells out to a swappable notify command (`SWEPREP_DAILY_CUE_NOTIFY_CMD`, default `notify-send`) rather than hardcoding a delivery channel, since what actually pops a notification varies by machine (desktop Linux, a WSL host with no notification daemon, etc.).
+- `scripts/daily-cue/` holds the systemd user `.service`/`.timer` unit templates (`__REPO_PATH__`/`__TIME__` placeholders) and `install.sh`, which fills them in and runs `systemctl --user enable --now` for the current account - the same scheduled-user-service mechanism the app's own autostart already uses (decision issue #2), never a second one. `Persistent=true` on the timer plus `systemctl --user enable` is what survives a reboot; `install.sh` also checks and warns if `loginctl enable-linger` isn't set, since without it neither this timer nor the app's own autostart unit run before a login session exists.
+- `scripts/daily-cue.test.sh` (wired into `test.sh`) exercises the real script end to end by shadowing `curl` on `PATH` and `notify-send` via the env var, never by testing a copy - same discipline as `check-no-content.test.sh`.
+- Installing is a deploy step for whoever operates the machine (`scripts/daily-cue/install.sh --time HH:MM`); nothing in this repo runs it automatically.
+
 ## Maintaining this file
 
 Keep this file for knowledge useful to almost every future agent session in this project.
