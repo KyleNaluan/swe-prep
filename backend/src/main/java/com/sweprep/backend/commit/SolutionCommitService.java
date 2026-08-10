@@ -11,6 +11,8 @@ import org.eclipse.jgit.api.errors.EmptyCommitException;
 import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.api.errors.JGitInternalException;
 import org.eclipse.jgit.lib.PersonIdent;
+import org.eclipse.jgit.transport.PushResult;
+import org.eclipse.jgit.transport.RemoteRefUpdate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -97,7 +99,12 @@ public class SolutionCommitService {
                 // implicit refspec) so this pushes on a freshly initialised clone with no
                 // upstream tracking configured, not only on a `git clone`-style one.
                 String branch = git.getRepository().getBranch();
-                git.push().setRemote("origin").add(branch).call();
+                Iterable<PushResult> pushResults = git.push().setRemote("origin").add(branch).call();
+                String rejection = firstRejection(pushResults);
+                if (rejection != null) {
+                    log.warn("Solution for '{}' committed locally but push was rejected: {}", exercise.id(), rejection);
+                    return SolutionCommitResult.ofCommittedButPushFailed("committed locally; push rejected: " + rejection);
+                }
                 return SolutionCommitResult.ofCommitted();
             } catch (GitAPIException e) {
                 log.warn("Solution for '{}' committed locally but push failed: {}", exercise.id(), e.getMessage());
@@ -120,5 +127,25 @@ public class SolutionCommitService {
             log.warn("Solution auto-commit failed for '{}': {}", exercise.id(), e.getMessage());
             return SolutionCommitResult.ofSkipped("commit failed: " + e.getMessage());
         }
+    }
+
+    /**
+     * JGit reports a rejected push (non-fast-forward, permission/hook refusal, remote
+     * moved) as a per-ref {@link RemoteRefUpdate.Status} on the returned result rather
+     * than throwing, so a status that is neither {@code OK} nor {@code UP_TO_DATE} is a
+     * silent push failure the caller must surface. Returns a description of the first
+     * such rejection, or {@code null} when every ref update succeeded.
+     */
+    private static String firstRejection(Iterable<PushResult> pushResults) {
+        for (PushResult pushResult : pushResults) {
+            for (RemoteRefUpdate update : pushResult.getRemoteUpdates()) {
+                RemoteRefUpdate.Status status = update.getStatus();
+                if (status != RemoteRefUpdate.Status.OK && status != RemoteRefUpdate.Status.UP_TO_DATE) {
+                    String message = update.getMessage();
+                    return update.getRemoteName() + ": " + status + (message != null ? " (" + message + ")" : "");
+                }
+            }
+        }
+        return null;
     }
 }

@@ -115,6 +115,38 @@ class SolutionCommitServiceTest {
     }
 
     @Test
+    void aRejectedPushIsReportedAsCommittedButPushFailedNotSuccess() throws Exception {
+        // Make origin diverge so the clone's push is a non-fast-forward JGit reports as a
+        // rejected RemoteRefUpdate status, never a thrown exception.
+        try (Git clone = Git.open(this.clone.toFile())) {
+            String branch = clone.getRepository().getBranch();
+            clone.push().setRemote("origin").add(branch).call();
+
+            Path otherClone = tempDir.resolve("other-clone");
+            try (Git other = Git.cloneRepository()
+                    .setURI(bareOrigin.toString())
+                    .setDirectory(otherClone.toFile())
+                    .call()) {
+                Files.writeString(otherClone.resolve("README.md"), "diverged");
+                other.add().addFilepattern("README.md").call();
+                other.commit()
+                        .setMessage("diverge origin")
+                        .setAuthor(new PersonIdent("Other", "other@example.com"))
+                        .call();
+                other.push().setRemote("origin").add(branch).call();
+            }
+        }
+
+        SolutionCommitService service = serviceFor(properties(true, true));
+        Exercise exercise = Fixtures.pairInAnyOrder();
+
+        SolutionCommitResult result = service.commitSolution(exercise, Fixtures.PAIR_SOLUTION);
+
+        assertThat(result.committed()).isTrue();
+        assertThat(result.reason()).contains("push rejected");
+    }
+
+    @Test
     void disablingAutoCommitSkipsEntirely() {
         SolutionCommitProperties disabled =
                 new SolutionCommitProperties(false, clone.toString(), false, null, null, null);
