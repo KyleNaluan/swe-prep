@@ -73,6 +73,17 @@
         <artifactId>spring-boot-maven-plugin</artifactId>
       </plugin>
       <plugin>
+        <!--
+          Lets the content-entry tool (issue #24) run as a single command:
+          `./mvnw -q compile exec:java -Dexec.mainClass=com.sweprep.backend.authoring.AuthorContentCli`,
+          wrapped by scripts/author-content.sh. Not bound to any lifecycle phase, so
+          `./mvnw test`/`./test.sh` never invoke it - only an explicit `exec:java` does.
+        -->
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>exec-maven-plugin</artifactId>
+        <version>3.5.0</version>
+      </plugin>
+      <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
         <configuration>
