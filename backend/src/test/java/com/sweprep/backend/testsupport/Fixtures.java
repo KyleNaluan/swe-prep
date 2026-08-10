@@ -491,6 +491,44 @@ public final class Fixtures {
                 "some-problem");
     }
 
+    /**
+     * A SQL query exercise (issue #25): a Query response graded against a two-row
+     * result set on the "ecommerce" fixture, order-insensitive by default. Demonstrates
+     * the second domain landing on the same {@code Exercise}/{@code Grader}/{@code Runner}
+     * seam with no special-casing - notably, {@link Exercise#complexityCheck()} is simply
+     * {@code null} via the existing convenience constructor, not a new carve-out.
+     */
+    public static Exercise sqlTopCustomers() {
+        return new Exercise(
+                "sql-top-customers",
+                "Top Customers",
+                "Return every customer id and name.",
+                "sql",
+                List.of("demo"),
+                Difficulty.EASY,
+                Form.CHALLENGE,
+                new Response.Query(),
+                new Grading.ResultSet("ecommerce", json("[[1, \"Alice\"], [2, \"Bob\"]]"), null),
+                List.of());
+    }
+
+    /** {@link #sqlTopCustomers()}, but requiring the query's own row order (an {@code ORDER BY}). */
+    public static Exercise sqlTopCustomersOrdered() {
+        Exercise unordered = sqlTopCustomers();
+        Grading.ResultSet grading = (Grading.ResultSet) unordered.grading();
+        return new Exercise(
+                "sql-top-customers-ordered",
+                unordered.title(),
+                unordered.statement(),
+                unordered.domain(),
+                unordered.topics(),
+                unordered.difficulty(),
+                unordered.form(),
+                unordered.response(),
+                new Grading.ResultSet(grading.fixture(), grading.expected(), Comparison.exact()),
+                unordered.hints());
+    }
+
     private static Exercise rep(
             String id,
             String title,

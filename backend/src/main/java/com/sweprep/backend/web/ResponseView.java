@@ -37,4 +37,15 @@ public record ResponseView(String kind, String language, String stub, List<Strin
     static ResponseView selfCheck() {
         return new ResponseView("selfCheck", null, null, null);
     }
+
+    /**
+     * A SQL query editor (issue #25): {@code language} is always {@code "sql"} and {@code
+     * stub} seeds a blank query rather than a generated one - there is no {@code Signature}
+     * to generate it from, since {@link com.sweprep.backend.exercise.Response.Query} is a
+     * marker like {@code freeText}. It shares this record's {@code language}/{@code stub}
+     * fields with {@code code} on purpose: the editor renders both the same way.
+     */
+    static ResponseView query(String stub) {
+        return new ResponseView("query", "sql", stub, null);
+    }
 }

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sweprep.backend.exercise.Comparison;
 import com.sweprep.backend.exercise.Complexity;
 import com.sweprep.backend.exercise.ComplexityCheck;
 import com.sweprep.backend.exercise.Content;
@@ -771,5 +772,76 @@ class FileExerciseCatalogTest {
                 .hasMessageContaining("sum.json")
                 .hasMessageContaining("targetTime")
                 .hasMessageContaining("SLOW");
+    }
+
+    // The SQL domain (issue #25): a Query response paired with a ResultSet grading. Rows
+    // are column-positional arrays and the default comparison is order-insensitive - the
+    // opposite default from testCases/answerKey, since SQL row order is otherwise
+    // unspecified unless the exercise's own statement asks for one.
+    private static final String SQL_EXERCISE =
+            """
+            {
+              "id": "top-customers", "title": "Top Customers",
+              "statement": "Return every customer id and name.",
+              "domain": "sql", "topics": ["demo"],
+              "difficulty": "EASY", "form": "CHALLENGE",
+              "response": { "kind": "query" },
+              "grading": { "kind": "resultSet", "fixture": "ecommerce",
+                "expected": [ [1, "Alice"], [2, "Bob"] ] }
+            }
+            """;
+
+    @Test
+    void loadsAQueryExerciseGradedByAResultSetDefaultingToOrderInsensitive(@TempDir Path dir)
+            throws IOException {
+        write(dir, "top-customers.json", SQL_EXERCISE);
+
+        Exercise loaded = catalog(dir).byId("top-customers").orElseThrow();
+
+        assertThat(loaded.response()).isInstanceOf(Response.Query.class);
+        assertThat(loaded.grading()).isInstanceOfSatisfying(Grading.ResultSet.class, resultSet -> {
+            assertThat(resultSet.fixture()).isEqualTo("ecommerce");
+            assertThat(resultSet.expected()).hasSize(2);
+            assertThat(resultSet.comparison()).isEqualTo(Comparison.orderInsensitiveSequence());
+        });
+        // A SQL exercise carries no complexity target and needs no special-casing to skip
+        // it - the model's existing nullable ComplexityCheck already covers it (issue #25).
+        assertThat(loaded.complexityCheck()).isNull();
+    }
+
+    @Test
+    void aResultSetGradingCanRequireOrderExplicitly(@TempDir Path dir) throws IOException {
+        String ordered = SQL_EXERCISE.replace(
+                "\"grading\": { \"kind\": \"resultSet\", \"fixture\": \"ecommerce\",",
+                "\"grading\": { \"kind\": \"resultSet\", \"fixture\": \"ecommerce\", "
+                        + "\"comparison\": \"exact\",");
+        write(dir, "top-customers.json", ordered);
+
+        Exercise loaded = catalog(dir).byId("top-customers").orElseThrow();
+
+        assertThat(loaded.grading()).isInstanceOfSatisfying(Grading.ResultSet.class,
+                resultSet -> assertThat(resultSet.comparison()).isEqualTo(Comparison.exact()));
+    }
+
+    @Test
+    void aFixtureNameThatIsNotASafeIdentifierIsAClearError(@TempDir Path dir) throws IOException {
+        String badFixture = SQL_EXERCISE.replace("\"fixture\": \"ecommerce\"", "\"fixture\": \"bad; drop\"");
+        write(dir, "top-customers.json", badFixture);
+
+        assertThatThrownBy(catalog(dir)::all)
+                .isInstanceOf(ContentException.class)
+                .hasMessageContaining("top-customers.json")
+                .hasMessageContaining("fixture");
+    }
+
+    @Test
+    void anExpectedRowThatIsNotAnArrayIsAClearError(@TempDir Path dir) throws IOException {
+        String badRow = SQL_EXERCISE.replace("[1, \"Alice\"], [2, \"Bob\"]", "1, [2, \"Bob\"]");
+        write(dir, "top-customers.json", badRow);
+
+        assertThatThrownBy(catalog(dir)::all)
+                .isInstanceOf(ContentException.class)
+                .hasMessageContaining("top-customers.json")
+                .hasMessageContaining("expected");
     }
 }
