@@ -169,6 +169,25 @@ type RunState =
   | { phase: 'done'; verdict: Verdict }
   | { phase: 'error'; message: string }
 
+// The main exercise is chosen by the backend's priority scheduler (issue #21) - it
+// scores review debt, staleness and topic coverage, not simply "the first CHALLENGE in
+// the list". Falls back to that old static pick only if the call fails, or the
+// scheduler genuinely has nothing to offer (e.g. every challenge is within its minimum
+// interval) - so the picker never comes up empty just because the network hiccuped.
+async function pickMain(loaded: Summary[]): Promise<string> {
+  try {
+    const response = await apiFetch(`/api/challenges/next`)
+    if (response.ok) {
+      const picked = (await response.json()) as { exercise: Summary | null }
+      if (picked.exercise) return picked.exercise.id
+    }
+  } catch {
+    // fall through to the static fallback below
+  }
+  const fallback = loaded.find((summary) => summary.form === 'CHALLENGE') ?? loaded[0]
+  return fallback.id
+}
+
 // `onSolved` fires whenever an exercise here is solved. The session uses it only as the
 // fallback that completes the day when the warm-up set was empty (issue #19); normally
 // the warm-up completes the day and the main exercise stays optional, so this is a no-op.
@@ -263,16 +282,11 @@ function Practice({
         if (!response.ok) throw new Error(await errorMessage(response))
         return (await response.json()) as Summary[]
       })
-      .then((loaded) => {
+      .then(async (loaded) => {
         if (cancelled) return
         setCatalog(loaded)
-        if (loaded.length > 0) {
-          // Default to a full problem (a CHALLENGE) as the main, not a warm-up rep, so
-          // the first thing offered here is a real ~30-minute exercise. Domain-agnostic:
-          // the first challenge of any domain wins, never "the first algorithm".
-          const main = loaded.find((summary) => summary.form === 'CHALLENGE') ?? loaded[0]
-          setSelectedId(main.id)
-        }
+        if (loaded.length === 0) return
+        setSelectedId(await pickMain(loaded))
       })
       .catch((error: unknown) => {
         if (!cancelled) setCatalogError(error instanceof Error ? error.message : String(error))
