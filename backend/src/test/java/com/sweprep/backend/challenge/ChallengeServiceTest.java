@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.sweprep.backend.attempt.AttemptOutcome;
 import com.sweprep.backend.attempt.AttemptRepository;
 import com.sweprep.backend.attempt.AttemptRepository.ChallengeAttemptRow;
 import com.sweprep.backend.attempt.CurrentUser;
@@ -83,8 +84,8 @@ class ChallengeServiceTest {
 
         AttemptRepository attempts = mock(AttemptRepository.class);
         when(attempts.challengeReviews(USER)).thenReturn(List.of(
-                new ChallengeAttemptRow(cleanAttempt, "clean", endedAt, true, 0, false, null),
-                new ChallengeAttemptRow(multiAttempt, "multi", endedAt, true, 0, false, null)));
+                new ChallengeAttemptRow(cleanAttempt, "clean", endedAt, AttemptOutcome.SOLVED, 0, false, null),
+                new ChallengeAttemptRow(multiAttempt, "multi", endedAt, AttemptOutcome.SOLVED, 0, false, null)));
         when(attempts.solvedColdExerciseIds(USER)).thenReturn(Set.of());
         when(attempts.firstChallengeAttemptDates(USER)).thenReturn(Map.of());
         SubmissionRepository submissions = mock(SubmissionRepository.class);
@@ -130,7 +131,7 @@ class ChallengeServiceTest {
         // otherUser's history says this challenge was just solved perfectly (too recent to
         // select); USER's own history is empty, so USER must still see it as selectable.
         when(attempts.challengeReviews(otherUser)).thenReturn(List.of(
-                new ChallengeAttemptRow(UUID.randomUUID(), "only", NOW, true, 0, false, null)));
+                new ChallengeAttemptRow(UUID.randomUUID(), "only", NOW, AttemptOutcome.SOLVED, 0, false, null)));
         when(attempts.challengeReviews(USER)).thenReturn(List.of());
         when(attempts.solvedColdExerciseIds(USER)).thenReturn(Set.of());
         when(attempts.firstChallengeAttemptDates(USER)).thenReturn(Map.of());
@@ -140,6 +141,31 @@ class ChallengeServiceTest {
         ChallengeService service = service(catalog, attempts, submissions, NOW);
 
         assertThat(service.selectMain(USER)).contains(challenge);
+    }
+
+    @Test
+    void aSelfCheckChallengeThatEndedExplainedIsExcludedByTheMinimumIntervalFloorTooSoonAfter() {
+        // EXPLAINED (issue #41's self-check terminus) carries no SOLVED/FAILED verdict, but
+        // it must still count as "attempted" for the minimum-interval floor - otherwise a
+        // self-check challenge's Review history stays permanently empty and it could be
+        // re-selected the very next day. See ChallengeService#qualityOf.
+        Exercise explained = minimalChallenge("explained");
+        Exercise fresh = minimalChallenge("fresh");
+        ExerciseCatalog catalog = Fixtures.catalogOf(explained, fresh);
+
+        AttemptRepository attempts = mock(AttemptRepository.class);
+        when(attempts.challengeReviews(USER)).thenReturn(List.of(new ChallengeAttemptRow(
+                UUID.randomUUID(), "explained", NOW.minus(Duration.ofDays(1)), AttemptOutcome.EXPLAINED, 0, false, null)));
+        when(attempts.solvedColdExerciseIds(USER)).thenReturn(Set.of());
+        when(attempts.firstChallengeAttemptDates(USER)).thenReturn(Map.of());
+        SubmissionRepository submissions = mock(SubmissionRepository.class);
+        when(submissions.countsForAttempts(org.mockito.ArgumentMatchers.any())).thenReturn(Map.of());
+
+        ChallengeService service = service(catalog, attempts, submissions, NOW);
+
+        // Too recent (one day ago, under the default two-day floor): "explained" must not
+        // win even though it would otherwise never be gated - "fresh" (genuinely new) wins.
+        assertThat(service.selectMain(USER)).contains(fresh);
     }
 
     private static ChallengeService service(

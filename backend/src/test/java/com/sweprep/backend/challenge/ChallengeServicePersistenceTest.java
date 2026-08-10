@@ -4,10 +4,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
 
 import com.sweprep.backend.attempt.Attempt;
+import com.sweprep.backend.attempt.AttemptOutcome;
 import com.sweprep.backend.attempt.AttemptRepository;
 import com.sweprep.backend.attempt.AttemptRepository.ChallengeAttemptRow;
 import com.sweprep.backend.attempt.AttemptService;
 import com.sweprep.backend.attempt.CurrentUser;
+import com.sweprep.backend.attempt.SelfCheckReveal;
+import com.sweprep.backend.attempt.SelfRating;
 import com.sweprep.backend.attempt.SubmissionRepository;
 import com.sweprep.backend.exercise.ContentCatalog;
 import com.sweprep.backend.exercise.Exercise;
@@ -102,13 +105,13 @@ class ChallengeServicePersistenceTest {
         assertThat(reviews).hasSize(1);
         ChallengeAttemptRow review = reviews.get(0);
         assertThat(review.exerciseId()).isEqualTo(challenge.id());
-        assertThat(review.solved()).isTrue();
+        assertThat(review.outcome()).isEqualTo(AttemptOutcome.SOLVED);
         assertThat(review.hintsTaken()).isZero();
         assertThat(review.failingCaseRevealed()).isFalse();
 
         int submissionCount = submissions.countByAttempt(review.attemptId());
         int quality = ChallengeQuality.derive(
-                review.solved(),
+                review.outcome() == AttemptOutcome.SOLVED,
                 submissionCount,
                 review.hintsTaken(),
                 review.failingCaseRevealed(),
@@ -123,7 +126,30 @@ class ChallengeServicePersistenceTest {
 
         ChallengeAttemptRow review = attempts.challengeReviews(currentUser.id()).get(0);
         assertThat(review.exerciseId()).isEqualTo(challenge.id());
-        assertThat(review.solved()).isFalse();
+        assertThat(review.outcome()).isEqualTo(AttemptOutcome.ABANDONED);
+    }
+
+    @Test
+    void aSelfCheckChallengeThatJustEndedExplainedIsExcludedByTheMinimumIntervalFloor() {
+        // A self-check challenge (issue #41's produce-then-reveal-then-rate item) ends
+        // EXPLAINED, never SOLVED/ABANDONED - it carries no machine correctness verdict.
+        // Before the fix, challengeReviews excluded EXPLAINED entirely, so such a challenge
+        // was permanently invisible to the scorer and could be re-selected the very next
+        // day. This proves the fix: the floor now applies to it exactly as it would to a
+        // machine-graded challenge solved today.
+        Exercise selfCheck = Fixtures.explainChallenge();
+        when(catalog.byId(selfCheck.id())).thenReturn(Optional.of(selfCheck));
+        when(catalog.all()).thenReturn(List.of(selfCheck));
+
+        Attempt attempt = attemptService.start(selfCheck.id());
+        SelfCheckReveal reveal = attemptService.revealSelfCheck(attempt.id(), "my explanation");
+        attemptService.rateSelfCheck(attempt.id(), reveal.submission().id(), SelfRating.PARTIAL);
+
+        List<ChallengeAttemptRow> reviews = attempts.challengeReviews(currentUser.id());
+        assertThat(reviews).hasSize(1);
+        assertThat(reviews.get(0).outcome()).isEqualTo(AttemptOutcome.EXPLAINED);
+
+        assertThat(challengeService.selectMain(currentUser.id())).isEmpty();
     }
 
     @Test

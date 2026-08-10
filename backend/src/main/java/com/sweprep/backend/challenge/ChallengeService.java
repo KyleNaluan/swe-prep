@@ -1,5 +1,6 @@
 package com.sweprep.backend.challenge;
 
+import com.sweprep.backend.attempt.AttemptOutcome;
 import com.sweprep.backend.attempt.AttemptRepository;
 import com.sweprep.backend.attempt.AttemptRepository.ChallengeAttemptRow;
 import com.sweprep.backend.attempt.CurrentUser;
@@ -41,8 +42,11 @@ import org.springframework.stereotype.Service;
  * <ul>
  *   <li>Each challenge's {@link Review} history, collapsed from {@link
  *       AttemptRepository#challengeReviews} and {@link SubmissionRepository#countsForAttempts}
- *       through {@link ChallengeQuality#derive} - the attempt-record-to-quality-score
- *       reduction happens here and nowhere downstream ever sees the raw fields again.
+ *       via {@link #qualityOf} - the attempt-record-to-quality-score reduction happens here
+ *       and nowhere downstream ever sees the raw fields again. A self-check challenge
+ *       (ends {@code EXPLAINED}, not {@code SOLVED}/{@code ABANDONED}) gets a fixed
+ *       scheduling-only score rather than {@link ChallengeQuality#derive} - see {@link
+ *       #qualityOf} for why.
  *   <li>Each challenge's topic coverage, from {@link AttemptRepository#solvedColdExerciseIds}
  *       (the same "solved without help" signal the readiness picture, issue #45, already
  *       reads as the honest competence bar) reduced to a per-topic fraction across the
@@ -120,18 +124,41 @@ public class ChallengeService {
 
         Map<String, List<Review>> byExercise = new HashMap<>();
         for (ChallengeAttemptRow row : rows) {
-            int quality = ChallengeQuality.derive(
-                    row.solved(),
-                    submissionCounts.getOrDefault(row.attemptId(), 0),
-                    row.hintsTaken(),
-                    row.failingCaseRevealed(),
-                    row.complexityClaimCorrect());
+            int quality = qualityOf(row, submissionCounts.getOrDefault(row.attemptId(), 0));
             LocalDate day = LocalDate.ofInstant(row.endedAt(), zone);
             byExercise.computeIfAbsent(row.exerciseId(), id -> new ArrayList<>()).add(new Review(day, quality));
         }
         byExercise.replaceAll(
                 (id, reviews) -> reviews.stream().sorted(Comparator.comparing(Review::reviewedOn)).toList());
         return byExercise;
+    }
+
+    /**
+     * The 0-5 quality score for one terminal {@code CHALLENGE} attempt row. A self-check
+     * item (issue #41) ends {@link AttemptOutcome#EXPLAINED} rather than {@code
+     * SOLVED}/{@code ABANDONED}, and carries no machine correctness verdict to grade -
+     * there is no "solved" or "failed" to feed {@link ChallengeQuality#derive}. It is given
+     * a fixed {@link ChallengeQuality#WEAK_PASS} here <strong>purely as a scheduling-timing
+     * signal</strong>: just enough for the priority scorer to see the attempt happened and
+     * apply the minimum-interval floor and overdue tracking to it (issue #21 acceptance
+     * criterion 2 - without this, a self-check challenge's {@link Review} history would
+     * stay permanently empty, and it could be re-selected as the very next day's main).
+     * This value must never be read as - or allowed to feed - an objective machine-verdict
+     * competence score: {@link com.sweprep.backend.learned.LearnedCriterion} and the
+     * readiness "solved cold" axis are already structurally blind to a self-rated attempt
+     * (they read only {@code outcome = 'PASSED'} / {@code 'SOLVED'} rows respectively), and
+     * that boundary is not to be crossed by adding a new path into either from here.
+     */
+    private static int qualityOf(ChallengeAttemptRow row, int submissionCount) {
+        if (row.outcome() == AttemptOutcome.EXPLAINED) {
+            return ChallengeQuality.WEAK_PASS;
+        }
+        return ChallengeQuality.derive(
+                row.outcome() == AttemptOutcome.SOLVED,
+                submissionCount,
+                row.hintsTaken(),
+                row.failingCaseRevealed(),
+                row.complexityClaimCorrect());
     }
 
     // Per-exercise topic coverage: the average, across an exercise's own topics, of how
