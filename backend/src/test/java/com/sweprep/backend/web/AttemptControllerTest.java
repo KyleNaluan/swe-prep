@@ -101,7 +101,7 @@ class AttemptControllerTest {
                 UUID.randomUUID(), id, Instant.now(), "class Solution {}",
                 SubmissionOutcome.FAILED, 3, 4, "", 12L);
         // A wrong answer here carries no explanation (this check has none).
-        when(service.submit(eq(id), any())).thenReturn(new SubmitResult(submission, null));
+        when(service.submit(eq(id), any())).thenReturn(new SubmitResult(submission, null, false));
 
         mockMvc.perform(post("/api/attempts/" + id + "/submissions")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -126,7 +126,7 @@ class AttemptControllerTest {
                 UUID.randomUUID(), id, Instant.now(), "B",
                 SubmissionOutcome.FAILED, 0, 1, "", 0L);
         when(service.submit(eq(id), any()))
-                .thenReturn(new SubmitResult(submission, "Because B holds in every case."));
+                .thenReturn(new SubmitResult(submission, "Because B holds in every case.", false));
 
         mockMvc.perform(post("/api/attempts/" + id + "/submissions")
                         .contentType(MediaType.APPLICATION_JSON)

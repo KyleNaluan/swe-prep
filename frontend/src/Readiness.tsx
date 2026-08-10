@@ -11,15 +11,24 @@ import { apiFetch, errorMessage } from './api'
 // verdicts (checksToCriterion, solvedCold), concepts-covered is its own axis over Lessons
 // read, and the self-check "explained" count sits in its own section with its own note
 // that it is never added into the axes above it.
+//
+// Issue #22 adds two more plain lists, not scores: shakyTopics (attempted patterns not
+// yet reliable) and staleTopics (attempted patterns not touched in a while). Each renders
+// only when non-empty - a clean readiness picture shows neither section at all.
 
 type Progress = { achieved: number; total: number }
 type FamilyReadiness = { family: string; checksToCriterion: Progress; solvedCold: Progress }
+type StaleTopic = { topic: string; daysSinceTouched: number }
 type ReadinessSummary = {
   checksToCriterion: Progress
   solvedCold: Progress
   conceptsCovered: Progress
   selfCheckExplainedCount: number
   families: FamilyReadiness[]
+  // Issue #22: attempted-but-unreliable and attempted-but-stale topics. Both are absent
+  // from older cached responses, so they are read defensively as empty rather than assumed.
+  shakyTopics?: string[]
+  staleTopics?: StaleTopic[]
 }
 
 const ALWAYS_ACTIVE = new Set(['CORE', 'PROFESSIONAL'])
@@ -121,6 +130,22 @@ function Readiness({ streak }: { streak?: number }) {
           counts there.
         </p>
       </section>
+
+      {((summary.shakyTopics?.length ?? 0) > 0 || (summary.staleTopics?.length ?? 0) > 0) && (
+        <section className="topic-flags">
+          {(summary.shakyTopics?.length ?? 0) > 0 && (
+            <p className="shaky-topics">
+              <strong>Shaky:</strong> {summary.shakyTopics!.join(', ')}
+            </p>
+          )}
+          {(summary.staleTopics?.length ?? 0) > 0 && (
+            <p className="stale-topics">
+              <strong>Not touched in a while:</strong>{' '}
+              {summary.staleTopics!.map((t) => `${t.topic} (${t.daysSinceTouched}d)`).join(', ')}
+            </p>
+          )}
+        </section>
+      )}
 
       {typeof streak === 'number' && (
         <p className="readiness-streak">

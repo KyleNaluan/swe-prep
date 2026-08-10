@@ -79,6 +79,41 @@ describe('Readiness (issue #45)', () => {
     expect(container.textContent).not.toMatch(/broken|lost|reset/i)
   })
 
+  it('shows shaky and stale topics as plain lists when present (issue #22)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          ({
+            ok: true,
+            json: async () => ({
+              ...SUMMARY,
+              shakyTopics: ['graphs', 'intervals'],
+              staleTopics: [{ topic: 'dynamic programming', daysSinceTouched: 21 }],
+            }),
+          }) as Response,
+      ),
+    )
+    render(<Readiness />)
+
+    expect(await screen.findByText(/graphs, intervals/)).toBeInTheDocument()
+    expect(screen.getByText(/dynamic programming \(21d\)/)).toBeInTheDocument()
+  })
+
+  it('shows neither topic-flag section when both lists are empty', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          ({ ok: true, json: async () => ({ ...SUMMARY, shakyTopics: [], staleTopics: [] }) }) as Response,
+      ),
+    )
+    const { container } = render(<Readiness />)
+
+    await screen.findByText('4/10')
+    expect(container.querySelector('.topic-flags')).toBeNull()
+  })
+
   it('degrades to an inline message when the readiness picture cannot be read', async () => {
     vi.stubGlobal(
       'fetch',

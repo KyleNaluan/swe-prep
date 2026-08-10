@@ -1,5 +1,7 @@
 package com.sweprep.backend.attempt;
 
+import com.sweprep.backend.commit.SolutionCommitResult;
+import com.sweprep.backend.commit.SolutionCommitService;
 import com.sweprep.backend.complexity.ComplexityBucket;
 import com.sweprep.backend.complexity.MeasurementOutcome;
 import com.sweprep.backend.complexity.ScalingMeasurer;
@@ -56,6 +58,7 @@ public class AttemptService {
     private final SubmissionRepository submissions;
     private final CurrentUser currentUser;
     private final TransactionTemplate transactionTemplate;
+    private final SolutionCommitService solutionCommitService;
 
     public AttemptService(
             ExerciseCatalog catalog,
@@ -65,7 +68,8 @@ public class AttemptService {
             AttemptRepository attempts,
             SubmissionRepository submissions,
             CurrentUser currentUser,
-            PlatformTransactionManager transactionManager) {
+            PlatformTransactionManager transactionManager,
+            SolutionCommitService solutionCommitService) {
         this.catalog = catalog;
         this.graders = graders;
         this.selfCheckGrader = selfCheckGrader;
@@ -74,6 +78,7 @@ public class AttemptService {
         this.submissions = submissions;
         this.currentUser = currentUser;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
+        this.solutionCommitService = solutionCommitService;
     }
 
     /** Opens a new sitting with an exercise, snapshotting its title, domain and form. */
@@ -112,9 +117,26 @@ public class AttemptService {
      * check carries one, and withheld otherwise (a passing answer offers it on request
      * instead, and an execution problem is not a wrong answer). This automatic
      * disclosure is not a request and records nothing.
+     *
+     * <p>When this submission freshly solves the attempt, the solution is committed to
+     * the private content repo afterward (issue #22) - deliberately <em>outside</em> the
+     * database transaction that records the submission, the same discipline {@link
+     * #claimComplexity} uses for measurement: git I/O (writing a file, committing,
+     * pushing) must never hold the attempt's row lock or its pooled connection. The
+     * submission is durable either way; the commit is a best-effort side effect that
+     * never affects grading (see {@link com.sweprep.backend.commit.SolutionCommitService}).
      */
-    @Transactional
     public SubmitResult submit(UUID attemptId, String response) {
+        Submitted recorded = recordSubmission(attemptId, response);
+        SolutionCommitResult commitResult = recorded.freshSolve()
+                ? solutionCommitService.commitSolution(recorded.exercise(), response)
+                : null;
+        boolean committed = commitResult != null && commitResult.committed();
+        return new SubmitResult(recorded.submission(), recorded.explanationOnWrong(), committed);
+    }
+
+    @Transactional
+    Submitted recordSubmission(UUID attemptId, String response) {
         Attempt attempt = requireOwned(attemptId);
         if (attempt.outcome() != AttemptOutcome.IN_PROGRESS) {
             throw new IllegalAttemptStateException(
@@ -138,13 +160,18 @@ public class AttemptService {
                 verdict.runtimeMillis());
         submissions.insert(submission);
 
-        if (verdict.outcome() == Verdict.Outcome.PASSED) {
+        boolean freshSolve = verdict.outcome() == Verdict.Outcome.PASSED;
+        if (freshSolve) {
             attempts.update(attempt.withOutcome(AttemptOutcome.SOLVED, Instant.now()));
         }
         String explanationOnWrong =
                 verdict.outcome() == Verdict.Outcome.FAILED ? exercise.explanation() : null;
-        return new SubmitResult(submission, explanationOnWrong);
+        return new Submitted(submission, explanationOnWrong, freshSolve, exercise);
     }
+
+    // The DB-committed outcome of one submission, plus what submit() needs afterward to
+    // decide whether to trigger a solution commit, without re-reading the exercise.
+    private record Submitted(Submission submission, String explanationOnWrong, boolean freshSolve, Exercise exercise) {}
 
     /**
      * Commits a self-check "explain in your own words" answer and reveals the model answer

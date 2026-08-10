@@ -180,6 +180,20 @@ omit it). See
 `backend/src/main/java/com/sweprep/backend/authoring/ProblemSpecParser.java` for
 the problem-spec JSON format, and `AGENTS.md` for the derivation approach.
 
+## Habit layer: solution auto-commit, readiness, and streak repair
+
+The no-invented-currency decision ([issue #7](https://github.com/KyleNaluan/swe-prep/issues/7))
+replaces XP and points with three honest mechanics. Solving a coding challenge
+commits the real solution to the same `swe-prep-content` clone (under a
+`solutions/` subdirectory, `sweprep.commit.*` config, default on) and pushes it,
+so the GitHub contribution graph becomes a true external record — real artifacts
+only, never a synthetic "practice happened" marker. The readiness picture
+(`GET /api/readiness`) reports pattern coverage, shaky topics, staleness and
+solved-cold counts as plain counts and lists, never a score. A missed day can be
+repaired by a double session (the warm-up plus a solved challenge) the next day,
+capped at `sweprep.streak.max-repairs-per-month` (default 2) — see `AGENTS.md`
+for the full design.
+
 ## Running the tests
 
 ```sh

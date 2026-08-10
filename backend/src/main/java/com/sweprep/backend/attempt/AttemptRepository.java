@@ -349,6 +349,46 @@ public class AttemptRepository {
         return firstAttempts;
     }
 
+    /**
+     * The most recent sitting this user opened with each exercise, whatever its form or
+     * outcome - the "last touched" signal the readiness picture's staleness axis (issue
+     * #22) reduces to a per-topic gap in days. Unlike {@link #attemptedExerciseIds} this
+     * keeps the date rather than collapsing to a set of ids, since staleness is about
+     * how long ago, not merely whether.
+     */
+    public java.util.Map<String, Instant> lastAttemptDates(UUID userId) {
+        java.util.Map<String, Instant> lastAttempts = new java.util.HashMap<>();
+        jdbc.sql(
+                        """
+                        SELECT exercise_id, MAX(started_at) AS last_started
+                        FROM attempt
+                        WHERE user_id = :userId
+                        GROUP BY exercise_id
+                        """)
+                .param("userId", userId)
+                .query((ResultSet rs, int rowNum) -> lastAttempts.put(
+                        rs.getString("exercise_id"), rs.getTimestamp("last_started").toInstant()))
+                .list();
+        return lastAttempts;
+    }
+
+    /**
+     * The end instant of every {@code CHALLENGE}-form attempt this user has ever solved -
+     * the "extra tier engaged" signal the streak repair mechanic (issue #22, decision #7
+     * item 5) recognises as a double session: the required warm-up plus a solved
+     * challenge on the same calendar day.
+     */
+    public List<Instant> challengeSolvedInstants(UUID userId) {
+        return jdbc.sql(
+                        """
+                        SELECT ended_at FROM attempt
+                        WHERE user_id = :userId AND form = 'CHALLENGE' AND outcome = 'SOLVED'
+                        """)
+                .param("userId", userId)
+                .query((ResultSet rs, int rowNum) -> rs.getTimestamp("ended_at").toInstant())
+                .list();
+    }
+
     private static java.sql.Timestamp toTimestamp(Instant instant) {
         return instant == null ? null : java.sql.Timestamp.from(instant);
     }

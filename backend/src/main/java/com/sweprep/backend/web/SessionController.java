@@ -19,6 +19,11 @@ import org.springframework.web.bind.annotation.RestController;
  * the open continuation live on the existing exercise/attempt endpoints and never touch
  * completion - declining the main, or abandoning one part-way (recorded as abandonment
  * through {@code POST /api/attempts/{id}/abandon}, issue #15), leaves the day complete.
+ *
+ * <p>{@code status} also reports the capped repair mechanic (issue #22): a missed day
+ * can be repaired by a double session (the warm-up plus a solved challenge) the next
+ * day. Nothing new to trigger it - it falls out of the existing warm-up completion and
+ * challenge-solving paths, so there is no separate "repair" endpoint.
  */
 @RestController
 @RequestMapping("/api/session")

@@ -17,17 +17,25 @@ import com.sweprep.backend.attempt.SubmitResult;
  * a passing answer offers the explanation on request instead, an execution problem is
  * not a wrong answer, and a check may carry no explanation at all.
  *
- * @param outcome       one of the {@link com.sweprep.backend.grader.Verdict.Outcome} names
- * @param passed        number of passing cases
- * @param total         number of cases
- * @param detail        compiler diagnostics or a timeout note, otherwise empty
- * @param runtimeMillis how long the run took, for display only
- * @param explanation   why the correct answer is correct, shown automatically on a wrong
- *                      answer; {@code null} (and omitted) otherwise
+ * @param outcome           one of the {@link com.sweprep.backend.grader.Verdict.Outcome} names
+ * @param passed            number of passing cases
+ * @param total             number of cases
+ * @param detail            compiler diagnostics or a timeout note, otherwise empty
+ * @param runtimeMillis     how long the run took, for display only
+ * @param explanation       why the correct answer is correct, shown automatically on a wrong
+ *                          answer; {@code null} (and omitted) otherwise
+ * @param solutionCommitted whether this solve was just committed to the private content
+ *                          repo (issue #22); {@code false} on anything but a fresh solve
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record RunResponse(
-        String outcome, int passed, int total, String detail, long runtimeMillis, String explanation) {
+        String outcome,
+        int passed,
+        int total,
+        String detail,
+        long runtimeMillis,
+        String explanation,
+        boolean solutionCommitted) {
 
     /** The stored submission's verdict, with the explanation to show on a wrong answer. */
     static RunResponse of(SubmitResult result) {
@@ -38,6 +46,7 @@ public record RunResponse(
                 submission.total(),
                 submission.detail(),
                 submission.runtimeMillis(),
-                result.explanation());
+                result.explanation(),
+                result.solutionCommitted());
     }
 }

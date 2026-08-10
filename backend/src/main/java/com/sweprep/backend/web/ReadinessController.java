@@ -8,10 +8,11 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * The readiness picture (issue #45): {@code GET /api/readiness} reports the objective
- * competence axes, the concepts-covered axis, the per-family breakdown, and the separate
- * self-check "explained" count. This is meant to be the primary progress surface, not a
- * secondary screen tucked behind Practice - the frontend renders it as its own tab and
- * surfaces a summary on the day-complete landing.
+ * competence axes, the concepts-covered axis, the per-family breakdown, the separate
+ * self-check "explained" count, and (issue #22) the shaky/stale topic lists. This is
+ * meant to be the primary progress surface, not a secondary screen tucked behind
+ * Practice - the frontend renders it as its own tab and surfaces a summary on the
+ * day-complete landing.
  */
 @RestController
 @RequestMapping("/api/readiness")

@@ -27,10 +27,21 @@ import java.util.List;
  * @param families          the same two objective axes, broken out per role family
  *                          (design revision t3 section 4.4), so a chosen role's
  *                          preparation is legible rather than averaged into one number
+ * @param shakyTopics       topics that have been attempted but whose learned ratio sits
+ *                          below {@link ReadinessProperties#shakyThreshold()} (issue
+ *                          #22) - "which patterns are shaky", decision issue #7's own
+ *                          mockup wording. A topic never attempted is not covered, a
+ *                          different axis, and is never listed here.
+ * @param staleTopics       topics not touched in {@link
+ *                          ReadinessProperties#staleAfterDays()} days or more, most
+ *                          stale first (issue #22) - "not touched in 3 weeks" from the
+ *                          same mockup. Also excludes never-attempted topics.
  */
 public record ReadinessSummary(
         Progress checksToCriterion,
         Progress solvedCold,
         Progress conceptsCovered,
         int selfCheckExplainedCount,
-        List<FamilyReadiness> families) {}
+        List<FamilyReadiness> families,
+        List<String> shakyTopics,
+        List<StaleTopic> staleTopics) {}
