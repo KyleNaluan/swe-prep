@@ -166,6 +166,23 @@ class AuthorContentCliTest {
     }
 
     @Test
+    void refusesToOverwriteAnExistingSolutionFile(@TempDir Path contentDir) throws Exception {
+        // A stale solutions/<id>.java from a prior partial run (whose .json is absent)
+        // must still block the run rather than being silently clobbered.
+        Files.createDirectories(contentDir.resolve("solutions"));
+        Files.writeString(contentDir.resolve("solutions").resolve("demo-running-max.java"), "old");
+        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+        PrintStream out = new PrintStream(buffer, true, StandardCharsets.UTF_8);
+        BufferedReader stdin = new BufferedReader(new StringReader("y\n"));
+
+        org.junit.jupiter.api.Assertions.assertThrows(
+                AuthoringException.class,
+                () -> AuthorContentCli.author(parseSpec(), contentDir, false, out, stdin));
+        assertThat(Files.readString(contentDir.resolve("solutions").resolve("demo-running-max.java")))
+                .isEqualTo("old");
+    }
+
+    @Test
     void refusesADestinationInsideThePublicRepo() throws Exception {
         Path insideThisRepo = Path.of("src").toAbsolutePath();
         ByteArrayOutputStream buffer = new ByteArrayOutputStream();
