@@ -275,13 +275,15 @@ public class AttemptRepository {
      * reduces to a {@link com.sweprep.backend.scheduler.ChallengeQuality} score. Carries
      * the attempt id (not just the exercise id) because the 0-5 derivation also needs the
      * submission count, which lives per-attempt in {@link SubmissionRepository} and is
-     * batched in separately rather than joined here.
+     * batched in separately rather than joined here. Carries the raw {@link AttemptOutcome}
+     * rather than a {@code solved} boolean, because {@link #challengeReviews} returns three
+     * distinct outcomes (see there) and a caller needs to tell them apart.
      */
     public record ChallengeAttemptRow(
             UUID attemptId,
             String exerciseId,
             Instant endedAt,
-            boolean solved,
+            AttemptOutcome outcome,
             int hintsTaken,
             boolean failingCaseRevealed,
             Boolean complexityClaimCorrect) {}
@@ -289,10 +291,14 @@ public class AttemptRepository {
     /**
      * Every terminal {@code CHALLENGE}-form attempt this user has ever ended, across every
      * exercise - the challenge priority scorer's (issue #21) raw material, the same shape
-     * {@link #repReviews} plays for the rep due-date queue. Only {@code SOLVED} and
-     * {@code ABANDONED} are terminal outcomes a challenge can reach here; an attempt still
-     * {@code IN_PROGRESS} is not yet a completed review and is excluded, the same
-     * structural boundary {@link #repReviews} enforces.
+     * {@link #repReviews} plays for the rep due-date queue. {@code SOLVED} and {@code
+     * ABANDONED} are the two outcomes a machine-graded challenge reaches; a self-check
+     * challenge (issue #41, produce-then-reveal-then-self-rate) reaches a third, {@code
+     * EXPLAINED}, and is included here too - excluding it would leave such a challenge
+     * permanently invisible to the scorer (always {@code reviews.isEmpty()}), silently
+     * defeating the minimum-interval floor for it. An attempt still {@code IN_PROGRESS} is
+     * not yet a completed review and stays excluded, the same structural boundary {@link
+     * #repReviews} enforces.
      */
     public List<ChallengeAttemptRow> challengeReviews(UUID userId) {
         return jdbc.sql(
@@ -300,7 +306,8 @@ public class AttemptRepository {
                         SELECT id, exercise_id, ended_at, outcome, hints_taken,
                                failing_case_revealed, complexity_claim_correct
                         FROM attempt
-                        WHERE user_id = :userId AND form = 'CHALLENGE' AND outcome IN ('SOLVED', 'ABANDONED')
+                        WHERE user_id = :userId AND form = 'CHALLENGE'
+                          AND outcome IN ('SOLVED', 'ABANDONED', 'EXPLAINED')
                         ORDER BY ended_at
                         """)
                 .param("userId", userId)
@@ -310,7 +317,7 @@ public class AttemptRepository {
                             rs.getObject("id", UUID.class),
                             rs.getString("exercise_id"),
                             rs.getTimestamp("ended_at").toInstant(),
-                            "SOLVED".equals(rs.getString("outcome")),
+                            AttemptOutcome.valueOf(rs.getString("outcome")),
                             rs.getInt("hints_taken"),
                             rs.getBoolean("failing_case_revealed"),
                             claimCorrect == null ? null : (Boolean) claimCorrect);
