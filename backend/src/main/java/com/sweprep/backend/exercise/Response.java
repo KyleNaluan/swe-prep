@@ -13,7 +13,7 @@ import java.util.List;
  * short answer, a SQL query) is added as one more permitted record without
  * touching the exercise model.
  */
-public sealed interface Response permits Response.Code, Response.Choice, Response.FreeText {
+public sealed interface Response permits Response.Code, Response.Choice, Response.FreeText, Response.Query {
 
     /**
      * The solver writes code implementing a method. The editor is seeded with a
@@ -56,4 +56,16 @@ public sealed interface Response permits Response.Code, Response.Choice, Respons
      * text box - what is expected of the text lives in the grading spec.
      */
     record FreeText() implements Response {}
+
+    /**
+     * The solver writes one SQL query against a shared fixture schema (issue #25, the
+     * proof that a second domain needs no redesign of this model). A marker record like
+     * {@link FreeText} - nothing here is language- or fixture-specific: which fixture to
+     * run against, the expected result set and how rows are compared all live in the
+     * paired {@link Grading.ResultSet}, exactly the same separation of "how the answer is
+     * entered" from "how it is judged" every other response kind keeps. This response
+     * needs the SQL runner seam ({@code SqlQueryGrader}/{@code SqlRunner}), never the
+     * language adapter a {@link Code} response drives.
+     */
+    record Query() implements Response {}
 }

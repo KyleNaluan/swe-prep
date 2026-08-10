@@ -88,7 +88,12 @@ Prerequisites: Java 21 on `PATH`, Docker running, Node 24.
    measuring how the solution actually scales; the app only ever says the measurement is
    "consistent" with your claim or explicitly inconclusive, never "correct", because
    timing cannot tell some growth rates (like O(n) vs O(n log n)) apart. A concept exercise shows multiple-choice options and is
-   graded with no code execution at all. An "explain it in your own words" exercise
+   graded with no code execution at all. A SQL exercise (issue #25) is the same Monaco
+   editor and Run flow, worded in rows instead of tests: the submitted query runs against
+   a shared fixture schema on a separate database, as a read-only role, inside a
+   transaction that is always rolled back, so a `DROP TABLE` is refused rather than
+   merely undone; row order only matters when the exercise asks for it, and a failing
+   run reports only a bare row count. An "explain it in your own words" exercise
    (issue #41) is different again: it takes free text, then reveals a model answer for
    you to self-rate against - production practice that is deliberately never machine-graded,
    so it lives only in the optional tiers, never the required warm-up. The Learn tab

@@ -19,6 +19,7 @@ import com.sweprep.backend.exercise.Signature.Parameter;
 import com.sweprep.backend.exercise.TestCase;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 
 /**
  * Builds an {@link Exercise} from the language-neutral JSON one content file holds
@@ -40,10 +41,19 @@ import java.util.List;
  *                    "The correct answer",                            // a plain string, or
  *                    { "text": "A wrong option",                      // an object whose
  *                      "misconception": "the specific mistake it catches" } ] }
- *             |  { "kind": "freeText" },
+ *             |  { "kind": "freeText" }
+ *             |  { "kind": "query" },                                  // issue #25, a SQL query
  *   "grading":  { "kind": "testCases", "comparison": "...", "cases": [...] }
  *             |  { "kind": "answerKey", "comparison": "...", "expected": ... }
- *             |  { "kind": "selfCheck", "modelAnswer": "..." },
+ *             |  { "kind": "selfCheck", "modelAnswer": "..." }
+ *             |  { "kind": "resultSet",                                // issue #25
+ *                    "fixture": "ecommerce",                           // a sql-fixtures/*.sql name
+ *                    "comparison": "orderInsensitiveSequence",         // optional; default here
+ *                                                                      // (unlike testCases/
+ *                                                                      // answerKey) since SQL
+ *                                                                      // row order is otherwise
+ *                                                                      // unspecified
+ *                    "expected": [ [1, "Alice"], [2, "Bob"] ] },       // rows, columns by position
  *   "hints":    [ { "name": "Pattern", "body": "..." }, ... ], // optional ladder
  *   "explanation": "why the correct answer is correct",        // optional (issue #51)
  *   "family":   ["BACKEND", "AIML"],                           // optional, default []
@@ -186,6 +196,7 @@ final class ExerciseParser {
             case "code" -> new Response.Code(signature(json, json.requireObject(node, "signature")));
             case "choice" -> new Response.Choice(options(json, node));
             case "freeText" -> new Response.FreeText();
+            case "query" -> new Response.Query();
             default -> throw json.malformed("unknown response kind '" + kind + "'");
         };
     }
@@ -212,8 +223,46 @@ final class ExerciseParser {
             case "answerKey" -> new Grading.AnswerKey(
                     json.requireField(node, "expected"), comparison(json, node));
             case "selfCheck" -> new Grading.SelfCheck(json.requireText(node, "modelAnswer"));
+            case "resultSet" -> new Grading.ResultSet(
+                    fixtureName(json, node), expectedRows(json, node),
+                    // Unlike testCases/answerKey, the field's absence means "row order does
+                    // not matter" (issue #25) - Grading.ResultSet's own compact constructor
+                    // supplies that default, so only an explicit value is read here.
+                    node.hasNonNull("comparison") ? comparison(json, node) : null);
             default -> throw json.malformed("unknown grading kind '" + kind + "'");
         };
+    }
+
+    // A fixture name becomes a Postgres schema and role identifier (issue #25), built by
+    // string concatenation from content-authored text rather than a bind parameter - safe
+    // only because content is a trusted, authored source, and only once this shape is
+    // enforced at load time so a typo or bad file can never smuggle SQL into an identifier
+    // position.
+    private static final Pattern FIXTURE_NAME = Pattern.compile("[a-z][a-z0-9_]*");
+
+    private static String fixtureName(ContentJson json, JsonNode node) {
+        String fixture = json.requireText(node, "fixture");
+        if (!FIXTURE_NAME.matcher(fixture).matches()) {
+            throw json.malformed(
+                    "'grading.fixture' must be a lowercase identifier (letters, digits, "
+                            + "underscore, starting with a letter): '" + fixture + "'");
+        }
+        return fixture;
+    }
+
+    private static JsonNode expectedRows(ContentJson json, JsonNode node) {
+        JsonNode expected = json.requireField(node, "expected");
+        if (!expected.isArray()) {
+            throw json.malformed("'grading.expected' must be a JSON array of rows");
+        }
+        for (JsonNode row : expected) {
+            if (!row.isArray()) {
+                throw json.malformed(
+                        "each row in 'grading.expected' must itself be a JSON array of column "
+                                + "values, matched by position - column names are never compared");
+            }
+        }
+        return expected;
     }
 
     private static List<TestCase> cases(ContentJson json, JsonNode node) {

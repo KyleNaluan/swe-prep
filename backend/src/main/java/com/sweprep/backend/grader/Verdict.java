@@ -39,6 +39,19 @@ public record Verdict(Outcome outcome, int passed, int total, String detail, lon
         return new Verdict(outcome, passed, total, "", 0);
     }
 
+    /**
+     * A result-set grading's verdict (issue #25). Unlike {@link #of}, the outcome is not
+     * derived from {@code passed == total}: a wrong query can coincidentally return the
+     * same row count as expected, so whether the row sets actually matched is decided
+     * separately and passed in as {@code matches}. {@code actualRowCount} and {@code
+     * total} still carry a bare row count each - the minimal failure signal
+     * withhold-by-default judging allows (issue #16/#5) is literally how many rows came
+     * back versus how many were expected, never which rows differed or how.
+     */
+    static Verdict rows(boolean matches, int actualRowCount, int total) {
+        return new Verdict(matches ? Outcome.PASSED : Outcome.FAILED, actualRowCount, total, "", 0);
+    }
+
     static Verdict compileError(String detail) {
         return new Verdict(Outcome.COMPILE_ERROR, 0, 0, detail, 0);
     }
