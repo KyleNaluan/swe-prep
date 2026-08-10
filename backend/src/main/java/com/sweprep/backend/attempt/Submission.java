@@ -25,6 +25,11 @@ import java.util.UUID;
  *                      learner's self-rating; otherwise empty
  * @param runtimeMillis how long the run took, kept for interest only - runtime is
  *                      reported, never graded (issue #16/#5); 0 when no code ran
+ * @param language      the language {@code response} was written in (issue #26), e.g.
+ *                      {@code "java"} or {@code "python"} - meaningful only for a code
+ *                      submission; {@code "java"} by default for every other response
+ *                      kind, since there is no language to record for a choice pick or
+ *                      free text and defaulting keeps the column simply NOT NULL
  */
 public record Submission(
         UUID id,
@@ -35,4 +40,5 @@ public record Submission(
         int passed,
         int total,
         String detail,
-        long runtimeMillis) {}
+        long runtimeMillis,
+        String language) {}

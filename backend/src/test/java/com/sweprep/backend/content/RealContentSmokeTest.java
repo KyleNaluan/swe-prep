@@ -13,7 +13,9 @@ import com.sweprep.backend.grader.GraderRegistry;
 import com.sweprep.backend.grader.TestCaseGrader;
 import com.sweprep.backend.grader.Verdict;
 import com.sweprep.backend.language.JavaLanguageAdapter;
+import com.sweprep.backend.language.LanguageAdapterRegistry;
 import com.sweprep.backend.runner.LocalJavaRunner;
+import com.sweprep.backend.runner.RunnerRegistry;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -47,7 +49,10 @@ class RealContentSmokeTest {
 
     private GraderRegistry graders() {
         TestCaseGrader testCases = new TestCaseGrader(
-                new JavaLanguageAdapter(), new LocalJavaRunner(), mapper, Duration.ofSeconds(10));
+                new LanguageAdapterRegistry(List.of(new JavaLanguageAdapter())),
+                new RunnerRegistry(List.of(new LocalJavaRunner())),
+                mapper,
+                Duration.ofSeconds(10));
         return new GraderRegistry(List.of(testCases, new AnswerKeyGrader(mapper)));
     }
 

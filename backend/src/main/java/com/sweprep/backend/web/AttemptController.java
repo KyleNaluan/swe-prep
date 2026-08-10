@@ -54,7 +54,7 @@ public class AttemptController {
 
     @PostMapping("/{id}/submissions")
     public RunResponse submit(@PathVariable UUID id, @RequestBody RunRequest request) {
-        return RunResponse.of(attempts.submit(id, request.submission()));
+        return RunResponse.of(attempts.submit(id, request.submission(), request.language()));
     }
 
     @PostMapping("/{id}/hints")
@@ -87,8 +87,8 @@ public class AttemptController {
 
     @PostMapping("/{id}/reveal")
     public RevealResponse reveal(@PathVariable UUID id, @RequestBody RevealRequest request) {
-        return RevealResponse.of(
-                attempts.revealFailingCase(id, request.submission(), request.hypothesis()));
+        return RevealResponse.of(attempts.revealFailingCase(
+                id, request.submission(), request.hypothesis(), request.language()));
     }
 
     /**

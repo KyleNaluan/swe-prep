@@ -119,10 +119,10 @@ function mockFetch(
     if (href.endsWith('/api/exercises')) {
       return { ok: true, json: async () => CATALOG } as Response
     }
-    if (href.endsWith('/api/exercises/rep-1')) return { ok: true, json: async () => REP } as Response
-    if (href.endsWith('/api/exercises/concept-main'))
+    if (href.includes('/api/exercises/rep-1')) return { ok: true, json: async () => REP } as Response
+    if (href.includes('/api/exercises/concept-main'))
       return { ok: true, json: async () => CONCEPT_MAIN } as Response
-    if (href.endsWith('/api/exercises/code-main'))
+    if (href.includes('/api/exercises/code-main'))
       return { ok: true, json: async () => CODE_MAIN } as Response
     if (href.endsWith('/abandon')) {
       calls.abandons.push(href)

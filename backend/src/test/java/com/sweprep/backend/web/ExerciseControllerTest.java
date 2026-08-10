@@ -7,6 +7,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.sweprep.backend.attempt.CurrentUser;
 import com.sweprep.backend.exercise.ExerciseCatalog;
 import com.sweprep.backend.language.JavaLanguageAdapter;
+import com.sweprep.backend.language.LanguageAdapterRegistry;
+import com.sweprep.backend.language.PythonLanguageAdapter;
 import com.sweprep.backend.testsupport.Fixtures;
 import java.time.Clock;
 import java.time.LocalDate;
@@ -25,10 +27,18 @@ import org.springframework.test.web.servlet.MockMvc;
  * listed and served to the editor with the right shape. Grading is no longer here -
  * it moved to {@link AttemptControllerTest} because every run is now a submission
  * within a persisted attempt (issue #15). The catalog is stubbed with synthetic demo
- * exercises so no real content is committed (issue #14).
+ * exercises so no real content is committed (issue #14). Both {@link
+ * JavaLanguageAdapter} and {@link PythonLanguageAdapter} are wired in (issue #26), so
+ * the language-selection tests below exercise the real routing, not a stub.
  */
 @WebMvcTest(ExerciseController.class)
-@Import({JavaLanguageAdapter.class, DeterministicOptionShuffler.class, ExerciseControllerTest.Config.class})
+@Import({
+    JavaLanguageAdapter.class,
+    PythonLanguageAdapter.class,
+    LanguageAdapterRegistry.class,
+    DeterministicOptionShuffler.class,
+    ExerciseControllerTest.Config.class
+})
 class ExerciseControllerTest {
 
     @TestConfiguration
@@ -154,5 +164,36 @@ class ExerciseControllerTest {
     void anUnknownExerciseIsNotFound() throws Exception {
         mockMvc.perform(get("/api/exercises/does-not-exist"))
                 .andExpect(status().isNotFound());
+    }
+
+    // --- Language selection (issue #26) ---------------------------------------------
+
+    @Test
+    void defaultsToJavaWhenNoLanguageIsRequested() throws Exception {
+        mockMvc.perform(get("/api/exercises/pair-in-any-order"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.response.language").value("java"))
+                .andExpect(jsonPath("$.response.stub").value(Matchers.containsString("class Solution")));
+    }
+
+    @Test
+    void servesTheSameExerciseInPythonWithNoChangeToItsStoredTestCases() throws Exception {
+        // Same exercise id, same in-memory Exercise/TestCase fixture as the Java-served
+        // test above - the language query parameter alone is what changes, proving
+        // issue #26's core claim: nothing about the stored content differs.
+        mockMvc.perform(get("/api/exercises/pair-in-any-order").param("language", "python"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.title").value("Pair In Any Order"))
+                .andExpect(jsonPath("$.response.kind").value("code"))
+                .andExpect(jsonPath("$.response.language").value("python"))
+                .andExpect(jsonPath("$.response.stub").value(Matchers.containsString("class Solution")))
+                .andExpect(jsonPath("$.response.stub").value(Matchers.containsString("def pair")));
+    }
+
+    @Test
+    void anUnknownLanguageIsABadRequest() throws Exception {
+        mockMvc.perform(get("/api/exercises/pair-in-any-order").param("language", "cobol"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value(Matchers.containsString("cobol")));
     }
 }
