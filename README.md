@@ -153,6 +153,28 @@ of any kind is ever committed to this public repo; `scripts/check-no-content.sh`
 enforces it in CI and in `./test.sh`. See the public-engine/private-content
 decision, [issue #4](https://github.com/KyleNaluan/swe-prep/issues/4).
 
+### Content authoring
+
+Authoring a problem produces its warm-up reps rather than someone hand-writing
+them (issue #24): `scripts/author-content.sh <problem-spec.json> [content-dir] [--yes]`
+takes one problem - a statement, test cases, a reference solution, and optionally
+an input generator, the authoring unit - and derives a complete content entry:
+the `CHALLENGE` exercise plus up to five warm-up reps (pattern-identification,
+complexity, fill-in-the-blank, spot-the-bug, predict-output), each mechanically
+derived from the reference solution (or, for pattern-identification, from the
+problem's own declared topics) rather than drafted by hand. Every derivation runs
+through the exact compiler/runner pair a learner's submission is graded with, so
+"the reference solution passes its own cases" and "this mutation genuinely breaks
+the solution" are both checked empirically, never assumed. Everything derived -
+statement, options, the correct answer, every distractor's misconception, and any
+answer-tell findings - is printed for review before anything is written; declining
+at the prompt writes nothing. The tool refuses to write anywhere inside this
+public repo, matching the public-engine/private-content split above - point
+`content-dir` at your `swe-prep-content` clone (or set `SWEPREP_CONTENT_PATH` and
+omit it). See
+`backend/src/main/java/com/sweprep/backend/authoring/ProblemSpecParser.java` for
+the problem-spec JSON format, and `AGENTS.md` for the derivation approach.
+
 ## Running the tests
 
 ```sh
