@@ -355,6 +355,122 @@ class AnswerTellCheckerTest {
     }
 
     @Test
+    void doesNotFlagLabellingAsUsage_flagsAsAndAnotherNameFor() {
+        // Issue #69: the real aiml-metrics-specificity check flagged ONLY-WITHOUT on
+        // "as" - every distractor uses "as" only as a labelling verb complement
+        // ("another name for … since both get described as", "wrongly flags … as
+        // positive"), never as a causal connective. Dropping "as" from CONNECTIVES
+        // must stop this false alarm; "since" is present on both sides here (as it
+        // was in the real item) and must stay unflagged too.
+        Exercise labellingAs = choice(
+                "connective-as-labelling",
+                Option.correct("Specificity is the true-negative rate, and it equals 1 "
+                        + "minus the false-positive rate since both rates share a "
+                        + "denominator"),
+                Option.distractor(
+                        "Specificity is another name for precision, since both get "
+                                + "described as 'the other accuracy-like number'",
+                        "m1"),
+                Option.distractor(
+                        "Specificity is another name for recall, since sensitivity and "
+                                + "specificity get treated as interchangeable synonyms",
+                        "m2"),
+                Option.distractor(
+                        "Specificity is the false-positive rate, the fraction of actual "
+                                + "negatives the model wrongly flags as positive",
+                        "m3"));
+
+        assertThat(checker.check(labellingAs))
+                .extracting(Finding::tell)
+                .doesNotContain(Tell.CONNECTIVE_STYLE);
+    }
+
+    @Test
+    void doesNotFlagComparativeAsUsage_asBadly() {
+        // Issue #69: the real aiml-bv-high-bias check flagged ONLY-WITH on "as" via
+        // "about as badly" - a comparison, not a connective. The other options use
+        // "since" instead, which must not be flagged either since it is shared.
+        Exercise comparativeAs = choice(
+                "connective-as-comparative",
+                Option.correct("High bias: the model is too simple to capture the "
+                        + "pattern, so it fits training and new data about as badly"),
+                Option.distractor(
+                        "High variance: the model has memorised noise, so it scores "
+                                + "well on training and badly elsewhere",
+                        "m1"),
+                Option.distractor(
+                        "Irreducible error: the noise floor is probably the limit here",
+                        "m2"),
+                Option.distractor(
+                        "The tradeoff is well balanced, since the two errors are close "
+                                + "together",
+                        "m3"));
+
+        assertThat(checker.check(comparativeAs))
+                .extracting(Finding::tell)
+                .doesNotContain(Tell.CONNECTIVE_STYLE);
+    }
+
+    @Test
+    void doesNotFlagLabellingAsUsage_treatedAsStale() {
+        // Issue #69: the real cache-hit-miss-ttl check flagged ONLY-WITH on "as" via
+        // "treated as stale" - again labelling, not causal.
+        Exercise treatedAs = choice(
+                "connective-as-treated",
+                Option.correct("At T+45 the entry is still within its TTL and is a "
+                        + "hit; at T+90 the TTL has elapsed, so the entry is treated "
+                        + "as stale and the request is a miss"),
+                Option.distractor(
+                        "Both requests are hits; a TTL only determines when a "
+                                + "background process eventually deletes an entry",
+                        "m1"),
+                Option.distractor(
+                        "Both requests are misses, since a TTL marks the exact moment "
+                                + "the entry was created",
+                        "m2"),
+                Option.distractor(
+                        "The first is a miss and the second a hit, since the cache "
+                                + "needs a warm-up request within the TTL window",
+                        "m3"));
+
+        assertThat(checker.check(treatedAs))
+                .extracting(Finding::tell)
+                .doesNotContain(Tell.CONNECTIVE_STYLE);
+    }
+
+    @Test
+    void stillFlagsGenuineBecauseTell_allDistractorsJustifyThemselves() {
+        // Issue #69's one confirmed genuine catch (the real aiml-bv-tradeoff check):
+        // all three distractors begin with "Because" and the key does not - a real
+        // "pick the one that doesn't justify itself" tell, unaffected by dropping
+        // "as" since it never depended on that lexeme.
+        Exercise onlyDistractorsJustify = choice(
+                "connective-because-tradeoff",
+                Option.correct("Increasing model flexibility lowers bias but raises "
+                        + "variance, and decreasing it does the reverse"),
+                Option.distractor(
+                        "Because collecting more training data always lowers bias but "
+                                + "never affects variance",
+                        "m1"),
+                Option.distractor(
+                        "Because bias and variance always sum to a fixed constant",
+                        "m2"),
+                Option.distractor(
+                        "Because a more flexible model raises both bias and variance "
+                                + "together",
+                        "m3"));
+
+        List<Finding> findings = checker.check(onlyDistractorsJustify);
+
+        assertThat(findings).extracting(Finding::tell).contains(Tell.CONNECTIVE_STYLE);
+        Finding finding = findings.stream()
+                .filter(f -> f.tell() == Tell.CONNECTIVE_STYLE)
+                .findFirst()
+                .orElseThrow();
+        assertThat(finding.message()).contains("because").containsIgnoringCase("only one NOT using");
+    }
+
+    @Test
     void isBlindToConnectivesMergedIntoOneBucket_theExactLexemeMatters() {
         // A corpus audit found this exact shape leak through a merged "any connective"
         // check: the key uses "because" and every distractor uses "since" - a merged
