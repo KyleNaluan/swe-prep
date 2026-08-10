@@ -114,6 +114,9 @@ final class ContentWriter {
                 node.set("options", options);
             }
             case Response.FreeText ignored -> node.put("kind", "freeText");
+            case Response.Query ignored ->
+                throw new IllegalArgumentException(
+                        "The authoring tool does not derive SQL (query) content");
         }
         return node;
     }
@@ -167,6 +170,9 @@ final class ContentWriter {
                 node.put("kind", "selfCheck");
                 node.put("modelAnswer", selfCheck.modelAnswer());
             }
+            case Grading.ResultSet ignored ->
+                throw new IllegalArgumentException(
+                        "The authoring tool does not derive SQL (result-set) content");
         }
         return node;
     }

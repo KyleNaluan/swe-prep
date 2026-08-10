@@ -92,6 +92,7 @@ final class ReviewPresenter {
                     .reduce((a, b) -> a + "\n" + b)
                     .orElse("               (no options)");
             case Response.FreeText ignored -> "freeText";
+            case Response.Query ignored -> "query";
         };
     }
 
@@ -101,6 +102,7 @@ final class ReviewPresenter {
                     + testCases.comparison();
             case Grading.AnswerKey answerKey -> "answerKey, expected=" + answerKey.expected();
             case Grading.SelfCheck ignored -> "selfCheck";
+            case Grading.ResultSet resultSet -> "resultSet, fixture=" + resultSet.fixture();
         };
     }
 }
