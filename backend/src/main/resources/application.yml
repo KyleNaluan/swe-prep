@@ -27,7 +27,11 @@ sweprep:
     enabled: ${SWEPREP_AUTOCOMMIT_ENABLED:true}
     repo-path: ${SWEPREP_COMMIT_REPO_PATH:${sweprep.content.path}}
     push: ${SWEPREP_AUTOCOMMIT_PUSH:true}
-    solutions-dir: solutions
+    # learner-solutions/, deliberately NOT solutions/ - the content-authoring tool
+    # (issue #24's ContentWriter/AuthorContentCli) writes authored reference solutions
+    # to solutions/<id>.java in this same clone, so a learner solution must land in its
+    # own directory to never overwrite or commit over one.
+    solutions-dir: learner-solutions
     # Commit identity (author-name/author-email) is deliberately absent here, so JGit
     # resolves it from the clone's own git config - its real committer identity,
     # already configured on a genuine clone - rather than a value here overriding it.

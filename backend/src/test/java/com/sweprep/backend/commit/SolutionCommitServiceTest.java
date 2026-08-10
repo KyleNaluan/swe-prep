@@ -66,7 +66,7 @@ class SolutionCommitServiceTest {
 
         assertThat(result.committed()).isTrue();
         assertThat(result.reason()).isNull();
-        assertThat(clone.resolve("solutions/pair-in-any-order.java")).exists();
+        assertThat(clone.resolve("learner-solutions/pair-in-any-order.java")).exists();
 
         // Pushed to the bare origin, not merely committed locally - the whole point.
         try (Git bare = Git.open(bareOrigin.toFile())) {
@@ -98,7 +98,7 @@ class SolutionCommitServiceTest {
         SolutionCommitResult result = service.commitSolution(choiceExercise, "A");
 
         assertThat(result.committed()).isFalse();
-        assertThat(clone.resolve("solutions")).doesNotExist();
+        assertThat(clone.resolve("learner-solutions")).doesNotExist();
     }
 
     @Test
@@ -124,7 +124,7 @@ class SolutionCommitServiceTest {
         SolutionCommitResult result = service.commitSolution(exercise, Fixtures.PAIR_SOLUTION);
 
         assertThat(result.committed()).isFalse();
-        assertThat(clone.resolve("solutions")).doesNotExist();
+        assertThat(clone.resolve("learner-solutions")).doesNotExist();
     }
 
     @Test

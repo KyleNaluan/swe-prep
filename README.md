@@ -185,7 +185,9 @@ the problem-spec JSON format, and `AGENTS.md` for the derivation approach.
 The no-invented-currency decision ([issue #7](https://github.com/KyleNaluan/swe-prep/issues/7))
 replaces XP and points with three honest mechanics. Solving a coding challenge
 commits the real solution to the same `swe-prep-content` clone (under a
-`solutions/` subdirectory, `sweprep.commit.*` config, default on) and pushes it,
+`learner-solutions/` subdirectory - deliberately distinct from the authoring
+tool's own `solutions/` reference-solution path so a learner solution never
+clobbers one - `sweprep.commit.*` config, default on) and pushes it,
 so the GitHub contribution graph becomes a true external record — real artifacts
 only, never a synthetic "practice happened" marker. The readiness picture
 (`GET /api/readiness`) reports pattern coverage, shaky topics, staleness and

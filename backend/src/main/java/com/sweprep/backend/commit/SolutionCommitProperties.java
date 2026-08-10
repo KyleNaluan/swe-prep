@@ -14,6 +14,11 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * problem content is cloned from, just in a different directory ({@link #solutionsDir}).
  * Tests override it to a disposable local repo fixture, never the shared clone.
  *
+ * <p>{@link #solutionsDir} defaults to {@code learner-solutions/}, deliberately distinct
+ * from the content-authoring tool's own {@code solutions/} reference-solution output
+ * (issue #24's {@code ContentWriter}/{@code AuthorContentCli}): learner solutions must
+ * never overwrite or commit over an authored reference solution in the shared clone.
+ *
  * @param enabled      whether auto-commit runs at all; off degrades to "solved, not
  *                     committed" rather than failing a submission (a missing or
  *                     unwritable clone must never block grading)
@@ -22,8 +27,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *                     a commit show on the contribution graph; tests point {@code
  *                     origin} at a local bare repo fixture so this is exercised without
  *                     ever reaching GitHub (see the class javadoc)
- * @param solutionsDir the subdirectory within the clone solutions are written to,
- *                     kept separate from the problem content itself
+ * @param solutionsDir the subdirectory within the clone learner solutions are written
+ *                     to (default {@code learner-solutions}), kept separate both from
+ *                     the problem content itself and from the authoring tool's own
+ *                     {@code solutions/} reference-solution path it must never clobber
  * @param authorName   commit author name; {@code null} leaves JGit to resolve identity
  *                     from the clone's own git config (the normal case - a real clone
  *                     already has the captain's committer identity configured, which is
@@ -40,7 +47,7 @@ public record SolutionCommitProperties(
     public SolutionCommitProperties {
         enabled = enabled == null || enabled;
         push = push == null || push;
-        solutionsDir = (solutionsDir == null || solutionsDir.isBlank()) ? "solutions" : solutionsDir;
+        solutionsDir = (solutionsDir == null || solutionsDir.isBlank()) ? "learner-solutions" : solutionsDir;
         authorName = (authorName == null || authorName.isBlank()) ? null : authorName;
         authorEmail = (authorEmail == null || authorEmail.isBlank()) ? null : authorEmail;
     }
