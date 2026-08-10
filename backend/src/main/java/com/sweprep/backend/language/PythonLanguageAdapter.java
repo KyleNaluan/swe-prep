@@ -97,9 +97,18 @@ public class PythonLanguageAdapter implements LanguageAdapter {
      * count and order of parameters drives this.
      */
     private static void appendBindings(StringBuilder out, Signature signature, String indent) {
+        appendBindings(out, signature, indent, false);
+    }
+
+    private static void appendBindings(StringBuilder out, Signature signature, String indent, boolean copyPerCall) {
         List<Parameter> parameters = signature.parameters();
         for (int i = 0; i < parameters.size(); i++) {
-            out.append(indent).append("arg").append(i).append(" = case_input[").append(i).append("]\n");
+            out.append(indent).append("arg").append(i).append(" = ");
+            if (copyPerCall) {
+                out.append("copy.deepcopy(case_input[").append(i).append("])\n");
+            } else {
+                out.append("case_input[").append(i).append("]\n");
+            }
         }
     }
 
@@ -147,16 +156,19 @@ public class PythonLanguageAdapter implements LanguageAdapter {
      * {@link JavaLanguageAdapter}'s: a discarded warm-up phase followed by timed
      * repetitions, each measured with {@code time.perf_counter_ns()} - the standard
      * library's monotonic, highest-resolution clock, the direct Python analogue of
-     * {@code System.nanoTime()}. A fresh {@code Solution} instance every call, and
-     * arguments re-read from the parsed input every time, for the same fairness reason
-     * as the Java harness: a solution that mutates its input is timed fairly on every
-     * repetition, not just the first.
+     * {@code System.nanoTime()}. A fresh {@code Solution} instance every call, and a
+     * fresh {@code copy.deepcopy} of the arguments before every call, for the same
+     * fairness reason as the Java harness (which re-binds via {@code convertValue}): a
+     * solution that mutates its input in place is timed fairly on every repetition, not
+     * just the first. The copy is taken outside the timed window, before
+     * {@code perf_counter_ns()}, so copying never inflates a measurement.
      */
     private static String buildTimingHarness(Signature signature) {
         StringBuilder h = new StringBuilder();
         h.append("# Generated from the exercise signature - do not edit. Growing-input timing\n");
         h.append("# mode (issue #17): one size per invocation; a discarded warm-up phase\n");
         h.append("# precedes the timed repetitions.\n");
+        h.append("import copy\n");
         h.append("import json\n");
         h.append("import sys\n");
         h.append("import time\n\n");
@@ -170,7 +182,7 @@ public class PythonLanguageAdapter implements LanguageAdapter {
         h.append(INDENT).append("for _ in range(warmup):\n");
         h.append(INDENT).append(INDENT).append("solution = ").append(SUBMISSION_MODULE).append("()\n");
         h.append(INDENT).append(INDENT).append("try:\n");
-        appendBindings(h, signature, INDENT.repeat(3));
+        appendBindings(h, signature, INDENT.repeat(3), true);
         h.append(INDENT.repeat(3)).append(callExpression(signature)).append('\n');
         h.append(INDENT).append(INDENT).append("except Exception:\n");
         h.append(INDENT.repeat(3))
@@ -183,7 +195,7 @@ public class PythonLanguageAdapter implements LanguageAdapter {
         h.append(INDENT).append(INDENT).append("solution = ").append(SUBMISSION_MODULE).append("()\n");
         h.append(INDENT).append(INDENT).append("entry = {}\n");
         h.append(INDENT).append(INDENT).append("try:\n");
-        appendBindings(h, signature, INDENT.repeat(3));
+        appendBindings(h, signature, INDENT.repeat(3), true);
         h.append(INDENT.repeat(3)).append("start_nanos = time.perf_counter_ns()\n");
         h.append(INDENT.repeat(3)).append(callExpression(signature)).append('\n');
         h.append(INDENT.repeat(3))
