@@ -12,7 +12,6 @@ import com.sweprep.backend.learned.LearnedService;
 import com.sweprep.backend.learned.LearnedState;
 import java.time.Clock;
 import java.time.LocalDate;
-import java.time.ZoneId;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -59,7 +58,7 @@ public class ReadinessService {
     private final AttemptRepository attempts;
     private final CurrentUser currentUser;
     private final ReadinessProperties properties;
-    private final ZoneId zone;
+    private final Clock clock;
 
     public ReadinessService(
             ContentCatalog catalog,
@@ -73,7 +72,7 @@ public class ReadinessService {
         this.attempts = attempts;
         this.currentUser = currentUser;
         this.properties = properties;
-        this.zone = clock.getZone();
+        this.clock = clock;
     }
 
     /** The current user's readiness picture. */
@@ -113,8 +112,8 @@ public class ReadinessService {
                 .toList();
 
         Map<String, LocalDate> lastTouchedDates = attempts.lastAttemptDates(userId).entrySet().stream()
-                .collect(Collectors.toMap(Map.Entry::getKey, e -> LocalDate.ofInstant(e.getValue(), zone)));
-        LocalDate today = LocalDate.now(zone);
+                .collect(Collectors.toMap(Map.Entry::getKey, e -> LocalDate.ofInstant(e.getValue(), clock.getZone())));
+        LocalDate today = LocalDate.now(clock);
         List<String> shakyTopics =
                 TopicReadinessCalculator.shakyTopics(exercises, learnedStates, attemptedIds, properties);
         List<StaleTopic> staleTopics = TopicReadinessCalculator.staleTopics(
