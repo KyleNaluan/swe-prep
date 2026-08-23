@@ -187,6 +187,7 @@ describe('App', () => {
         submissionCount: 2,
         hintsTaken: 0,
         failingCaseRevealed: true,
+        solutionSeen: false,
       },
     ]
     vi.stubGlobal(
@@ -302,6 +303,83 @@ describe('App', () => {
     expect(await screen.findByText('Expected')).toBeInTheDocument()
     expect(screen.getByText('9')).toBeInTheDocument()
     expect(screen.getByText('6')).toBeInTheDocument()
+  })
+
+  it('reveals the reference solution before passing and notes it is solution-seen', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+        const href = String(url)
+        if (href.endsWith('/api/reps/warmup')) return { ok: true, json: async () => [] } as Response
+        if (href.endsWith('/api/session')) return { ok: true, json: async () => ({ dayComplete: false, completedAt: null, streak: 0 }) } as Response
+        if (href.endsWith('/api/exercises')) return { ok: true, json: async () => CATALOG } as Response
+        if (href.includes('/api/exercises/two-sum'))
+          return { ok: true, json: async () => CODE_EXERCISE } as Response
+        if (href.endsWith('/api/attempts')) {
+          if (init?.method === 'POST')
+            return { ok: true, json: async () => ({ id: 'attempt-1' }) } as Response
+          return { ok: true, json: async () => [] } as Response
+        }
+        if (href.endsWith('/solution'))
+          return {
+            ok: true,
+            json: async () => ({ solution: 'class Solution { /* reference */ }', prePass: true }),
+          } as Response
+        throw new Error(`unexpected fetch to ${href}`)
+      }) as unknown as typeof fetch,
+    )
+
+    render(<App />)
+    await gotoPractice()
+    await screen.findByRole('heading', { name: 'Two Sum' })
+
+    expect(screen.queryByText('class Solution { /* reference */ }')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show the reference solution' }))
+
+    expect(await screen.findByText('class Solution { /* reference */ }')).toBeInTheDocument()
+    // Never framed as a penalty - a plain, honest note about what it affects.
+    expect(screen.getByText(/will not count as solved cold/i)).toBeInTheDocument()
+  })
+
+  it('presents a post-pass solution reveal as an unrestricted comparison, not a warning', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+        const href = String(url)
+        if (href.endsWith('/api/reps/warmup')) return { ok: true, json: async () => [] } as Response
+        if (href.endsWith('/api/session')) return { ok: true, json: async () => ({ dayComplete: false, completedAt: null, streak: 0 }) } as Response
+        if (href.endsWith('/api/exercises')) return { ok: true, json: async () => CATALOG } as Response
+        if (href.includes('/api/exercises/two-sum'))
+          return { ok: true, json: async () => CODE_EXERCISE } as Response
+        if (href.endsWith('/api/attempts')) {
+          if (init?.method === 'POST')
+            return { ok: true, json: async () => ({ id: 'attempt-1' }) } as Response
+          return { ok: true, json: async () => [] } as Response
+        }
+        if (href.endsWith('/submissions'))
+          return { ok: true, json: async () => ({ outcome: 'PASSED', passed: 3, total: 3, detail: '' }) } as Response
+        if (href.endsWith('/solution'))
+          return {
+            ok: true,
+            json: async () => ({ solution: 'class Solution { /* reference */ }', prePass: false }),
+          } as Response
+        throw new Error(`unexpected fetch to ${href}`)
+      }) as unknown as typeof fetch,
+    )
+
+    render(<App />)
+    await gotoPractice()
+    await screen.findByRole('heading', { name: 'Two Sum' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Run' }))
+    await screen.findByText(/3 of 3 tests passed/)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show the reference solution' }))
+
+    expect(await screen.findByText('class Solution { /* reference */ }')).toBeInTheDocument()
+    expect(screen.queryByText(/solved cold/i)).not.toBeInTheDocument()
+    expect(screen.getByText(/where style and idiom learning happens/i)).toBeInTheDocument()
   })
 
   it('shows the check explanation automatically on a wrong answer', async () => {

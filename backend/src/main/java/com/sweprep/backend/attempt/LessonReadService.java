@@ -70,7 +70,8 @@ public class LessonReadService {
                 false,
                 null,
                 null,
-                null);
+                null,
+                false);
         return attempts.upsertRead(attempt);
     }
 }

@@ -158,12 +158,24 @@ type AttemptView = {
   // Whether the solver asked to see the check's explanation (issue #51) - a confidence
   // signal recorded distinctly from taking a hint, never a penalty.
   explanationRequested: boolean
+  // Whether the reference solution was revealed on this attempt before it ever passed
+  // (issue #82) - never a penalty, but it does mean this solve will not count toward
+  // "solved cold" until a later, clean pass.
+  solutionSeen: boolean
 }
 
 // The response from POST .../explanation: the check's explanation, absent when the check
 // carries none (the request is still recorded).
 type ExplanationResponse = {
   explanation?: string
+}
+
+// The response from POST .../solution (issue #82): the disclosed reference solution
+// (absent when content has none authored), and whether this reveal happened before the
+// attempt had passed - the distinction the pre-pass/post-pass presentation reads.
+type SolutionResponse = {
+  solution?: string
+  prePass: boolean
 }
 
 // After this many failed submissions in a row, the app quietly offers the next hint.
@@ -236,6 +248,14 @@ function Practice({
   // answer, or fetched on request when correct. Null until there is something to show.
   const [explanation, setExplanation] = useState<string | null>(null)
   const [explanationBusy, setExplanationBusy] = useState(false)
+
+  // The reference-solution reveal (issue #82): available on request at any time,
+  // recorded, never penalised. `solutionPrePass` distinguishes the two presentations -
+  // seen before this attempt ever passed (marks it solution-seen) vs. freely afterward.
+  const [solution, setSolution] = useState<string | null>(null)
+  const [solutionPrePass, setSolutionPrePass] = useState(false)
+  const [solutionBusy, setSolutionBusy] = useState(false)
+  const [solutionError, setSolutionError] = useState<string | null>(null)
 
   // The complexity self-report flow (issue #17): the claim picked (before it is sent),
   // the result once claimed (the authored target and measurement, revealed only then),
@@ -351,6 +371,9 @@ function Practice({
     setComplexityError(null)
     setComplexityTimeClaim('LINEAR')
     setComplexitySpaceClaim('LINEAR')
+    setSolution(null)
+    setSolutionPrePass(false)
+    setSolutionError(null)
     apiFetch(`/api/exercises/${selectedId}?language=${encodeURIComponent(language)}`)
       .then(async (response) => {
         if (!response.ok) throw new Error(await errorMessage(response))
@@ -514,6 +537,30 @@ function Practice({
     }
   }
 
+  // Reveal the reference solution on request (issue #82). Always available, always
+  // recorded, never penalised - but a reveal before this attempt has passed marks it
+  // solution-seen, so the panel presents that case distinctly from a free post-pass look.
+  async function handleRevealSolution() {
+    if (!exercise) return
+    setSolutionBusy(true)
+    setSolutionError(null)
+    try {
+      const attemptId = await ensureAttempt(exercise.id)
+      const response = await apiFetch(`/api/attempts/${attemptId}/solution`, {
+        method: 'POST',
+      })
+      if (!response.ok) throw new Error(await errorMessage(response))
+      const disclosed = (await response.json()) as SolutionResponse
+      setSolution(disclosed.solution ?? null)
+      setSolutionPrePass(disclosed.prePass)
+      refreshHistory()
+    } catch (error: unknown) {
+      setSolutionError(error instanceof Error ? error.message : String(error))
+    } finally {
+      setSolutionBusy(false)
+    }
+  }
+
   // Submit the complexity self-report and, in the same response, reveal the authored
   // target and what measurement found (issue #17). The target is not sent until this
   // call returns - it was never in any earlier response this page holds - so stating
@@ -601,6 +648,9 @@ function Practice({
     setExplanation(null)
     setComplexityResult(null)
     setComplexityError(null)
+    setSolution(null)
+    setSolutionPrePass(false)
+    setSolutionError(null)
     refreshHistory()
   }
 
@@ -787,6 +837,16 @@ function Practice({
                     onCancel={() => setRevealPrompting(false)}
                   />
                 )}
+
+              {exercise.response.kind === 'code' && (
+                <SolutionPanel
+                  solution={solution}
+                  prePass={solutionPrePass}
+                  busy={solutionBusy}
+                  error={solutionError}
+                  onReveal={handleRevealSolution}
+                />
+              )}
 
               {exercise.response.kind === 'code' && exercise.hasComplexityCheck && solved && (
                 <ComplexityPanel
@@ -1265,6 +1325,58 @@ function ComplexityPanel({
   )
 }
 
+// The reference-solution reveal (issue #82): available on request at any time, recorded,
+// never penalised. Pre-pass and post-pass are deliberately distinct presentations - seeing
+// the solution before this attempt has ever passed marks it solution-seen (a plain,
+// honest note, not a warning), while a post-pass look is framed as the comparison it is
+// meant to encourage.
+function SolutionPanel({
+  solution,
+  prePass,
+  busy,
+  error,
+  onReveal,
+}: {
+  solution: string | null
+  prePass: boolean
+  busy: boolean
+  error: string | null
+  onReveal: () => void
+}) {
+  if (solution) {
+    return (
+      <section className="solution">
+        <h2>Reference solution</h2>
+        {prePass ? (
+          <p className="hints-note">
+            Seeing this is recorded - it never counts against you, but this attempt will not
+            count as solved cold until you pass a fresh one cleanly, and it comes back around
+            sooner.
+          </p>
+        ) : (
+          <p className="hints-note">
+            Reading a working solution against your own passing one is where style and idiom
+            learning happens.
+          </p>
+        )}
+        <pre className="solution-body">{solution}</pre>
+      </section>
+    )
+  }
+  return (
+    <section className="solution">
+      <button type="button" className="secondary" onClick={onReveal} disabled={busy}>
+        {busy ? 'Revealing...' : 'Show the reference solution'}
+      </button>
+      <p className="hints-note">
+        Available whenever you want it. Revealing before you pass marks this attempt
+        solution-seen and brings it back around sooner - never a penalty, just an honest note.
+      </p>
+      {error && <p className="status down">Could not reveal the solution: {error}</p>}
+    </section>
+  )
+}
+
 // The check's explanation (issue #51): why the correct answer is correct, kept separate
 // from the hint ladder. It is shown automatically on a wrong answer (the parent hands
 // the disclosed text down); when the answer is correct it is one keystroke away, and
@@ -1321,6 +1433,7 @@ function History({ attempts }: { attempts: AttemptView[] }) {
             <th>Submissions</th>
             <th>Hints</th>
             <th>Revealed</th>
+            <th>Solution seen</th>
             <th>Started</th>
           </tr>
         </thead>
@@ -1336,6 +1449,7 @@ function History({ attempts }: { attempts: AttemptView[] }) {
               <td>{attempt.submissionCount}</td>
               <td>{attempt.hintsTaken > 0 ? attempt.hintsTaken : '-'}</td>
               <td>{attempt.failingCaseRevealed ? 'yes' : '-'}</td>
+              <td>{attempt.solutionSeen ? 'yes' : '-'}</td>
               <td>{new Date(attempt.startedAt).toLocaleString()}</td>
             </tr>
           ))}

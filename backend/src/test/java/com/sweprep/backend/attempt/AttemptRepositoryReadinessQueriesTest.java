@@ -47,22 +47,37 @@ class AttemptRepositoryReadinessQueriesTest {
     private ContentCatalog contentCatalog;
 
     @Test
-    void solvedColdCountsOnlyAChallengeSolvedWithNoHintAndNoReveal() {
+    void solvedColdCountsOnlyAChallengeSolvedWithNoHintNoRevealAndNoSolutionSeen() {
         UUID user = currentUser.id();
-        insert(user, "solved-clean", "CHALLENGE", AttemptOutcome.SOLVED, 0, false);
-        insert(user, "solved-with-hint", "CHALLENGE", AttemptOutcome.SOLVED, 1, false);
-        insert(user, "solved-with-reveal", "CHALLENGE", AttemptOutcome.SOLVED, 0, true);
-        insert(user, "abandoned", "CHALLENGE", AttemptOutcome.ABANDONED, 0, false);
-        insert(user, "solved-rep", "REP", AttemptOutcome.SOLVED, 0, false);
+        insert(user, "solved-clean", "CHALLENGE", AttemptOutcome.SOLVED, 0, false, false);
+        insert(user, "solved-with-hint", "CHALLENGE", AttemptOutcome.SOLVED, 1, false, false);
+        insert(user, "solved-with-reveal", "CHALLENGE", AttemptOutcome.SOLVED, 0, true, false);
+        // Issue #82: a solve tainted by a pre-pass solution reveal is excluded too.
+        insert(user, "solved-with-solution-seen", "CHALLENGE", AttemptOutcome.SOLVED, 0, false, true);
+        insert(user, "abandoned", "CHALLENGE", AttemptOutcome.ABANDONED, 0, false, false);
+        insert(user, "solved-rep", "REP", AttemptOutcome.SOLVED, 0, false, false);
 
         assertThat(attempts.solvedColdExerciseIds(user)).containsExactly("solved-clean");
     }
 
     @Test
+    void solvedColdCountsAnExerciseAgainOnceALaterCleanPassFollowsASolutionSeenOne() {
+        UUID user = currentUser.id();
+        // The first sitting saw the solution before passing - tainted on its own.
+        insert(user, "two-attempts", "CHALLENGE", AttemptOutcome.SOLVED, 0, false, true);
+        // A fresh sitting later passes clean, with the solution never seen on it - issue
+        // #82's "excluded... until a later clean pass": the exists-any query is satisfied
+        // by this second, untainted row alone.
+        insert(user, "two-attempts", "CHALLENGE", AttemptOutcome.SOLVED, 0, false, false);
+
+        assertThat(attempts.solvedColdExerciseIds(user)).containsExactly("two-attempts");
+    }
+
+    @Test
     void explainedExerciseIdsCountsOnlySelfCheckCompletions() {
         UUID user = currentUser.id();
-        insert(user, "explained-one", "CHALLENGE", AttemptOutcome.EXPLAINED, 0, false);
-        insert(user, "solved-one", "REP", AttemptOutcome.SOLVED, 0, false);
+        insert(user, "explained-one", "CHALLENGE", AttemptOutcome.EXPLAINED, 0, false, false);
+        insert(user, "solved-one", "REP", AttemptOutcome.SOLVED, 0, false, false);
 
         assertThat(attempts.explainedExerciseIds(user)).containsExactly("explained-one");
     }
@@ -98,12 +113,13 @@ class AttemptRepositoryReadinessQueriesTest {
                 false,
                 null,
                 null,
-                null);
+                null,
+                false);
     }
 
     private void insert(
             UUID userId, String exerciseId, String form, AttemptOutcome outcome, int hintsTaken,
-            boolean failingCaseRevealed) {
+            boolean failingCaseRevealed, boolean solutionSeen) {
         attempts.insert(new Attempt(
                 UUID.randomUUID(),
                 userId,
@@ -120,6 +136,7 @@ class AttemptRepositoryReadinessQueriesTest {
                 false,
                 null,
                 null,
-                null));
+                null,
+                solutionSeen));
     }
 }

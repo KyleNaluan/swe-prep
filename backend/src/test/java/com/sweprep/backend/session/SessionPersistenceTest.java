@@ -167,6 +167,7 @@ class SessionPersistenceTest {
                 false,
                 null,
                 null,
-                null));
+                null,
+                false));
     }
 }
