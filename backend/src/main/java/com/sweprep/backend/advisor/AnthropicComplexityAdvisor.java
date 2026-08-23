@@ -2,7 +2,7 @@ package com.sweprep.backend.advisor;
 
 import com.anthropic.client.AnthropicClient;
 import com.anthropic.client.okhttp.AnthropicOkHttpClient;
-import com.anthropic.errors.AnthropicServiceException;
+import com.anthropic.errors.AnthropicException;
 import com.anthropic.models.messages.MessageCreateParams;
 import com.anthropic.models.messages.StructuredMessageCreateParams;
 import com.sweprep.backend.exercise.Exercise;
@@ -62,7 +62,7 @@ public class AnthropicComplexityAdvisor implements ComplexityAdvisor {
                     .findFirst()
                     .orElseThrow(() -> new ComplexityAdvisorException(
                             "The model returned no structured complexity reading"));
-        } catch (AnthropicServiceException e) {
+        } catch (AnthropicException e) {
             throw new ComplexityAdvisorException("Second opinion call failed: " + e.getMessage(), e);
         }
     }
