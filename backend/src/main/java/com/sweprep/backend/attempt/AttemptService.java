@@ -1,5 +1,8 @@
 package com.sweprep.backend.attempt;
 
+import com.sweprep.backend.advisor.ComplexityAdvisor;
+import com.sweprep.backend.advisor.ComplexityDisagreement;
+import com.sweprep.backend.advisor.ModelComplexityReading;
 import com.sweprep.backend.commit.SolutionCommitResult;
 import com.sweprep.backend.commit.SolutionCommitService;
 import com.sweprep.backend.complexity.ComplexityBucket;
@@ -64,6 +67,7 @@ public class AttemptService {
     private final TransactionTemplate transactionTemplate;
     private final SolutionCommitService solutionCommitService;
     private final ReferenceSolutionCatalog referenceSolutions;
+    private final ComplexityAdvisor complexityAdvisor;
 
     public AttemptService(
             ExerciseCatalog catalog,
@@ -75,7 +79,8 @@ public class AttemptService {
             CurrentUser currentUser,
             PlatformTransactionManager transactionManager,
             SolutionCommitService solutionCommitService,
-            ReferenceSolutionCatalog referenceSolutions) {
+            ReferenceSolutionCatalog referenceSolutions,
+            ComplexityAdvisor complexityAdvisor) {
         this.catalog = catalog;
         this.graders = graders;
         this.selfCheckGrader = selfCheckGrader;
@@ -86,6 +91,7 @@ public class AttemptService {
         this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.solutionCommitService = solutionCommitService;
         this.referenceSolutions = referenceSolutions;
+        this.complexityAdvisor = complexityAdvisor;
     }
 
     /** Opens a new sitting with an exercise, snapshotting its title, domain and form. */
@@ -352,6 +358,82 @@ public class AttemptService {
             throw new IllegalAttemptStateException(
                     "Attempt " + attemptId + " has already recorded a complexity claim");
         }
+    }
+
+    /**
+     * Asks a language model for an independent reading of a solved attempt's time
+     * complexity (issue #83) and compares it against the solver's own claim and,
+     * when measurement reached a conclusion, the empirical result - a third,
+     * advisory voice beside the claimed and measured values {@link #claimComplexity}
+     * already reveals (issue #17). One short model call, on request only.
+     *
+     * <p><strong>Advisory only, never persisted.</strong> Nothing here is written to
+     * the attempt or anywhere else, so there is no column this reading could ever
+     * feed into grading, the schedule, or readiness - the hard boundary is
+     * structural, not a convention a future caller has to remember.
+     *
+     * <p>Requires a claim already recorded: a second opinion is compared against
+     * that claim, so {@link #claimComplexity} must run first, exactly as the
+     * authored target and the measurement are revealed there and nowhere earlier.
+     * The submission read is the one that solved the attempt, the same one {@link
+     * #claimComplexity} measured.
+     *
+     * @throws AttemptNotFoundException       if the attempt or its exercise is unknown
+     * @throws IllegalAttemptStateException   if the attempt is not solved
+     * @throws InvalidAttemptRequestException if no complexity claim has been recorded
+     *                                        yet, or no advisor is configured - see
+     *                                        {@link #modelOpinionAvailable()}, which a
+     *                                        caller must check before ever offering
+     *                                        this action
+     */
+    public ModelOpinionResult secondOpinion(UUID attemptId) {
+        Attempt attempt = requireOwnedUnlocked(attemptId);
+        if (attempt.outcome() != AttemptOutcome.SOLVED) {
+            throw new IllegalAttemptStateException("Attempt " + attemptId
+                    + " is not solved yet; a second opinion follows a passing submission");
+        }
+        ComplexityClaim claim = ComplexityClaim.parse(attempt.complexityClaim());
+        if (claim == null) {
+            throw new InvalidAttemptRequestException("Attempt " + attemptId
+                    + " has no complexity claim recorded yet; claim complexity before asking for a second opinion");
+        }
+        if (!complexityAdvisor.available()) {
+            throw new InvalidAttemptRequestException("No model complexity advisor is configured");
+        }
+        Exercise exercise = requireExercise(attempt);
+
+        List<Submission> submitted = submissions.findByAttempt(attempt.id());
+        Submission lastSubmission = submitted.isEmpty() ? null : submitted.get(submitted.size() - 1);
+        String source = lastSubmission == null ? "" : lastSubmission.response();
+        String language = lastSubmission == null
+                ? LanguageAdapterRegistry.DEFAULT_LANGUAGE
+                : lastSubmission.language();
+
+        ModelComplexityReading reading = complexityAdvisor.read(exercise, source, language);
+        ComplexityDisagreement disagreement = ComplexityDisagreement.evaluate(
+                claim.time(), measuredBucket(attempt.measuredComplexity()), reading.time());
+        return new ModelOpinionResult(reading.time(), reading.reasoning(), disagreement);
+    }
+
+    /**
+     * Whether the model second opinion action should even be offered (issue #83) -
+     * the check a caller makes before ever showing the button, answerable with no
+     * network call. {@code false} whenever no API key is configured, which is the
+     * whole mechanism behind "missing key means the feature is absent, not broken".
+     */
+    public boolean modelOpinionAvailable() {
+        return complexityAdvisor.available();
+    }
+
+    // Reconstructs the bucket empirical measurement recorded for an attempt (see
+    // #claimComplexity, ComplexityResponse) for comparison against a fresh model
+    // reading. null for a measurement that was skipped or inconclusive - an absent
+    // voice to compare against, never a dissenting one.
+    private static ComplexityBucket measuredBucket(String measuredComplexity) {
+        if (measuredComplexity == null || measuredComplexity.equals("INCONCLUSIVE")) {
+            return null;
+        }
+        return ComplexityBucket.valueOf(measuredComplexity.split(":", 2)[0]);
     }
 
     /**

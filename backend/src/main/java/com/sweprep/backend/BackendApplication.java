@@ -1,5 +1,6 @@
 package com.sweprep.backend;
 
+import com.sweprep.backend.advisor.ComplexityAdvisorProperties;
 import com.sweprep.backend.commit.SolutionCommitProperties;
 import com.sweprep.backend.complexity.ComplexityProperties;
 import com.sweprep.backend.content.ContentProperties;
@@ -23,7 +24,8 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
     SolutionCommitProperties.class,
     ReadinessProperties.class,
     StreakProperties.class,
-    SqlFixtureProperties.class
+    SqlFixtureProperties.class,
+    ComplexityAdvisorProperties.class
 })
 public class BackendApplication {
 
