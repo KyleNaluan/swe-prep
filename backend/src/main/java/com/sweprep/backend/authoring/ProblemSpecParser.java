@@ -234,6 +234,54 @@ public final class ProblemSpecParser {
                 yield new InputGenerator.Argument.ScalingIntArray(
                         requireField(source, node, "min").asInt(), requireField(source, node, "max").asInt());
             }
+            case "scalingString" -> {
+                if (parameter.type() != DataType.STRING) {
+                    throw malformed(
+                            source,
+                            "'complexity.generator' declares a scalingString for parameter '"
+                                    + parameter.name() + "', which is not a STRING");
+                }
+                String alphabet = optionalText(source, node, "alphabet");
+                yield new InputGenerator.Argument.ScalingString(
+                        alphabet == null ? InputGenerator.Argument.ScalingString.DEFAULT_ALPHABET : alphabet);
+            }
+            case "scalingIntMatrix" -> {
+                if (parameter.type() != DataType.INT_MATRIX) {
+                    throw malformed(
+                            source,
+                            "'complexity.generator' declares a scalingIntMatrix for parameter '"
+                                    + parameter.name() + "', which is not an INT_MATRIX");
+                }
+                JsonNode cols = node.get("cols");
+                yield cols == null || cols.isNull()
+                        ? new InputGenerator.Argument.ScalingIntMatrix(
+                                requireField(source, node, "min").asInt(),
+                                requireField(source, node, "max").asInt())
+                        : new InputGenerator.Argument.ScalingIntMatrix(
+                                requireField(source, node, "min").asInt(),
+                                requireField(source, node, "max").asInt(),
+                                cols.asInt());
+            }
+            case "scalingListNode" -> {
+                if (parameter.type() != DataType.LIST_NODE) {
+                    throw malformed(
+                            source,
+                            "'complexity.generator' declares a scalingListNode for parameter '"
+                                    + parameter.name() + "', which is not a LIST_NODE");
+                }
+                yield new InputGenerator.Argument.ScalingListNode(
+                        requireField(source, node, "min").asInt(), requireField(source, node, "max").asInt());
+            }
+            case "scalingTreeNode" -> {
+                if (parameter.type() != DataType.TREE_NODE) {
+                    throw malformed(
+                            source,
+                            "'complexity.generator' declares a scalingTreeNode for parameter '"
+                                    + parameter.name() + "', which is not a TREE_NODE");
+                }
+                yield new InputGenerator.Argument.ScalingTreeNode(
+                        requireField(source, node, "min").asInt(), requireField(source, node, "max").asInt());
+            }
             case "fixed" -> new InputGenerator.Argument.Fixed(requireField(source, node, "value"));
             default -> throw malformed(source, "unknown complexity generator argument kind '" + kind + "'");
         };
