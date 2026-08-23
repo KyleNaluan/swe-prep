@@ -36,7 +36,11 @@ import java.util.regex.Pattern;
  *   "id": "...", "title": "...", "statement": "...",
  *   "domain": "algorithms", "topics": ["array"],
  *   "difficulty": "EASY|MEDIUM|HARD", "form": "REP|CHALLENGE",
- *   "response": { "kind": "code",   "signature": {...} }
+ *   "response": { "kind": "code",   "signature": {              // types: INT, INT_ARRAY,
+ *                    "method": "reverseList",                   // INT_MATRIX, BOOLEAN,
+ *                    "parameters": [                            // STRING, LIST_NODE,
+ *                       { "name": "head", "type": "LIST_NODE" } ], // TREE_NODE
+ *                    "returns": "LIST_NODE" } }
  *             |  { "kind": "choice", "options": [                     // issue #42
  *                    "The correct answer",                            // a plain string, or
  *                    { "text": "A wrong option",                      // an object whose
@@ -44,6 +48,14 @@ import java.util.regex.Pattern;
  *             |  { "kind": "freeText" }
  *             |  { "kind": "query" },                                  // issue #25, a SQL query
  *   "grading":  { "kind": "testCases", "comparison": "...", "cases": [...] }
+ *               // A LIST_NODE value is LeetCode's array, [1,2,3] being 1 -&gt; 2 -&gt; 3;
+ *               // a TREE_NODE value is its level-order-with-nulls array,
+ *               // [3,9,20,null,null,15,7]. Both use [] (or null) for empty. A LIST_NODE
+ *               // *argument* may instead be { "values": [3,2,0,-4], "pos": 1 } to pose
+ *               // a cycle, LeetCode's own way of writing it - "pos" is the index the
+ *               // tail joins back to, -1 (or absent) for none. Only the plain array
+ *               // form is ever returned, so a cycle can never reach the serialiser.
+ *               // See DataType for the full convention.
  *             |  { "kind": "answerKey", "comparison": "...", "expected": ... }
  *             |  { "kind": "selfCheck", "modelAnswer": "..." }
  *             |  { "kind": "resultSet",                                // issue #25
@@ -89,8 +101,11 @@ final class ExerciseParser {
         Difficulty difficulty = json.requireEnum(root, "difficulty", Difficulty.class);
         Form form = json.requireEnum(root, "form", Form.class);
         Response response = response(json, json.requireObject(root, "response"));
-        Grading grading = grading(json, json.requireObject(root, "grading"));
+        JsonNode gradingNode = json.requireObject(root, "grading");
+        rejectNullLinkedReturn(json, response, gradingNode);
+        Grading grading = grading(json, gradingNode);
         validateDistractors(json, response, grading);
+        validateLinkedStructureValues(json, response, grading);
         List<Hint> hints = hints(json, root);
         String explanation = json.optionalText(root, "explanation");
         String derivedFrom = json.optionalText(root, "derivedFrom");
@@ -279,6 +294,57 @@ final class ExerciseParser {
             result.add(new TestCase(input, json.requireField(testCase, "expected")));
         }
         return result;
+    }
+
+    /**
+     * Catches an explicit {@code "expected": null} for a linked-structure return before
+     * {@link #grading} reads {@code expected} as a required field and reports it as a
+     * misleading "missing required field" instead. See {@link NodeShapes#rejectNullReturn}.
+     */
+    private static void rejectNullLinkedReturn(ContentJson json, Response response, JsonNode gradingNode) {
+        if (!(response instanceof Response.Code code)
+                || !code.signature().returnType().isLinkedStructure()) {
+            return;
+        }
+        DataType returnType = code.signature().returnType();
+        JsonNode kind = gradingNode.get("kind");
+        String gradingKind = kind == null ? null : kind.asText(null);
+        if ("testCases".equals(gradingKind)) {
+            JsonNode cases = gradingNode.get("cases");
+            if (cases != null && cases.isArray()) {
+                for (JsonNode testCase : cases) {
+                    NodeShapes.rejectNullReturn(json, returnType, testCase.get("expected"));
+                }
+            }
+        } else if ("answerKey".equals(gradingKind)) {
+            NodeShapes.rejectNullReturn(json, returnType, gradingNode.get("expected"));
+        }
+    }
+
+    /**
+     * The linked-structure gate (issue #6's adopted LeetCode serialisation): when a code
+     * signature declares a {@code LIST_NODE} or {@code TREE_NODE}, every value that has
+     * to be built into - or compared against - one of those structures is checked here,
+     * so a mistyped case names the file and the field instead of surfacing later as an
+     * opaque "the submission threw" against a correct solution. See {@link NodeShapes}.
+     * A no-op for every signature that declares neither, so no existing content changes.
+     */
+    private static void validateLinkedStructureValues(
+            ContentJson json, Response response, Grading grading) {
+        if (!(response instanceof Response.Code code)) {
+            return;
+        }
+        Signature signature = code.signature();
+        if (grading instanceof Grading.TestCases testCases) {
+            for (TestCase testCase : testCases.cases()) {
+                NodeShapes.validate(
+                        json, signature, List.of(testCase.input()), testCase.expected());
+            }
+        } else if (grading instanceof Grading.AnswerKey answerKey) {
+            // A code response judged by a fixed answer (predict-output) has no case
+            // inputs of its own, but its expected value is still a returned structure.
+            NodeShapes.validate(json, signature, List.of(), answerKey.expected());
+        }
     }
 
     private static Comparison comparison(ContentJson json, JsonNode node) {
