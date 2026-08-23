@@ -9,6 +9,7 @@ import com.sweprep.backend.exercise.Complexity;
 import com.sweprep.backend.exercise.ComplexityCheck;
 import com.sweprep.backend.exercise.Content;
 import com.sweprep.backend.exercise.ContentCatalog;
+import com.sweprep.backend.exercise.DataType;
 import com.sweprep.backend.exercise.Exercise;
 import com.sweprep.backend.exercise.ExerciseCatalog;
 import com.sweprep.backend.exercise.Family;
@@ -148,6 +149,62 @@ class FileExerciseCatalogTest {
     private FileExerciseCatalog catalog(Path dir) {
         return new FileExerciseCatalog(new ContentProperties(dir.toString()), mapper);
     }
+
+    // A linked-list exercise in the adopted LeetCode serialisation (issue #6): a list is
+    // its array of values, and the cycle form { values, pos } poses "the tail joins back
+    // to index pos" as ordinary case data on the argument itself.
+    private static final String LIST_EXERCISE =
+            """
+            {
+              "id": "drop-first", "title": "Drop First", "statement": "Drop the first node.",
+              "domain": "algorithms", "topics": ["linked list"],
+              "difficulty": "EASY", "form": "CHALLENGE",
+              "response": { "kind": "code", "signature": {
+                "method": "dropFirst",
+                "parameters": [ { "name": "head", "type": "LIST_NODE" } ],
+                "returns": "LIST_NODE" } },
+              "grading": { "kind": "testCases", "comparison": "exact",
+                "cases": [ { "input": [[1, 2, 3]], "expected": [2, 3] },
+                           { "input": [[]], "expected": [] },
+                           { "input": [null], "expected": [] } ] }
+            }
+            """;
+
+    // A binary-tree exercise: LeetCode's level-order-with-nulls array, nulls being absent
+    // children, [] the empty tree.
+    private static final String TREE_EXERCISE =
+            """
+            {
+              "id": "drop-right", "title": "Drop Right", "statement": "Drop the right subtree.",
+              "domain": "algorithms", "topics": ["binary tree"],
+              "difficulty": "EASY", "form": "CHALLENGE",
+              "response": { "kind": "code", "signature": {
+                "method": "dropRight",
+                "parameters": [ { "name": "root", "type": "TREE_NODE" } ],
+                "returns": "TREE_NODE" } },
+              "grading": { "kind": "testCases", "comparison": "exact",
+                "cases": [ { "input": [[3, 9, 20, null, null, 15, 7]], "expected": [3, 9] },
+                           { "input": [[]], "expected": [] } ] }
+            }
+            """;
+
+    // The cycle-carrying input LeetCode's linked-list-cycle problem needs: the argument
+    // itself carries "pos", the index the tail joins back to.
+    private static final String CYCLE_EXERCISE =
+            """
+            {
+              "id": "revisits", "title": "Revisits", "statement": "Does it revisit a node?",
+              "domain": "algorithms", "topics": ["linked list"],
+              "difficulty": "EASY", "form": "CHALLENGE",
+              "response": { "kind": "code", "signature": {
+                "method": "revisits",
+                "parameters": [ { "name": "head", "type": "LIST_NODE" } ],
+                "returns": "BOOLEAN" } },
+              "grading": { "kind": "testCases", "comparison": "exact",
+                "cases": [ { "input": [{ "values": [3, 2, 0, -4], "pos": 1 }], "expected": true },
+                           { "input": [[1, 2, 3]], "expected": false } ] }
+            }
+            """;
 
     private static void write(Path dir, String name, String json) throws IOException {
         Files.writeString(dir.resolve(name), json);
@@ -843,5 +900,114 @@ class FileExerciseCatalogTest {
                 .isInstanceOf(ContentException.class)
                 .hasMessageContaining("top-customers.json")
                 .hasMessageContaining("expected");
+    }
+
+    // --- Linked lists and binary trees (issue #6's adopted LeetCode serialisation) ---
+
+    @Test
+    void alinkedListExerciseLoadsWithItsSerialisedCases(@TempDir Path dir) throws IOException {
+        write(dir, "drop-first.json", LIST_EXERCISE);
+
+        Exercise loaded = catalog(dir).byId("drop-first").orElseThrow();
+
+        assertThat(loaded.response()).isInstanceOfSatisfying(Response.Code.class, code -> {
+            assertThat(code.signature().parameters())
+                    .singleElement()
+                    .satisfies(p -> assertThat(p.type()).isEqualTo(DataType.LIST_NODE));
+            assertThat(code.signature().returnType()).isEqualTo(DataType.LIST_NODE);
+        });
+        assertThat(loaded.grading()).isInstanceOfSatisfying(Grading.TestCases.class,
+                testCases -> assertThat(testCases.cases()).hasSize(3));
+    }
+
+    @Test
+    void abinaryTreeExerciseLoadsWithItsLevelOrderCases(@TempDir Path dir) throws IOException {
+        write(dir, "drop-right.json", TREE_EXERCISE);
+
+        Exercise loaded = catalog(dir).byId("drop-right").orElseThrow();
+
+        assertThat(loaded.response()).isInstanceOfSatisfying(Response.Code.class,
+                code -> assertThat(code.signature().returnType()).isEqualTo(DataType.TREE_NODE));
+    }
+
+    @Test
+    void alistArgumentMayPoseACycleTheLeetCodeWay(@TempDir Path dir) throws IOException {
+        write(dir, "revisits.json", CYCLE_EXERCISE);
+
+        Exercise loaded = catalog(dir).byId("revisits").orElseThrow();
+
+        // The cycle is ordinary case data on the argument, not a special serialiser mode:
+        // the harness builds it, and the solver is handed the built list.
+        assertThat(loaded.grading()).isInstanceOfSatisfying(Grading.TestCases.class,
+                testCases -> assertThat(testCases.cases().get(0).input().get(0).get("pos").asInt())
+                        .isEqualTo(1));
+    }
+
+    @Test
+    void acycleIndexPastTheEndOfTheListIsAClearError(@TempDir Path dir) throws IOException {
+        String badPos = LIST_EXERCISE.replace(
+                "{ \"input\": [[1, 2, 3]], \"expected\": [2, 3] }",
+                "{ \"input\": [{ \"values\": [1, 2, 3], \"pos\": 9 }], \"expected\": [2, 3] }");
+        write(dir, "bad-pos.json", badPos);
+
+        assertThatThrownBy(catalog(dir)::all)
+                .isInstanceOf(ContentException.class)
+                .hasMessageContaining("bad-pos.json")
+                .hasMessageContaining("pos");
+    }
+
+    @Test
+    void alistValueThatIsNotAnArrayOfIntegersIsAClearError(@TempDir Path dir) throws IOException {
+        String badValues = LIST_EXERCISE.replace("\"input\": [[1, 2, 3]]", "\"input\": [[1, \"two\", 3]]");
+        write(dir, "bad-values.json", badValues);
+
+        assertThatThrownBy(catalog(dir)::all)
+                .isInstanceOf(ContentException.class)
+                .hasMessageContaining("bad-values.json")
+                .hasMessageContaining("head");
+    }
+
+    @Test
+    void atreeArrayStartingWithNullIsAClearError(@TempDir Path dir) throws IOException {
+        // An absent root is [], never [null, ...] - the latter cannot mean anything, and
+        // silently treating it as empty would hide an authoring mistake.
+        String leadingNull = TREE_EXERCISE.replace(
+                "\"input\": [[3, 9, 20, null, null, 15, 7]]", "\"input\": [[null, 9, 20]]");
+        write(dir, "bad-root.json", leadingNull);
+
+        assertThatThrownBy(catalog(dir)::all)
+                .isInstanceOf(ContentException.class)
+                .hasMessageContaining("bad-root.json")
+                .hasMessageContaining("root");
+    }
+
+    @Test
+    void anExpectedReturnOfNullForALinkedStructureIsAClearError(@TempDir Path dir) throws IOException {
+        // null is a legitimate empty *argument* (LIST_EXERCISE's `"input": [null]` case still
+        // loads), but never a legitimate expected *return*: both harnesses canonicalise an empty
+        // structure to [], so an expected null could never match a correct solution.
+        String nullReturn = LIST_EXERCISE.replace(
+                "{ \"input\": [[1, 2, 3]], \"expected\": [2, 3] }",
+                "{ \"input\": [[1, 2, 3]], \"expected\": null }");
+        write(dir, "null-return.json", nullReturn);
+
+        assertThatThrownBy(catalog(dir)::all)
+                .isInstanceOf(ContentException.class)
+                .hasMessageContaining("null-return.json")
+                .hasMessageContaining("expected return value")
+                .hasMessageContaining("[]");
+    }
+
+    @Test
+    void acaseWhoseArgumentCountDoesNotMatchTheSignatureIsAClearError(@TempDir Path dir)
+            throws IOException {
+        String tooManyArgs = LIST_EXERCISE.replace(
+                "\"input\": [[1, 2, 3]]", "\"input\": [[1, 2, 3], 4]");
+        write(dir, "bad-arity.json", tooManyArgs);
+
+        assertThatThrownBy(catalog(dir)::all)
+                .isInstanceOf(ContentException.class)
+                .hasMessageContaining("bad-arity.json")
+                .hasMessageContaining("one argument per signature parameter");
     }
 }

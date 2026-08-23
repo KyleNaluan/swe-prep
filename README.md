@@ -167,6 +167,33 @@ of any kind is ever committed to this public repo; `scripts/check-no-content.sh`
 enforces it in CI and in `./test.sh`. See the public-engine/private-content
 decision, [issue #4](https://github.com/KyleNaluan/swe-prep/issues/4).
 
+### Content format: the data types a case is written in
+
+A test case is language-neutral JSON, and a signature declares its types from a
+fixed vocabulary: `INT`, `INT_ARRAY`, `INT_MATRIX`, `BOOLEAN`, `STRING`,
+`LIST_NODE`, `TREE_NODE`.
+The two linked structures use **LeetCode's own serialisation**, adopted rather than
+reinvented ([issue #6](https://github.com/KyleNaluan/swe-prep/issues/6)) so a
+statement read there transfers unchanged.
+
+- A `LIST_NODE` is the array of its values, so `[1,2,3]` is the list `1 -> 2 -> 3`.
+  `[]` and `null` both mean empty, and `[]` is the form an answer comes back in.
+- A `TREE_NODE` is the level-order-with-nulls array, so `[3,9,20,null,null,15,7]` is
+  the tree whose root is 3, with children 9 and 20, and 20's children 15 and 7.
+  A `null` entry is an absent child and contributes no children of its own; trailing
+  nulls are trimmed.
+- A `LIST_NODE` **argument** may instead be written `{ "values": [3,2,0,-4], "pos": 1 }`
+  to pose a cycle - LeetCode's own way of writing it, where `pos` is the index the
+  tail joins back to and `-1` (or an omitted `pos`) means none.
+  Only a plain array is ever returned, so a cyclic structure never reaches the
+  serialiser.
+
+The solver never sees any of this: the harness builds the structure from the case and
+hands the submission an idiomatic `ListNode`/`TreeNode` it supplies, in whichever
+language the solver chose, then serialises the answer back for grading.
+See `backend/src/main/java/com/sweprep/backend/exercise/DataType.java` for the full
+convention, and `swe-prep-content`'s own `README.md` for the on-disk file format.
+
 ### Content authoring
 
 Authoring a problem produces its warm-up reps rather than someone hand-writing

@@ -117,4 +117,55 @@ class PythonLanguageAdapterTest {
     void submissionFileNameIsAPythonModule() {
         assertThat(adapter.submissionFileName()).isEqualTo("Solution.py");
     }
+
+    // --- Linked structures (issue #6's adopted LeetCode serialisation) -------------
+
+    @Test
+    void alinkedStructureIsBuiltAndSerialisedByTheSharedStructuresModule() {
+        Signature signature = new Signature(
+                "dropFirst", List.of(new Parameter("head", DataType.LIST_NODE)), DataType.LIST_NODE);
+
+        var harness = adapter.generateHarness(signature);
+        String source = harness.sourceFiles().get("Harness.py");
+
+        assertThat(source).contains("import Structures");
+        assertThat(source).contains("arg0 = Structures.build_list(case_input[0])");
+        assertThat(source).contains("entry[\"returned\"] = Structures.serialize_list(actual)");
+        assertThat(harness.sourceFiles()).containsKey("Structures.py");
+    }
+
+    @Test
+    void atreeSignatureUsesTheLevelOrderHelpers() {
+        Signature signature = new Signature(
+                "dropRight", List.of(new Parameter("root", DataType.TREE_NODE)), DataType.TREE_NODE);
+
+        String source = adapter.generateHarness(signature).sourceFiles().get("Harness.py");
+
+        assertThat(source).contains("arg0 = Structures.build_tree(case_input[0])");
+        assertThat(source).contains("Structures.serialize_tree(actual)");
+    }
+
+    @Test
+    void thestubImportsTheNodeTypesTheHarnessSupplies() {
+        Signature signature = new Signature(
+                "dropFirst", List.of(new Parameter("head", DataType.LIST_NODE)), DataType.LIST_NODE);
+
+        String stub = adapter.generateStub(signature);
+
+        // Python evaluates an annotation at definition time, so the import is load-bearing
+        // rather than decorative - without it the solver's own file would not even import.
+        assertThat(stub).startsWith("from Structures import ListNode");
+        assertThat(stub).contains("def dropFirst(self, head: ListNode) -> ListNode:");
+    }
+
+    @Test
+    void asignatureWithNoLinkedStructureCarriesNoSupportModule() {
+        Signature signature = new Signature(
+                "identity", List.of(new Parameter("n", DataType.INT)), DataType.INT);
+
+        var harness = adapter.generateHarness(signature);
+
+        assertThat(harness.sourceFiles()).containsOnlyKeys("Harness.py");
+        assertThat(adapter.generateStub(signature)).doesNotContain("Structures");
+    }
 }
