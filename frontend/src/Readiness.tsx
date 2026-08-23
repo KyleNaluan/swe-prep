@@ -110,7 +110,7 @@ function Readiness({ streak }: { streak?: number }) {
         <ReadinessCard
           label="Solved cold"
           progress={summary.solvedCold}
-          note="Challenges solved with no hint taken and no failing case revealed."
+          note="Challenges solved with no hint taken, no failing case revealed, and no reference solution seen."
         />
         <ReadinessCard
           label="Concepts covered"
