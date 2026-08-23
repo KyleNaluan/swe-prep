@@ -45,6 +45,66 @@ class JavaLanguageAdapterTest {
         assertThat(harness).contains("solution.isAnagram(arg0, arg1)");
     }
 
+    // --- Linked structures (issue #6's adopted LeetCode serialisation) -------------
+
+    @Test
+    void aLinkedStructureIsBuiltAndSerialisedRatherThanBoundByJackson() {
+        Signature signature = new Signature(
+                "dropFirst", List.of(new Parameter("head", DataType.LIST_NODE)), DataType.LIST_NODE);
+
+        var harness = adapter.generateHarness(signature);
+        String source = harness.sourceFiles().get("Harness.java");
+
+        assertThat(source).contains("ListNode arg0 = Structures.buildList(input.get(0));");
+        assertThat(source).contains("entry.set(\"returned\", Structures.serializeList(actual, mapper));");
+        // The classes the solver writes against travel with the harness, so nothing is
+        // hand-written per problem - the whole point of the adapter seam.
+        // Both node classes travel with the harness (Structures references both), but the
+        // solver is only ever shown the one their signature declares - see the stub test.
+        assertThat(harness.sourceFiles())
+                .containsKeys("ListNode.java", "TreeNode.java", "Structures.java");
+    }
+
+    @Test
+    void atreeSignatureCarriesTheTreeNodeClassAndItsLevelOrderHelpers() {
+        Signature signature = new Signature(
+                "dropRight", List.of(new Parameter("root", DataType.TREE_NODE)), DataType.TREE_NODE);
+
+        var harness = adapter.generateHarness(signature);
+        String source = harness.sourceFiles().get("Harness.java");
+
+        assertThat(source).contains("TreeNode arg0 = Structures.buildTree(input.get(0));");
+        assertThat(source).contains("Structures.serializeTree(actual, mapper)");
+        assertThat(harness.sourceFiles())
+                .containsKeys("ListNode.java", "TreeNode.java", "Structures.java");
+        assertThat(adapter.generateStub(signature)).doesNotContain("ListNode");
+    }
+
+    @Test
+    void thestubShowsTheNodeDefinitionTheSolverWritesAgainst() {
+        Signature signature = new Signature(
+                "dropFirst", List.of(new Parameter("head", DataType.LIST_NODE)), DataType.LIST_NODE);
+
+        String stub = adapter.generateStub(signature);
+
+        assertThat(stub).contains("Definition for singly-linked list.");
+        assertThat(stub).contains("public ListNode dropFirst(ListNode head)");
+        // The definition is a comment, not a second class in the solver's own file: the
+        // harness supplies the real one, so an edited copy could never diverge from it.
+        assertThat(stub).doesNotContain("\nclass ListNode");
+    }
+
+    @Test
+    void asignatureWithNoLinkedStructureCarriesNoSupportFilesAtAll() {
+        Signature signature = new Signature(
+                "identity", List.of(new Parameter("n", DataType.INT)), DataType.INT);
+
+        var harness = adapter.generateHarness(signature);
+
+        assertThat(harness.sourceFiles()).containsOnlyKeys("Harness.java");
+        assertThat(adapter.generateStub(signature)).doesNotContain("ListNode");
+    }
+
     // --- The timing harness (issue #17) -------------------------------------------
 
     @Test
