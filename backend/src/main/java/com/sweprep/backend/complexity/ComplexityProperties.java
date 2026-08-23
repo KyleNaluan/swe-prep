@@ -59,11 +59,12 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *       own - the sizes respect the existing one. A cheap submission whose smallest sizes
  *       time below the classifier's reliability floor is measured at further doublings
  *       instead; see {@link #maxSizes}.
- *   <li>{@link #warmupBudget} (default 150 ms) - how long untimed warm-up calls are made
- *       at each size before any timed one. 150 ms buys ~400 calls on the cheap linear
- *       submissions that used to misclassify (measured: monotonic stack ~170 µs/call at
- *       size 32 000, BFS ~250 µs/call), which is where their curves became clean, while
- *       costing an expensive submission at most one extra call.
+ *   <li>{@link #warmupBudget} (default 500 ms) - how long untimed warm-up calls are made
+ *       at each size before any timed one. At the measured per-call costs of the cheap
+ *       linear submissions that used to misclassify (monotonic stack ~170 µs/call at size
+ *       32 000, BFS ~250 µs/call) 500 ms buys thousands of calls at the small sizes where
+ *       their curves became clean, capped in practice once the ladder has grown the input,
+ *       while costing an expensive submission at most one extra call.
  *   <li>{@link #maxWarmupCalls} (default 50 000) - a runaway guard, not a tuning knob:
  *       it bounds the loop for a submission so cheap that a call costs nothing, and is
  *       set high enough that the time budget is what actually ends warm-up in every
@@ -77,10 +78,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *       median resists it without chasing the vectorisation-driven lows a min would.
  *       Post-warm-up the spread across nine repetitions measured 1.1-1.8x, so nine is
  *       comfortably enough to place a stable median.
- *   <li>{@link #maxSizes} (default 6) - the ceiling on how far the size ladder may be
+ *   <li>{@link #maxSizes} (default 7) - the ceiling on how far the size ladder may be
  *       extended past {@link #sizes} when a submission is too cheap to measure at the
- *       configured sizes. Extension doubles the largest size each step, so 6 caps the
- *       largest measured input at 128 000 for the default ladder - big enough to lift a
+ *       configured sizes. Extension doubles the largest size each step, so 7 caps the
+ *       largest measured input at 256 000 for the default ladder - big enough to lift a
  *       real linear reference solution clear of the reliability floor, small enough that
  *       generating one input stays cheap. Never reached by a submission whose configured
  *       sizes already measure reliably.
@@ -95,7 +96,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *
  * @param sizes          measured input sizes, ascending (sorted defensively if not)
  * @param warmupBudget   wall-clock time spent on untimed warm-up calls at each size,
- *                       before timing starts; at least one warm-up call is always made
+ *                       before timing starts; warm-up runs until either this budget or
+ *                       {@code maxWarmupCalls} is reached, so a zero call cap makes none
  * @param maxWarmupCalls hard cap on warm-up calls per size, whatever the budget allows
  * @param repetitions    timed calls made at each size, after warm-up; the measurer
  *                       takes their median
