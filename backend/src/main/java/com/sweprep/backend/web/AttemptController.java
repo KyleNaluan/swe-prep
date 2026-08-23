@@ -77,7 +77,19 @@ public class AttemptController {
     public ComplexityResponse claimComplexity(
             @PathVariable UUID id, @RequestBody ComplexityClaimRequest request) {
         return ComplexityResponse.of(
-                attempts.claimComplexity(id, new ComplexityClaim(request.time(), request.space())));
+                attempts.claimComplexity(id, new ComplexityClaim(request.time(), request.space())),
+                attempts.modelOpinionAvailable());
+    }
+
+    /**
+     * Asks a language model for an independent reading of a solved attempt's time
+     * complexity (issue #83), compared against the claim and the empirical
+     * measurement already revealed by {@code .../complexity}. Advisory only, on
+     * request, never persisted - see {@link com.sweprep.backend.attempt.AttemptService#secondOpinion}.
+     */
+    @PostMapping("/{id}/complexity/model-opinion")
+    public ModelOpinionResponse modelOpinion(@PathVariable UUID id) {
+        return ModelOpinionResponse.of(attempts.secondOpinion(id));
     }
 
     @PostMapping("/{id}/abandon")

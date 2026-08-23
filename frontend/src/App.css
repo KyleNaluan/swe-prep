@@ -387,6 +387,18 @@
   background: rgba(99, 102, 241, 0.08);
 }
 
+.model-opinion {
+  margin-top: 0.75rem;
+}
+
+.model-opinion-disagreement {
+  margin-top: 0.75rem;
+}
+
+.model-opinion-disagreement .explanation-body {
+  margin-top: 0.5rem;
+}
+
 .nudge-line {
   margin: 0 0 0.5rem;
   font-size: 0.85rem;

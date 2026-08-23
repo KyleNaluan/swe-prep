@@ -100,6 +100,25 @@ type ComplexityResponse = {
   targetSpace: Complexity
   status: 'CONSISTENT' | 'CONTRADICTED' | 'INCONCLUSIVE' | 'SKIPPED'
   detail?: string
+  // Whether the LLM complexity second opinion (issue #83) can be requested from here.
+  // False whenever no advisor is configured server-side - the whole mechanism behind
+  // "missing API key means the feature is absent, not broken": there is simply no
+  // button to show, never a button that fails when pressed.
+  modelOpinionAvailable: boolean
+}
+
+// The response from POST .../complexity/model-opinion (issue #83): the model's own
+// reading and reasoning, plus the three-way comparison against the claim and the
+// empirical measurement. Advisory only - this is never a verdict, and it is never
+// persisted. agreement true means every voice that was present agreed (nothing to
+// show beyond quiet confirmation); false means disagreementPrompt carries a neutral
+// question for the learner to resolve in their own words, never a statement of which
+// voice is right.
+type ModelOpinionResponse = {
+  modelTime: Complexity
+  modelReasoning: string
+  agreement: boolean
+  disagreementPrompt?: string
 }
 
 type Verdict = {
@@ -266,6 +285,12 @@ function Practice({
   const [complexityBusy, setComplexityBusy] = useState(false)
   const [complexityError, setComplexityError] = useState<string | null>(null)
 
+  // The LLM complexity second opinion (issue #83): on request only, after the claim
+  // above is already recorded. Null result means "not requested yet for this sitting".
+  const [modelOpinionResult, setModelOpinionResult] = useState<ModelOpinionResponse | null>(null)
+  const [modelOpinionBusy, setModelOpinionBusy] = useState(false)
+  const [modelOpinionError, setModelOpinionError] = useState<string | null>(null)
+
   const [history, setHistory] = useState<AttemptView[]>([])
 
   const codeRef = useRef<string>('')
@@ -374,6 +399,8 @@ function Practice({
     setSolution(null)
     setSolutionPrePass(false)
     setSolutionError(null)
+    setModelOpinionResult(null)
+    setModelOpinionError(null)
     apiFetch(`/api/exercises/${selectedId}?language=${encodeURIComponent(language)}`)
       .then(async (response) => {
         if (!response.ok) throw new Error(await errorMessage(response))
@@ -586,6 +613,29 @@ function Practice({
     }
   }
 
+  // Ask a model for an independent reading of a solved attempt's complexity (issue
+  // #83) - one short call, on request, always after the claim above so the model's
+  // own reading can be compared against it. Advisory only: the result is never
+  // stored anywhere, and this action only ever renders when the claim response says
+  // modelOpinionAvailable, so pressing it never reaches a server with no key.
+  async function handleRequestModelOpinion() {
+    if (!exercise) return
+    setModelOpinionBusy(true)
+    setModelOpinionError(null)
+    try {
+      const attemptId = await ensureAttempt(exercise.id)
+      const response = await apiFetch(`/api/attempts/${attemptId}/complexity/model-opinion`, {
+        method: 'POST',
+      })
+      if (!response.ok) throw new Error(await errorMessage(response))
+      setModelOpinionResult((await response.json()) as ModelOpinionResponse)
+    } catch (error: unknown) {
+      setModelOpinionError(error instanceof Error ? error.message : String(error))
+    } finally {
+      setModelOpinionBusy(false)
+    }
+  }
+
   // Commit the produced explanation and reveal the model answer (issue #41). Nothing is
   // machine-graded: the text is frozen server-side before the answer comes back, so a later
   // self-rating cannot be a copy of what was peeked at.
@@ -651,6 +701,8 @@ function Practice({
     setSolution(null)
     setSolutionPrePass(false)
     setSolutionError(null)
+    setModelOpinionResult(null)
+    setModelOpinionError(null)
     refreshHistory()
   }
 
@@ -858,6 +910,10 @@ function Practice({
                   onTimeClaimChange={setComplexityTimeClaim}
                   onSpaceClaimChange={setComplexitySpaceClaim}
                   onSubmit={handleClaimComplexity}
+                  modelOpinion={modelOpinionResult}
+                  modelOpinionBusy={modelOpinionBusy}
+                  modelOpinionError={modelOpinionError}
+                  onRequestModelOpinion={handleRequestModelOpinion}
                 />
               )}
 
@@ -1236,6 +1292,10 @@ function ComplexityPanel({
   onTimeClaimChange,
   onSpaceClaimChange,
   onSubmit,
+  modelOpinion,
+  modelOpinionBusy,
+  modelOpinionError,
+  onRequestModelOpinion,
 }: {
   timeClaim: Complexity
   spaceClaim: Complexity
@@ -1245,6 +1305,10 @@ function ComplexityPanel({
   onTimeClaimChange: (value: Complexity) => void
   onSpaceClaimChange: (value: Complexity) => void
   onSubmit: () => void
+  modelOpinion: ModelOpinionResponse | null
+  modelOpinionBusy: boolean
+  modelOpinionError: string | null
+  onRequestModelOpinion: () => void
 }) {
   if (result) {
     return (
@@ -1274,6 +1338,14 @@ function ComplexityPanel({
         )}
         {result.status === 'SKIPPED' && (
           <p className="hints-note">This exercise has no automated scaling check for your claim.</p>
+        )}
+        {result.modelOpinionAvailable && (
+          <ModelOpinionSection
+            result={modelOpinion}
+            busy={modelOpinionBusy}
+            error={modelOpinionError}
+            onRequest={onRequestModelOpinion}
+          />
         )}
       </section>
     )
@@ -1374,6 +1446,57 @@ function SolutionPanel({
       </p>
       {error && <p className="status down">Could not reveal the solution: {error}</p>}
     </section>
+  )
+}
+
+// The LLM complexity second opinion (issue #83): a third, advisory voice beside the
+// claim and the measurement above, on request only. Disagreement is the product - if
+// the model, the claim and the measurement all agree there is nothing to show beyond
+// quiet confirmation; any disagreement renders as a neutral question for the learner
+// to resolve in their own words, never as a statement of which voice is right. Only
+// ever rendered by the parent when the claim response says modelOpinionAvailable, so
+// this action never reaches a server with no key configured.
+function ModelOpinionSection({
+  result,
+  busy,
+  error,
+  onRequest,
+}: {
+  result: ModelOpinionResponse | null
+  busy: boolean
+  error: string | null
+  onRequest: () => void
+}) {
+  if (!result) {
+    return (
+      <div className="model-opinion">
+        <button type="button" className="secondary" onClick={onRequest} disabled={busy}>
+          {busy ? 'Asking...' : 'Get a second opinion'}
+        </button>
+        <p className="hints-note">
+          Asks a model for its own read of your solution's complexity - advisory only, and
+          never part of your score. Models can misjudge amortised analysis, memoised
+          recursion, and hidden costs like string concatenation or {'List.contains'} in a
+          loop, so treat disagreement as something to work out, not as a tiebreaker.
+        </p>
+        {error && <p className="status down">Could not get a second opinion: {error}</p>}
+      </div>
+    )
+  }
+
+  if (result.agreement) {
+    return (
+      <p className="status up">
+        The model agrees: {COMPLEXITY_LABELS[result.modelTime]} time.
+      </p>
+    )
+  }
+
+  return (
+    <div className="hint-offer nudge model-opinion-disagreement">
+      <p className="nudge-line">{result.disagreementPrompt}</p>
+      <p className="explanation-body">{result.modelReasoning}</p>
+    </div>
   )
 }
 
