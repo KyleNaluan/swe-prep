@@ -982,6 +982,23 @@ class FileExerciseCatalogTest {
     }
 
     @Test
+    void anExpectedReturnOfNullForALinkedStructureIsAClearError(@TempDir Path dir) throws IOException {
+        // null is a legitimate empty *argument* (LIST_EXERCISE's `"input": [null]` case still
+        // loads), but never a legitimate expected *return*: both harnesses canonicalise an empty
+        // structure to [], so an expected null could never match a correct solution.
+        String nullReturn = LIST_EXERCISE.replace(
+                "{ \"input\": [[1, 2, 3]], \"expected\": [2, 3] }",
+                "{ \"input\": [[1, 2, 3]], \"expected\": null }");
+        write(dir, "null-return.json", nullReturn);
+
+        assertThatThrownBy(catalog(dir)::all)
+                .isInstanceOf(ContentException.class)
+                .hasMessageContaining("null-return.json")
+                .hasMessageContaining("expected return value")
+                .hasMessageContaining("[]");
+    }
+
+    @Test
     void acaseWhoseArgumentCountDoesNotMatchTheSignatureIsAClearError(@TempDir Path dir)
             throws IOException {
         String tooManyArgs = LIST_EXERCISE.replace(

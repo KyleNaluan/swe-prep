@@ -101,7 +101,9 @@ final class ExerciseParser {
         Difficulty difficulty = json.requireEnum(root, "difficulty", Difficulty.class);
         Form form = json.requireEnum(root, "form", Form.class);
         Response response = response(json, json.requireObject(root, "response"));
-        Grading grading = grading(json, json.requireObject(root, "grading"));
+        JsonNode gradingNode = json.requireObject(root, "grading");
+        rejectNullLinkedReturn(json, response, gradingNode);
+        Grading grading = grading(json, gradingNode);
         validateDistractors(json, response, grading);
         validateLinkedStructureValues(json, response, grading);
         List<Hint> hints = hints(json, root);
@@ -302,6 +304,31 @@ final class ExerciseParser {
      * opaque "the submission threw" against a correct solution. See {@link NodeShapes}.
      * A no-op for every signature that declares neither, so no existing content changes.
      */
+    /**
+     * Catches an explicit {@code "expected": null} for a linked-structure return before
+     * {@link #grading} reads {@code expected} as a required field and reports it as a
+     * misleading "missing required field" instead. See {@link NodeShapes#rejectNullReturn}.
+     */
+    private static void rejectNullLinkedReturn(ContentJson json, Response response, JsonNode gradingNode) {
+        if (!(response instanceof Response.Code code)
+                || !code.signature().returnType().isLinkedStructure()) {
+            return;
+        }
+        DataType returnType = code.signature().returnType();
+        JsonNode kind = gradingNode.get("kind");
+        String gradingKind = kind == null ? null : kind.asText(null);
+        if ("testCases".equals(gradingKind)) {
+            JsonNode cases = gradingNode.get("cases");
+            if (cases != null && cases.isArray()) {
+                for (JsonNode testCase : cases) {
+                    NodeShapes.rejectNullReturn(json, returnType, testCase.get("expected"));
+                }
+            }
+        } else if ("answerKey".equals(gradingKind)) {
+            NodeShapes.rejectNullReturn(json, returnType, gradingNode.get("expected"));
+        }
+    }
+
     private static void validateLinkedStructureValues(
             ContentJson json, Response response, Grading grading) {
         if (!(response instanceof Response.Code code)) {

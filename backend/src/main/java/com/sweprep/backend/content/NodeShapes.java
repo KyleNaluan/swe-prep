@@ -98,7 +98,9 @@ final class NodeShapes {
     /**
      * A returned value is always the plain serialised form: a linked structure that came
      * back out of a submission is acyclic by construction, so the cycle input form is not
-     * accepted here.
+     * accepted here. An explicit JSON {@code null} is rejected earlier, by {@link
+     * #rejectNullReturn}, before the parser's own required-field read collapses it into a
+     * misleading "missing field" error.
      */
     private static void validateReturned(ContentJson json, DataType returnType, JsonNode expected) {
         String where = "the expected return value";
@@ -107,6 +109,27 @@ final class NodeShapes {
         } else {
             requireIntArray(json, where, expected);
         }
+    }
+
+    /**
+     * Rejects an <em>explicit</em> JSON {@code null} written as the expected return value
+     * of a linked structure, before the parser's required-field read turns it into a
+     * misleading "missing required field" error.
+     *
+     * <p>The asymmetry with an argument is deliberate: on the argument side {@code null}
+     * and {@code []} are both legitimate ways to write an empty input (matching LeetCode),
+     * but both harnesses canonicalise an empty structure back to {@code []} and never emit
+     * JSON {@code null}, so an expected {@code null} could never be matched by a correct
+     * solution and would fail as an opaque wrong verdict against it. A truly absent field
+     * ({@code node == null}) is left to the parser's own "missing required field" report.
+     */
+    static void rejectNullReturn(ContentJson json, DataType returnType, JsonNode expected) {
+        if (!returnType.isLinkedStructure() || expected == null || !expected.isNull()) {
+            return;
+        }
+        throw json.malformed(
+                "the expected return value may not be null; an empty " + returnType
+                        + " answer is the empty array []");
     }
 
     /** A LIST_NODE in serialised form: null, or an array of integers, with no holes. */
