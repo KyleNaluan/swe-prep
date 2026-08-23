@@ -205,6 +205,29 @@ repaired by a double session (the warm-up plus a solved challenge) the next day,
 capped at `sweprep.streak.max-repairs-per-month` (default 2) — see `AGENTS.md`
 for the full design.
 
+## LLM complexity second opinion (optional)
+
+After claiming a complexity self-report, a solved coding challenge can ask a
+model for its own independent read of the submission's time complexity - a
+third, advisory voice beside the claim and the empirical scaling measurement
+([issue #83](https://github.com/KyleNaluan/swe-prep/issues/83)). It never
+affects grading, the schedule, or readiness, and nothing about the request or
+its answer is ever persisted. When the model, the claim and the measurement
+all agree, the editor shows quiet confirmation; when they disagree, it renders
+a neutral question for you to resolve in your own words, never a verdict on
+which voice is right.
+
+This calls the real Anthropic API, so it is off unless you set a key:
+
+```sh
+export SWEPREP_COMPLEXITY_ADVISOR_API_KEY=sk-ant-...
+```
+
+No key set means the "Get a second opinion" action is simply absent from the
+editor - not a broken button, not an error. `SWEPREP_COMPLEXITY_ADVISOR_MODEL`
+(default `claude-opus-5`) picks which model answers, so a model change never
+needs a code change.
+
 ## Running the tests
 
 ```sh
