@@ -128,7 +128,7 @@ class InputGeneratorTest {
     // --- ScalingIntMatrix (issue #86 follow-on) ----------------------------------------
 
     @Test
-    void generatesASquareMatrixWithTheMeasuredSizeAsBothDimensions() {
+    void generatesTheMeasuredSizeAsRowsWithColumnsFixedAtTheDefault() {
         InputGenerator generator =
                 new InputGenerator(List.of(new InputGenerator.Argument.ScalingIntMatrix(0, 9)));
 
@@ -137,9 +137,37 @@ class InputGeneratorTest {
         JsonNode matrix = call.get(0);
         assertThat(matrix).hasSize(12);
         matrix.forEach(row -> {
-            assertThat(row).hasSize(12);
+            assertThat(row).hasSize(InputGenerator.Argument.ScalingIntMatrix.DEFAULT_COLS);
             row.forEach(cell -> assertThat(cell.asInt()).isBetween(0, 9));
         });
+    }
+
+    @Test
+    void generatesTheMeasuredSizeAsRowsWithAnExplicitColumnCount() {
+        InputGenerator generator =
+                new InputGenerator(List.of(new InputGenerator.Argument.ScalingIntMatrix(0, 9, 3)));
+
+        JsonNode matrix = generator.generate(5, 1L).get(0);
+
+        assertThat(matrix).hasSize(5);
+        matrix.forEach(row -> assertThat(row).hasSize(3));
+    }
+
+    @Test
+    void aScalingIntMatrixGrowsMemoryLinearlyNotBySizeSquaredAtALargeSize() {
+        int size = 32_000;
+        InputGenerator generator =
+                new InputGenerator(List.of(new InputGenerator.Argument.ScalingIntMatrix(0, 9)));
+
+        JsonNode matrix = generator.generate(size, 1L).get(0);
+
+        assertThat(matrix).hasSize(size);
+        long cells = 0;
+        for (JsonNode row : matrix) {
+            assertThat(row).hasSize(InputGenerator.Argument.ScalingIntMatrix.DEFAULT_COLS);
+            cells += row.size();
+        }
+        assertThat(cells).isEqualTo((long) size * InputGenerator.Argument.ScalingIntMatrix.DEFAULT_COLS);
     }
 
     @Test
@@ -153,6 +181,12 @@ class InputGeneratorTest {
     @Test
     void aScalingIntMatrixRequiresMinNotExceedingMax() {
         assertThatThrownBy(() -> new InputGenerator.Argument.ScalingIntMatrix(10, 5))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void aScalingIntMatrixRequiresAtLeastOneColumn() {
+        assertThatThrownBy(() -> new InputGenerator.Argument.ScalingIntMatrix(0, 9, 0))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 

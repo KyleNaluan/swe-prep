@@ -158,6 +158,56 @@ class ProblemSpecParserTest {
                 .hasMessageContaining("STRING");
     }
 
+    private static final String WITH_MATRIX_GENERATOR =
+            """
+            {
+              "id": "grid-sum",
+              "title": "Grid Sum",
+              "statement": "Return the sum of every cell.",
+              "domain": "algorithms",
+              "topics": ["matrix"],
+              "difficulty": "EASY",
+              "signature": {
+                "method": "solve",
+                "parameters": [ { "name": "grid", "type": "INT_MATRIX" } ],
+                "returns": "INT"
+              },
+              "cases": [ { "input": [[[1, 2], [3, 4]]], "expected": 10 } ],
+              "referenceSolution": "class Solution { public int solve(int[][] grid) { int s = 0; for (int[] r : grid) for (int c : r) s += c; return s; } }",
+              "complexity": {
+                "targetTime": "LINEAR",
+                "targetSpace": "CONSTANT",
+                "generator": { "arguments": [ { "kind": "scalingIntMatrix", "min": 0, "max": 9, "cols": 3 } ] }
+              }
+            }
+            """;
+
+    @Test
+    void parsesAScalingIntMatrixGeneratorWithAnExplicitColumnCount(@TempDir Path dir) throws Exception {
+        Path file = dir.resolve("grid-sum.json");
+        Files.writeString(file, WITH_MATRIX_GENERATOR);
+
+        ProblemSpec spec = ProblemSpecParser.parse(file);
+
+        assertThat(spec.complexityCheck().generator().arguments())
+                .singleElement()
+                .isEqualTo(
+                        new com.sweprep.backend.exercise.InputGenerator.Argument.ScalingIntMatrix(0, 9, 3));
+    }
+
+    @Test
+    void parsesAScalingIntMatrixGeneratorDefaultingTheColumnCount(@TempDir Path dir) throws Exception {
+        Path file = dir.resolve("grid-sum.json");
+        Files.writeString(file, WITH_MATRIX_GENERATOR.replace(", \"cols\": 3", ""));
+
+        ProblemSpec spec = ProblemSpecParser.parse(file);
+
+        assertThat(spec.complexityCheck().generator().arguments())
+                .singleElement()
+                .isEqualTo(
+                        new com.sweprep.backend.exercise.InputGenerator.Argument.ScalingIntMatrix(0, 9));
+    }
+
     @Test
     void unreadableFileFailsClearly(@TempDir Path dir) {
         Path missing = dir.resolve("does-not-exist.json");

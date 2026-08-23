@@ -231,6 +231,7 @@ final class ContentWriter {
                     argNode.put("kind", "scalingIntMatrix");
                     argNode.put("min", scaling.min());
                     argNode.put("max", scaling.max());
+                    argNode.put("cols", scaling.cols());
                 }
                 case InputGenerator.Argument.ScalingListNode scaling -> {
                     argNode.put("kind", "scalingListNode");

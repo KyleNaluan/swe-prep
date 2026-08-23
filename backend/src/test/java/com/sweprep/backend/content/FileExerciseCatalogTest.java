@@ -960,7 +960,32 @@ class FileExerciseCatalogTest {
                 scaling -> {
                     assertThat(scaling.min()).isEqualTo(0);
                     assertThat(scaling.max()).isEqualTo(100);
+                    assertThat(scaling.cols())
+                            .isEqualTo(InputGenerator.Argument.ScalingIntMatrix.DEFAULT_COLS);
                 });
+    }
+
+    @Test
+    void parsesAScalingIntMatrixWithAnExplicitColumnCount(@TempDir Path dir) throws IOException {
+        String withComplexity = CODE_EXERCISE_WITH_MATRIX.replaceFirst(
+                "\\}\\s*$",
+                """
+                ,
+                  "complexity": {
+                    "targetTime": "QUADRATIC", "targetSpace": "QUADRATIC",
+                    "generator": { "arguments": [
+                      { "kind": "scalingIntMatrix", "min": 0, "max": 100, "cols": 3 } ] }
+                  }
+                }
+                """);
+        write(dir, "matrix.json", withComplexity);
+
+        InputGenerator.Argument argument =
+                catalog(dir).byId("matrix-demo").orElseThrow().complexityCheck().generator().arguments().get(0);
+
+        assertThat(argument).isInstanceOfSatisfying(
+                InputGenerator.Argument.ScalingIntMatrix.class,
+                scaling -> assertThat(scaling.cols()).isEqualTo(3));
     }
 
     @Test
