@@ -104,6 +104,60 @@ class ProblemSpecParserTest {
                 .hasMessageContaining("comparison");
     }
 
+    private static final String WITH_STRING_GENERATOR =
+            """
+            {
+              "id": "reverse-string",
+              "title": "Reverse String",
+              "statement": "Return s reversed.",
+              "domain": "algorithms",
+              "topics": ["string"],
+              "difficulty": "EASY",
+              "signature": {
+                "method": "reverse",
+                "parameters": [ { "name": "s", "type": "STRING" } ],
+                "returns": "STRING"
+              },
+              "cases": [ { "input": ["ab"], "expected": "ba" } ],
+              "referenceSolution": "class Solution { public String reverse(String s) { return new StringBuilder(s).reverse().toString(); } }",
+              "complexity": {
+                "targetTime": "LINEAR",
+                "targetSpace": "LINEAR",
+                "generator": { "arguments": [ { "kind": "scalingString", "alphabet": "abc" } ] }
+              }
+            }
+            """;
+
+    @Test
+    void parsesAScalingStringGenerator(@TempDir Path dir) throws Exception {
+        Path file = dir.resolve("reverse-string.json");
+        Files.writeString(file, WITH_STRING_GENERATOR);
+
+        ProblemSpec spec = ProblemSpecParser.parse(file);
+
+        assertThat(spec.complexityCheck().generator().arguments())
+                .singleElement()
+                .isEqualTo(
+                        new com.sweprep.backend.exercise.InputGenerator.Argument.ScalingString("abc"));
+    }
+
+    @Test
+    void scalingStringAgainstNonStringParameterFailsNamingTheField(@TempDir Path dir) throws Exception {
+        JsonNode root = mapper.readTree(WITH_STRING_GENERATOR).deepCopy();
+        ((com.fasterxml.jackson.databind.node.ObjectNode)
+                        root.at("/signature/parameters/0"))
+                .put("type", "INT");
+        ((com.fasterxml.jackson.databind.node.ObjectNode) root.at("/signature"))
+                .put("returns", "INT");
+        Path file = dir.resolve("bad.json");
+        Files.writeString(file, root.toString());
+
+        assertThatThrownBy(() -> ProblemSpecParser.parse(file))
+                .isInstanceOf(AuthoringException.class)
+                .hasMessageContaining("scalingString")
+                .hasMessageContaining("STRING");
+    }
+
     @Test
     void unreadableFileFailsClearly(@TempDir Path dir) {
         Path missing = dir.resolve("does-not-exist.json");
