@@ -172,10 +172,11 @@ public class JavaLanguageAdapter implements LanguageAdapter {
     }
 
     /**
-     * The timing harness (issue #17): first makes {@code warmup} untimed calls to let
-     * the JVM's JIT reach a steady state, then times {@code repetitions} further calls
-     * of the submission's method against the same input, recording each one's elapsed
-     * nanoseconds (or that it threw) rather than comparing a return value.
+     * The timing harness (issue #17): first makes untimed calls until the warm-up budget
+     * is spent (or the call cap is reached) to let the JVM's JIT reach a steady state,
+     * then times {@code repetitions} further calls of the submission's method against the
+     * same input, recording each one's elapsed nanoseconds (or that it threw) rather than
+     * comparing a return value.
      *
      * <p>The warm-up phase exists because its absence measurably wrecked results: a
      * submission cheap enough to auto-vectorize (a plain array sum, say) can show its
@@ -184,6 +185,18 @@ public class JavaLanguageAdapter implements LanguageAdapter {
      * nothing to do with the algorithm's actual growth rate. Discarding that
      * transition before any timed sample is taken is standard microbenchmark practice
      * and is what lets the measured repetitions reflect steady-state cost.
+     *
+     * <p>Warm-up is bounded by <em>time</em>, not by a call count, and that distinction
+     * is load-bearing rather than cosmetic. The JIT compiles on invocation counters
+     * <em>and</em> loop back-edge counters, so a fixed count of warm-up calls reaches a
+     * steady state at different points for different input sizes - five calls over a
+     * 4 000-element input rack up an eighth of the back-edges that five calls over a
+     * 32 000-element one do. The larger sizes therefore ran proportionally more compiled
+     * code, a speed-up growing with input size, which is precisely the shape that cancels
+     * real linear growth out of the fitted curve. A time budget gives a cheap submission
+     * the hundreds of calls it needs and an expensive one the handful it needs, so every
+     * size is timed from the same steady state. See {@code ComplexityProperties} for the
+     * measurements behind the budget's value.
      *
      * <p>Deliberately re-binds the arguments fresh from the input JSON before every
      * warm-up and timed call, rather than reusing one deserialised object: a solution
@@ -218,11 +231,18 @@ public class JavaLanguageAdapter implements LanguageAdapter {
                     public static void main(String[] args) throws Exception {
                         ObjectMapper mapper = new ObjectMapper();
                         JsonNode input = mapper.readTree(new File(args[0]));
-                        int warmup = Integer.parseInt(args[1]);
-                        int repetitions = Integer.parseInt(args[2]);
-                        File resultFile = new File(args[3]);
+                        long warmupBudgetNanos = Long.parseLong(args[1]);
+                        int maxWarmupCalls = Integer.parseInt(args[2]);
+                        int repetitions = Integer.parseInt(args[3]);
+                        File resultFile = new File(args[4]);
 
-                        for (int rep = 0; rep < warmup; rep++) {
+                        // Warm up by elapsed time rather than by call count, so a cheap
+                        // submission gets the hundreds of calls it needs to reach a JIT
+                        // steady state while an expensive one takes only the few it needs -
+                        // the same steady state at every measured size, which a fixed call
+                        // count does not give (see the adapter's Javadoc).
+                        long warmupStartNanos = System.nanoTime();
+                        for (int rep = 0; rep < maxWarmupCalls; rep++) {
                             %2$s solution = new %2$s();
                             try {
                 %3$s                %4$s
@@ -230,6 +250,9 @@ public class JavaLanguageAdapter implements LanguageAdapter {
                             } catch (Throwable t) {
                                 // A warm-up call throwing is not itself a failure - only the
                                 // timed repetitions below need a usable sample.
+                            }
+                            if (System.nanoTime() - warmupStartNanos >= warmupBudgetNanos) {
+                                break;
                             }
                         }
 
