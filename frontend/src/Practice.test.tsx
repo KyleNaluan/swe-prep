@@ -144,7 +144,11 @@ describe('Practice complexity self-report (issue #17)', () => {
 
   function mockCodeFetch(
     claimedBody: { time: string; space: string }[],
-    options: { solutionCommitted?: boolean } = {},
+    options: {
+      solutionCommitted?: boolean
+      modelOpinionAvailable?: boolean
+      modelOpinion?: unknown
+    } = {},
   ) {
     return vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       const href = String(url)
@@ -167,11 +171,19 @@ describe('Practice complexity self-report (issue #17)', () => {
             solutionCommitted: options.solutionCommitted ?? false,
           }),
         } as Response
+      if (href.endsWith('/complexity/model-opinion')) {
+        return { ok: true, json: async () => options.modelOpinion } as Response
+      }
       if (href.endsWith('/complexity')) {
         claimedBody.push(JSON.parse(String(init?.body)))
         return {
           ok: true,
-          json: async () => ({ targetTime: 'LINEAR', targetSpace: 'CONSTANT', status: 'CONSISTENT' }),
+          json: async () => ({
+            targetTime: 'LINEAR',
+            targetSpace: 'CONSTANT',
+            status: 'CONSISTENT',
+            modelOpinionAvailable: options.modelOpinionAvailable ?? false,
+          }),
         } as Response
       }
       throw new Error(`unexpected fetch to ${method} ${href}`)
@@ -224,6 +236,72 @@ describe('Practice complexity self-report (issue #17)', () => {
 
     await screen.findByText('1 of 1 tests passed')
     expect(screen.queryByText(/committed to your solutions repo/i)).not.toBeInTheDocument()
+  })
+
+  // The LLM complexity second opinion (issue #83): a third, advisory voice offered
+  // only when the backend says a model advisor is configured - key-absent means the
+  // action is simply absent, never a broken button.
+  describe('model second opinion (issue #83)', () => {
+    async function solveAndClaim() {
+      fireEvent.click(screen.getByRole('button', { name: 'Run' }))
+      await screen.findByText('1 of 1 tests passed')
+      fireEvent.click(await screen.findByRole('button', { name: 'Submit complexity claim' }))
+      await screen.findByText(/Authored target/)
+    }
+
+    it('offers no second opinion action when no advisor is configured', async () => {
+      vi.stubGlobal('fetch', mockCodeFetch([], { modelOpinionAvailable: false }))
+      render(<Practice />)
+      await screen.findByRole('heading', { name: 'Sum Demo' })
+      await solveAndClaim()
+
+      expect(screen.queryByRole('button', { name: 'Get a second opinion' })).not.toBeInTheDocument()
+    })
+
+    it('renders quiet confirmation when the model agrees', async () => {
+      vi.stubGlobal(
+        'fetch',
+        mockCodeFetch([], {
+          modelOpinionAvailable: true,
+          modelOpinion: { modelTime: 'LINEAR', modelReasoning: 'Single pass.', agreement: true },
+        }),
+      )
+      render(<Practice />)
+      await screen.findByRole('heading', { name: 'Sum Demo' })
+      await solveAndClaim()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Get a second opinion' }))
+
+      expect(await screen.findByText(/The model agrees/)).toBeInTheDocument()
+      // Agreement renders quietly - the reasoning behind an agreeing reading is not
+      // surfaced, since there is nothing here for the learner to resolve.
+      expect(screen.queryByText('Single pass.')).not.toBeInTheDocument()
+    })
+
+    it('renders the disagreement as a neutral prompt, never a verdict', async () => {
+      const prompt = 'You claimed O(n), measurement found O(n), and the model reads this as O(n²) - which is right, and why?'
+      vi.stubGlobal(
+        'fetch',
+        mockCodeFetch([], {
+          modelOpinionAvailable: true,
+          modelOpinion: {
+            modelTime: 'QUADRATIC',
+            modelReasoning: 'Looks like nested iteration over the array.',
+            agreement: false,
+            disagreementPrompt: prompt,
+          },
+        }),
+      )
+      render(<Practice />)
+      await screen.findByRole('heading', { name: 'Sum Demo' })
+      await solveAndClaim()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Get a second opinion' }))
+
+      expect(await screen.findByText(prompt)).toBeInTheDocument()
+      expect(screen.getByText('Looks like nested iteration over the array.')).toBeInTheDocument()
+      expect(screen.queryByText(/The model agrees/)).not.toBeInTheDocument()
+    })
   })
 })
 

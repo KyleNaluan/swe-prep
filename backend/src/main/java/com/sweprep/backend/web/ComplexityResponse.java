@@ -17,17 +17,26 @@ import com.sweprep.backend.complexity.MeasurementOutcome;
  * either match state. {@code detail} carries why measurement was inconclusive, and is
  * omitted otherwise.
  *
- * @param attempt     the attempt with the claim, measured complexity and match flag
- * @param targetTime  the authored time complexity
- * @param targetSpace the authored space complexity (self-reported only - never checked)
- * @param status      the coarse measurement outcome
- * @param detail      why measurement was inconclusive, or {@code null} otherwise
+ * @param attempt              the attempt with the claim, measured complexity and match flag
+ * @param targetTime           the authored time complexity
+ * @param targetSpace          the authored space complexity (self-reported only - never checked)
+ * @param status               the coarse measurement outcome
+ * @param detail               why measurement was inconclusive, or {@code null} otherwise
+ * @param modelOpinionAvailable whether the LLM complexity second opinion (issue #83) can
+ *                             be requested from here - {@code false} whenever no advisor
+ *                             is configured, so the editor can hide the action entirely
+ *                             rather than offer a button that would fail
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record ComplexityResponse(
-        AttemptView attempt, String targetTime, String targetSpace, String status, String detail) {
+        AttemptView attempt,
+        String targetTime,
+        String targetSpace,
+        String status,
+        String detail,
+        boolean modelOpinionAvailable) {
 
-    static ComplexityResponse of(ComplexityClaimResult result) {
+    static ComplexityResponse of(ComplexityClaimResult result, boolean modelOpinionAvailable) {
         Boolean claimCorrect = result.attempt().attempt().complexityClaimCorrect();
         String status;
         String detail = null;
@@ -45,6 +54,7 @@ public record ComplexityResponse(
                 result.targetTime().name(),
                 result.targetSpace().name(),
                 status,
-                detail);
+                detail,
+                modelOpinionAvailable);
     }
 }

@@ -43,6 +43,16 @@ sweprep:
     # (checksToCriterion), not "shaky" or "stale".
     shaky-threshold: ${SWEPREP_READINESS_SHAKY_THRESHOLD:0.5}
     stale-after-days: ${SWEPREP_READINESS_STALE_AFTER_DAYS:14}
+  complexity-advisor:
+    # The LLM complexity second opinion (issue #83): one short Anthropic API call, on
+    # request, reading a solved submission's time complexity as a third, advisory
+    # voice beside the claimed and measured values. Unlike every other local config
+    # above, an absent key here is not "safe for local dev" - it is the feature's own
+    # off switch (AnthropicComplexityAdvisor#available()). Deliberately no default
+    # value: set SWEPREP_COMPLEXITY_ADVISOR_API_KEY locally, never commit it.
+    api-key: ${SWEPREP_COMPLEXITY_ADVISOR_API_KEY:}
+    # Configurable so a model change is a config edit, never a code change.
+    model: ${SWEPREP_COMPLEXITY_ADVISOR_MODEL:claude-opus-5}
   streak:
     # The capped repair mechanic (issue #22, decision #7 item 5): a missed day can be
     # repaired by a double session (warm-up plus a solved challenge) the next day, so
