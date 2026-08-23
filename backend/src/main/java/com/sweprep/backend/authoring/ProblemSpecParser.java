@@ -252,8 +252,15 @@ public final class ProblemSpecParser {
                             "'complexity.generator' declares a scalingIntMatrix for parameter '"
                                     + parameter.name() + "', which is not an INT_MATRIX");
                 }
-                yield new InputGenerator.Argument.ScalingIntMatrix(
-                        requireField(source, node, "min").asInt(), requireField(source, node, "max").asInt());
+                JsonNode cols = node.get("cols");
+                yield cols == null || cols.isNull()
+                        ? new InputGenerator.Argument.ScalingIntMatrix(
+                                requireField(source, node, "min").asInt(),
+                                requireField(source, node, "max").asInt())
+                        : new InputGenerator.Argument.ScalingIntMatrix(
+                                requireField(source, node, "min").asInt(),
+                                requireField(source, node, "max").asInt(),
+                                cols.asInt());
             }
             case "scalingListNode" -> {
                 if (parameter.type() != DataType.LIST_NODE) {

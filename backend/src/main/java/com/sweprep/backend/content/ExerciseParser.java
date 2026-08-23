@@ -79,7 +79,7 @@ import java.util.regex.Pattern;
  *       "arguments": [                                         // ask + reveal but skip
  *          { "kind": "scalingIntArray", "min": 0, "max": 1000 },// the empirical check;
  *          { "kind": "scalingString", "alphabet": "abc" },      // one entry per signature
- *          { "kind": "scalingIntMatrix", "min": 0, "max": 100 },// parameter, in order.
+ *          { "kind": "scalingIntMatrix", "min": 0, "max": 100, "cols": 8 },// parameter, order.
  *          { "kind": "scalingListNode", "min": 0, "max": 1000 },// Each kind fits exactly
  *          { "kind": "scalingTreeNode", "min": 0, "max": 1000 },// one DataType (issue #86's
  *          { "kind": "fixed", "value": 9 } ]                    // scaling-kinds follow-on);
@@ -91,8 +91,10 @@ import java.util.regex.Pattern;
  * <p>{@code scalingString}'s {@code alphabet} is optional (default lowercase a-z);
  * {@code scalingIntMatrix}/{@code scalingListNode}/{@code scalingTreeNode} each take
  * {@code min}/{@code max} like {@code scalingIntArray}. {@code scalingIntMatrix}'s
- * measured size drives one matrix dimension (rows, equivalently columns) so a quoted
- * target stays meaningful. {@code scalingListNode} is always the plain-array,
+ * measured size drives the row count only, with columns fixed at an optional {@code cols}
+ * (default {@link com.sweprep.backend.exercise.InputGenerator.Argument.ScalingIntMatrix#DEFAULT_COLS}),
+ * so total cells grow linearly and a quoted target stays meaningful in terms of rows.
+ * {@code scalingListNode} is always the plain-array,
  * always-acyclic form. {@code scalingTreeNode}'s {@code size} nodes are placed by random
  * walk from the root (equal-probability left/right at each visited node until an empty
  * slot is reached) - the same construction as a random binary search tree in
@@ -213,8 +215,15 @@ final class ExerciseParser {
                             "'complexity.generator' declares a scalingIntMatrix for parameter '"
                                     + parameter.name() + "', which is not an INT_MATRIX");
                 }
-                yield new InputGenerator.Argument.ScalingIntMatrix(
-                        json.requireField(node, "min").asInt(), json.requireField(node, "max").asInt());
+                JsonNode cols = node.get("cols");
+                yield cols == null || cols.isNull()
+                        ? new InputGenerator.Argument.ScalingIntMatrix(
+                                json.requireField(node, "min").asInt(),
+                                json.requireField(node, "max").asInt())
+                        : new InputGenerator.Argument.ScalingIntMatrix(
+                                json.requireField(node, "min").asInt(),
+                                json.requireField(node, "max").asInt(),
+                                cols.asInt());
             }
             case "scalingListNode" -> {
                 if (parameter.type() != DataType.LIST_NODE) {

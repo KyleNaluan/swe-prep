@@ -26,6 +26,17 @@ import java.util.Random;
  * TREE_NODE problems carry the same empirical scaling check the array ones already
  * had.
  *
+ * <p><strong>O(size) memory invariant.</strong> Every {@code Argument} kind's {@link
+ * Argument#generate} must allocate {@code O(size)} memory. {@code ScalingMeasurer}
+ * drives every kind in an exercise's generator through one shared global {@code
+ * sweprep.complexity.sizes} list (default up to 32000) with no per-exercise or
+ * per-kind override, and generation runs in-process in the backend JVM <em>before</em>
+ * {@code runner.execute} - so it is not protected by the runner's isolation or timeout
+ * the way a submitted solution is, and a super-linear allocation (e.g. a {@code size} x
+ * {@code size} matrix) would exhaust the backend heap on the claim path rather than
+ * collapsing to an inconclusive measurement. This is the rule any future scaling kind
+ * must keep.
+ *
  * @param arguments one generator per signature parameter, in call order
  */
 public record InputGenerator(List<Argument> arguments) {
@@ -116,20 +127,34 @@ public record InputGenerator(List<Argument> arguments) {
         }
 
         /**
-         * A parameter that grows with the measured size: a {@code size} x {@code size}
-         * matrix of random ints drawn uniformly from [{@code min}, {@code max}]. Only fits
-         * a parameter declared {@link DataType#INT_MATRIX}. The measured size drives one
-         * dimension - a quoted {@code targetTime}/{@code targetSpace} on an exercise using
-         * this kind states its complexity in terms of {@code n} rows (equivalently,
-         * columns), not total cell count, so a stated {@code LINEAR} target means linear in
-         * rows/columns, {@code QUADRATIC} linear in cells.
+         * A parameter that grows with the measured size: a matrix of {@code size} rows,
+         * each of a fixed {@code cols} columns, of random ints drawn uniformly from
+         * [{@code min}, {@code max}]. Only fits a parameter declared {@link
+         * DataType#INT_MATRIX}. The measured size drives the <em>row count only</em> -
+         * columns stay fixed at {@code cols} (default {@link #DEFAULT_COLS}) - so total
+         * cells grow {@code O(size)}, keeping this kind inside the {@code O(size)} memory
+         * invariant documented on {@link InputGenerator}. A quoted {@code targetTime}/{@code
+         * targetSpace} on an exercise using this kind therefore states its complexity in
+         * terms of row count only, not total cell count: a stated {@code LINEAR} target
+         * means linear in rows, and a {@code QUADRATIC} target means an algorithm that
+         * revisits rows/cells, not that the input itself grows quadratically.
          */
-        record ScalingIntMatrix(int min, int max) implements Argument {
+        record ScalingIntMatrix(int min, int max, int cols) implements Argument {
+
+            /** The default column count when content omits {@code "cols"}. */
+            public static final int DEFAULT_COLS = 8;
 
             public ScalingIntMatrix {
                 if (min > max) {
                     throw new IllegalArgumentException("min must not exceed max");
                 }
+                if (cols < 1) {
+                    throw new IllegalArgumentException("cols must be at least 1");
+                }
+            }
+
+            public ScalingIntMatrix(int min, int max) {
+                this(min, max, DEFAULT_COLS);
             }
 
             @Override
@@ -138,7 +163,7 @@ public record InputGenerator(List<Argument> arguments) {
                 long span = (long) max - min + 1;
                 for (int row = 0; row < size; row++) {
                     ArrayNode line = JsonNodeFactory.instance.arrayNode();
-                    for (int col = 0; col < size; col++) {
+                    for (int col = 0; col < cols; col++) {
                         line.add(min + (int) (random.nextDouble() * span));
                     }
                     matrix.add(line);
