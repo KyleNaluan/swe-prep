@@ -47,6 +47,14 @@ public interface LanguageAdapter {
      * alone, exactly like {@link #generateHarness}, so no per-language timing code is
      * ever hand-written. There is no {@link com.sweprep.backend.exercise.Comparison}
      * here: nothing is graded, only timed.
+     *
+     * <p>Every language's timing harness takes the same five program arguments, in this
+     * order, so {@code ScalingMeasurer} drives them all identically: the input file, the
+     * warm-up time budget in nanoseconds, the maximum number of warm-up calls, the number
+     * of timed repetitions, and the result file to write. Warm-up runs untimed calls
+     * until either bound is hit (always at least one call); each timed repetition then
+     * records its own {@code elapsedNanos}, or {@code threw}. Binding the arguments and
+     * constructing the solution happen outside every timed window.
      */
     GeneratedHarness generateTimingHarness(Signature signature);
 }
