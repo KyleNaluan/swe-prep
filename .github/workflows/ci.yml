@@ -20,6 +20,9 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
+          # Cache ~/.m2/repository keyed on the poms so dependency jars aren't
+          # re-fetched from Maven Central on every run, which is rate-limited.
+          cache: maven
 
       - uses: actions/setup-node@v4
         with:
@@ -35,4 +38,10 @@ jobs:
         working-directory: frontend
 
       - name: Run test suite
+        # Use the runner's preinstalled Maven rather than letting the wrapper
+        # re-download the Apache Maven distribution from Maven Central, which is
+        # rate-limited and has failed CI with HTTP 429 during bootstrap. Local
+        # dev is unaffected: test.sh defaults to ./mvnw when MVN is unset.
+        env:
+          MVN: mvn
         run: ./test.sh

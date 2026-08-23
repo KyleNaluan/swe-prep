@@ -223,6 +223,26 @@ final class ContentWriter {
                     argNode.put("min", scaling.min());
                     argNode.put("max", scaling.max());
                 }
+                case InputGenerator.Argument.ScalingString scaling -> {
+                    argNode.put("kind", "scalingString");
+                    argNode.put("alphabet", scaling.alphabet());
+                }
+                case InputGenerator.Argument.ScalingIntMatrix scaling -> {
+                    argNode.put("kind", "scalingIntMatrix");
+                    argNode.put("min", scaling.min());
+                    argNode.put("max", scaling.max());
+                    argNode.put("cols", scaling.cols());
+                }
+                case InputGenerator.Argument.ScalingListNode scaling -> {
+                    argNode.put("kind", "scalingListNode");
+                    argNode.put("min", scaling.min());
+                    argNode.put("max", scaling.max());
+                }
+                case InputGenerator.Argument.ScalingTreeNode scaling -> {
+                    argNode.put("kind", "scalingTreeNode");
+                    argNode.put("min", scaling.min());
+                    argNode.put("max", scaling.max());
+                }
                 case InputGenerator.Argument.Fixed fixed -> {
                     argNode.put("kind", "fixed");
                     argNode.set("value", fixed.value());
