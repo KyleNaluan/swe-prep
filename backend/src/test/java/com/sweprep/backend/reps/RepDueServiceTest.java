@@ -42,7 +42,7 @@ class RepDueServiceTest {
     void aFreshlyCorrectRepIsNotDueTheSameDay() {
         AttemptRepository attempts = mock(AttemptRepository.class);
         when(attempts.repReviews(USER))
-                .thenReturn(List.of(new RepReview(Fixtures.patternIdRep().id(), DAY_0, true, false)));
+                .thenReturn(List.of(new RepReview(Fixtures.patternIdRep().id(), DAY_0, true, false, false)));
         RepDueService service = service(attempts, DAY_0);
 
         assertThat(service.dueToday(USER, List.of(Fixtures.patternIdRep())))
@@ -53,7 +53,7 @@ class RepDueServiceTest {
     void aWrongAnswerYesterdayIsDueAgainToday() {
         AttemptRepository attempts = mock(AttemptRepository.class);
         when(attempts.repReviews(USER))
-                .thenReturn(List.of(new RepReview(Fixtures.patternIdRep().id(), DAY_0, false, false)));
+                .thenReturn(List.of(new RepReview(Fixtures.patternIdRep().id(), DAY_0, false, false, false)));
         RepDueService service = service(attempts, DAY_0.plus(java.time.Duration.ofDays(1)));
 
         assertThat(service.dueToday(USER, List.of(Fixtures.patternIdRep())))
@@ -69,12 +69,41 @@ class RepDueServiceTest {
         String id = Fixtures.patternIdRep().id();
         AttemptRepository attempts = mock(AttemptRepository.class);
         when(attempts.repReviews(USER)).thenReturn(List.of(
-                new RepReview(id, DAY_0, true, false),
-                new RepReview(id, DAY_0.plus(java.time.Duration.ofHours(1)), true, false)));
+                new RepReview(id, DAY_0, true, false, false),
+                new RepReview(id, DAY_0.plus(java.time.Duration.ofHours(1)), true, false, false)));
 
         RepDueService service = service(attempts, DAY_0.plus(java.time.Duration.ofDays(1)));
 
         assertThat(service.dueToday(USER, List.of(Fixtures.patternIdRep()))).contains(id);
+    }
+
+    // --- Reference-solution reveal (issue #82) ---------------------------------------
+
+    @Test
+    void twoConsecutiveSolutionSeenPassesNeverGrowTheIntervalPastOneDayUnlikeTwoOrdinaryPasses() {
+        // SOLUTION_SEEN quality (2) is below SM-2's advance-on-correct threshold (3), so
+        // it resets the interval every time, exactly like an incorrect review - "the
+        // problem comes back soon" (issue #82). Two ordinary correct reviews, by
+        // contrast, grow the interval to six days after the second one; checking both at
+        // the same point (two days after the first review) is what proves the flag
+        // actually changes the schedule, not just that a single review is due next day
+        // (true of any first correct review, whatever its quality).
+        String id = Fixtures.patternIdRep().id();
+        Instant checkpoint = DAY_0.plus(java.time.Duration.ofDays(2));
+
+        AttemptRepository solutionSeenTwice = mock(AttemptRepository.class);
+        when(solutionSeenTwice.repReviews(USER)).thenReturn(List.of(
+                new RepReview(id, DAY_0, true, false, true),
+                new RepReview(id, DAY_0.plus(java.time.Duration.ofDays(1)), true, false, true)));
+        assertThat(service(solutionSeenTwice, checkpoint).dueToday(USER, List.of(Fixtures.patternIdRep())))
+                .contains(id);
+
+        AttemptRepository cleanTwice = mock(AttemptRepository.class);
+        when(cleanTwice.repReviews(USER)).thenReturn(List.of(
+                new RepReview(id, DAY_0, true, false, false),
+                new RepReview(id, DAY_0.plus(java.time.Duration.ofDays(1)), true, false, false)));
+        assertThat(service(cleanTwice, checkpoint).dueToday(USER, List.of(Fixtures.patternIdRep())))
+                .doesNotContain(id);
     }
 
     @Test

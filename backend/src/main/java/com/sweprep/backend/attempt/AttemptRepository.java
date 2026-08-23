@@ -33,12 +33,14 @@ public class AttemptRepository {
                             id, user_id, exercise_id, exercise_title, domain, form,
                             outcome, started_at, ended_at, hints_taken,
                             failing_case_revealed, reveal_hypothesis, explanation_requested,
-                            complexity_claim, measured_complexity, complexity_claim_correct)
+                            complexity_claim, measured_complexity, complexity_claim_correct,
+                            solution_seen)
                         VALUES (
                             :id, :userId, :exerciseId, :exerciseTitle, :domain, :form,
                             :outcome, :startedAt, :endedAt, :hintsTaken,
                             :failingCaseRevealed, :revealHypothesis, :explanationRequested,
-                            :complexityClaim, :measuredComplexity, :complexityClaimCorrect)
+                            :complexityClaim, :measuredComplexity, :complexityClaimCorrect,
+                            :solutionSeen)
                         """)
                 .param("id", attempt.id())
                 .param("userId", attempt.userId())
@@ -56,6 +58,7 @@ public class AttemptRepository {
                 .param("complexityClaim", attempt.complexityClaim())
                 .param("measuredComplexity", attempt.measuredComplexity())
                 .param("complexityClaimCorrect", attempt.complexityClaimCorrect())
+                .param("solutionSeen", attempt.solutionSeen())
                 .update();
     }
 
@@ -76,7 +79,8 @@ public class AttemptRepository {
                             explanation_requested = :explanationRequested,
                             complexity_claim = :complexityClaim,
                             measured_complexity = :measuredComplexity,
-                            complexity_claim_correct = :complexityClaimCorrect
+                            complexity_claim_correct = :complexityClaimCorrect,
+                            solution_seen = :solutionSeen
                         WHERE id = :id
                         """)
                 .param("id", attempt.id())
@@ -89,6 +93,7 @@ public class AttemptRepository {
                 .param("complexityClaim", attempt.complexityClaim())
                 .param("measuredComplexity", attempt.measuredComplexity())
                 .param("complexityClaimCorrect", attempt.complexityClaimCorrect())
+                .param("solutionSeen", attempt.solutionSeen())
                 .update();
     }
 
@@ -151,12 +156,14 @@ public class AttemptRepository {
                             id, user_id, exercise_id, exercise_title, domain, form,
                             outcome, started_at, ended_at, hints_taken,
                             failing_case_revealed, reveal_hypothesis, explanation_requested,
-                            complexity_claim, measured_complexity, complexity_claim_correct)
+                            complexity_claim, measured_complexity, complexity_claim_correct,
+                            solution_seen)
                         VALUES (
                             :id, :userId, :exerciseId, :exerciseTitle, :domain, :form,
                             :outcome, :startedAt, :endedAt, :hintsTaken,
                             :failingCaseRevealed, :revealHypothesis, :explanationRequested,
-                            :complexityClaim, :measuredComplexity, :complexityClaimCorrect)
+                            :complexityClaim, :measuredComplexity, :complexityClaimCorrect,
+                            :solutionSeen)
                         ON CONFLICT (user_id, exercise_id) WHERE outcome = 'READ'
                         DO UPDATE SET ended_at = EXCLUDED.ended_at
                         RETURNING *
@@ -177,6 +184,7 @@ public class AttemptRepository {
                 .param("complexityClaim", attempt.complexityClaim())
                 .param("measuredComplexity", attempt.measuredComplexity())
                 .param("complexityClaimCorrect", attempt.complexityClaimCorrect())
+                .param("solutionSeen", attempt.solutionSeen())
                 .query(MAPPER)
                 .single();
     }
@@ -199,11 +207,18 @@ public class AttemptRepository {
 
     /**
      * The distinct ids of every {@code CHALLENGE}-form exercise this user has ever solved
-     * with no help taken - no hint climbed, no failing case revealed (issues #16/#45). This
-     * is the "solved-cold" objective competence axis the readiness picture reads: like
-     * {@link com.sweprep.backend.attempt.SubmissionRepository#cleanPassInstants}'s {@code
+     * with no help taken - no hint climbed, no failing case revealed, and no reference
+     * solution seen before passing (issues #16/#45/#82). This is the "solved-cold"
+     * objective competence axis the readiness picture reads: like {@link
+     * com.sweprep.backend.attempt.SubmissionRepository#cleanPassInstants}'s {@code
      * outcome = 'PASSED'} boundary, the query alone keeps it a machine-verdict signal - a
      * solve that needed help still counts as solved, but not as solved cold.
+     *
+     * <p>{@code solution_seen = false} is what gives issue #82's "excluded until a later
+     * clean pass" its exact meaning here: this is an <em>exists-any</em> query, so an
+     * exercise with one tainted {@code SOLVED} attempt (solution seen pre-pass) and a
+     * later, genuinely clean {@code SOLVED} attempt still counts - the later clean row
+     * satisfies every condition on its own, with no special-casing needed for "later".
      */
     public java.util.Set<String> solvedColdExerciseIds(UUID userId) {
         return new java.util.HashSet<>(
@@ -212,6 +227,7 @@ public class AttemptRepository {
                                 SELECT DISTINCT exercise_id FROM attempt
                                 WHERE user_id = :userId AND form = 'CHALLENGE' AND outcome = 'SOLVED'
                                   AND hints_taken = 0 AND failing_case_revealed = false
+                                  AND solution_seen = false
                                 """)
                         .param("userId", userId)
                         .query(String.class)
@@ -239,9 +255,11 @@ public class AttemptRepository {
      * One terminal {@code REP}-form attempt's outcome - the raw material {@code RepDueService}
      * (issue #20) reduces to a spaced-repetition {@code Review}. {@code solved} is the
      * correctness signal; {@code explanationRequested} is the "asked why" confidence signal
-     * (issue #51) that makes an otherwise-correct review weaker.
+     * (issue #51) that makes an otherwise-correct review weaker; {@code solutionSeen} is the
+     * reference-solution-seen-before-passing signal (issue #82) that makes it weaker still.
      */
-    public record RepReview(String exerciseId, Instant endedAt, boolean solved, boolean explanationRequested) {}
+    public record RepReview(
+            String exerciseId, Instant endedAt, boolean solved, boolean explanationRequested, boolean solutionSeen) {}
 
     /**
      * Every terminal {@code REP}-form attempt this user has ever ended, across every exercise -
@@ -255,7 +273,7 @@ public class AttemptRepository {
     public List<RepReview> repReviews(UUID userId) {
         return jdbc.sql(
                         """
-                        SELECT exercise_id, ended_at, outcome, explanation_requested
+                        SELECT exercise_id, ended_at, outcome, explanation_requested, solution_seen
                         FROM attempt
                         WHERE user_id = :userId AND form = 'REP' AND outcome IN ('SOLVED', 'ABANDONED')
                         ORDER BY ended_at
@@ -265,7 +283,8 @@ public class AttemptRepository {
                         rs.getString("exercise_id"),
                         rs.getTimestamp("ended_at").toInstant(),
                         "SOLVED".equals(rs.getString("outcome")),
-                        rs.getBoolean("explanation_requested")))
+                        rs.getBoolean("explanation_requested"),
+                        rs.getBoolean("solution_seen")))
                 .list();
     }
 
@@ -286,7 +305,8 @@ public class AttemptRepository {
             AttemptOutcome outcome,
             int hintsTaken,
             boolean failingCaseRevealed,
-            Boolean complexityClaimCorrect) {}
+            Boolean complexityClaimCorrect,
+            boolean solutionSeen) {}
 
     /**
      * Every terminal {@code CHALLENGE}-form attempt this user has ever ended, across every
@@ -304,7 +324,7 @@ public class AttemptRepository {
         return jdbc.sql(
                         """
                         SELECT id, exercise_id, ended_at, outcome, hints_taken,
-                               failing_case_revealed, complexity_claim_correct
+                               failing_case_revealed, complexity_claim_correct, solution_seen
                         FROM attempt
                         WHERE user_id = :userId AND form = 'CHALLENGE'
                           AND outcome IN ('SOLVED', 'ABANDONED', 'EXPLAINED')
@@ -320,7 +340,8 @@ public class AttemptRepository {
                             AttemptOutcome.valueOf(rs.getString("outcome")),
                             rs.getInt("hints_taken"),
                             rs.getBoolean("failing_case_revealed"),
-                            claimCorrect == null ? null : (Boolean) claimCorrect);
+                            claimCorrect == null ? null : (Boolean) claimCorrect,
+                            rs.getBoolean("solution_seen"));
                 })
                 .list();
     }
@@ -417,6 +438,7 @@ public class AttemptRepository {
                 rs.getBoolean("explanation_requested"),
                 rs.getString("complexity_claim"),
                 rs.getString("measured_complexity"),
-                claimCorrect == null ? null : (Boolean) claimCorrect);
+                claimCorrect == null ? null : (Boolean) claimCorrect,
+                rs.getBoolean("solution_seen"));
     }
 }

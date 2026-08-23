@@ -17,9 +17,12 @@ package com.sweprep.backend.scheduler;
  * <p>The three levels are exactly the ones issue #8's resolution names:
  *
  * <ul>
- *   <li>Passed on the first submission, with no hint taken, no failing-case reveal, and
- *       (when the exercise checks it) a complexity claim measurement did not contradict
- *       -&gt; {@link #PERFECT}.
+ *   <li>Passed on the first submission, with no hint taken, no failing-case reveal, no
+ *       reference solution seen before passing, and (when the exercise checks it) a
+ *       complexity claim measurement did not contradict -&gt; {@link #PERFECT}.
+ *   <li>Passed, but the reference solution was seen before this attempt ever passed
+ *       (issue #82) -&gt; {@link #SOLUTION_SEEN}, regardless of anything else - seeing the
+ *       answer is more severe than any combination of hints or extra tries.
  *   <li>Passed, but climbed the hint ladder, revealed the failing case, or took more
  *       than one submission to get there -&gt; {@link #WEAK_PASS}.
  *   <li>Failed or abandoned -&gt; {@link #INCORRECT}.
@@ -32,6 +35,15 @@ public final class ChallengeQuality {
 
     /** A pass that needed more than one try, a hint, or the failing case revealed. */
     public static final int WEAK_PASS = 3;
+
+    /**
+     * A pass that only came after the reference solution was revealed on this attempt
+     * before it passed (issue #82): still a solve, but the weakest kind of one - below
+     * {@link #WEAK_PASS} - so the priority scorer treats it as badly as a passed-but-
+     * needed-real-help attempt and keeps it out of the "clean pass" count the retirement
+     * ladder ({@link ChallengePriority}) advances on.
+     */
+    public static final int SOLUTION_SEEN = 2;
 
     /** A failed or abandoned attempt: the bottom mark, whatever else happened. */
     public static final int INCORRECT = 1;
@@ -47,6 +59,10 @@ public final class ChallengeQuality {
      * @param submissionCount       how many times Run was pressed in this attempt
      * @param hintsTaken            hint-ladder rungs climbed
      * @param failingCaseRevealed   whether the failing case was revealed
+     * @param solutionSeen          whether the reference solution was revealed on this
+     *                              attempt before it passed (issue #82); takes
+     *                              precedence over the hint/reveal/submission-count
+     *                              signals when solved
      * @param complexityClaimCorrect whether the self-reported complexity matched
      *                              measurement - {@code null} when the exercise carries
      *                              no complexity check or measurement was inconclusive,
@@ -59,9 +75,13 @@ public final class ChallengeQuality {
             int submissionCount,
             int hintsTaken,
             boolean failingCaseRevealed,
+            boolean solutionSeen,
             Boolean complexityClaimCorrect) {
         if (!solved) {
             return INCORRECT;
+        }
+        if (solutionSeen) {
+            return SOLUTION_SEEN;
         }
         boolean firstTryNoHelp = submissionCount <= 1 && hintsTaken == 0 && !failingCaseRevealed;
         boolean complexityNotContradicted = !Boolean.FALSE.equals(complexityClaimCorrect);

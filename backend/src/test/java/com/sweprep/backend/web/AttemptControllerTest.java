@@ -20,6 +20,7 @@ import com.sweprep.backend.attempt.ExplanationResult;
 import com.sweprep.backend.attempt.HintResult;
 import com.sweprep.backend.attempt.IllegalAttemptStateException;
 import com.sweprep.backend.attempt.InvalidAttemptRequestException;
+import com.sweprep.backend.attempt.ReferenceSolutionResult;
 import com.sweprep.backend.attempt.RevealResult;
 import com.sweprep.backend.attempt.SelfCheckRating;
 import com.sweprep.backend.attempt.SelfCheckReveal;
@@ -76,7 +77,8 @@ class AttemptControllerTest {
                 false,
                 null,
                 null,
-                null);
+                null,
+                false);
     }
 
     @Test
@@ -221,6 +223,50 @@ class AttemptControllerTest {
                         .content(mapper.writeValueAsString(new RevealRequest("x", null, null))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.failingCase").doesNotExist());
+    }
+
+    // --- Reference-solution reveal (issue #82) --------------------------------------
+
+    @Test
+    void revealingTheSolutionBeforePassingMarksTheAttemptSolutionSeen() throws Exception {
+        UUID id = UUID.randomUUID();
+        Attempt marked = attempt(id, AttemptOutcome.IN_PROGRESS).withSolutionSeen();
+        AttemptWithCount withCount = new AttemptWithCount(marked, 0);
+        when(service.revealSolution(id))
+                .thenReturn(new ReferenceSolutionResult(withCount, "class Solution {}", true));
+
+        mockMvc.perform(post("/api/attempts/" + id + "/solution"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.solution").value("class Solution {}"))
+                .andExpect(jsonPath("$.prePass").value(true))
+                .andExpect(jsonPath("$.attempt.solutionSeen").value(true));
+    }
+
+    @Test
+    void revealingTheSolutionAfterPassingIsUnrestrictedAndUnrecorded() throws Exception {
+        UUID id = UUID.randomUUID();
+        // Not marked solution-seen: the reveal happened after the attempt already solved.
+        AttemptWithCount withCount = new AttemptWithCount(attempt(id, AttemptOutcome.SOLVED), 1);
+        when(service.revealSolution(id))
+                .thenReturn(new ReferenceSolutionResult(withCount, "class Solution {}", false));
+
+        mockMvc.perform(post("/api/attempts/" + id + "/solution"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.solution").value("class Solution {}"))
+                .andExpect(jsonPath("$.prePass").value(false))
+                .andExpect(jsonPath("$.attempt.solutionSeen").value(false));
+    }
+
+    @Test
+    void revealingTheSolutionOnANonCodeExerciseIsABadRequest() throws Exception {
+        UUID id = UUID.randomUUID();
+        when(service.revealSolution(id)).thenThrow(new InvalidAttemptRequestException(
+                "Exercise 'x' has no reference solution to reveal; it is not a code exercise"));
+
+        mockMvc.perform(post("/api/attempts/" + id + "/solution"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error")
+                        .value(org.hamcrest.Matchers.containsString("not a code exercise")));
     }
 
     @Test

@@ -84,8 +84,8 @@ class ChallengeServiceTest {
 
         AttemptRepository attempts = mock(AttemptRepository.class);
         when(attempts.challengeReviews(USER)).thenReturn(List.of(
-                new ChallengeAttemptRow(cleanAttempt, "clean", endedAt, AttemptOutcome.SOLVED, 0, false, null),
-                new ChallengeAttemptRow(multiAttempt, "multi", endedAt, AttemptOutcome.SOLVED, 0, false, null)));
+                new ChallengeAttemptRow(cleanAttempt, "clean", endedAt, AttemptOutcome.SOLVED, 0, false, null, false),
+                new ChallengeAttemptRow(multiAttempt, "multi", endedAt, AttemptOutcome.SOLVED, 0, false, null, false)));
         when(attempts.solvedColdExerciseIds(USER)).thenReturn(Set.of());
         when(attempts.firstChallengeAttemptDates(USER)).thenReturn(Map.of());
         SubmissionRepository submissions = mock(SubmissionRepository.class);
@@ -131,7 +131,7 @@ class ChallengeServiceTest {
         // otherUser's history says this challenge was just solved perfectly (too recent to
         // select); USER's own history is empty, so USER must still see it as selectable.
         when(attempts.challengeReviews(otherUser)).thenReturn(List.of(
-                new ChallengeAttemptRow(UUID.randomUUID(), "only", NOW, AttemptOutcome.SOLVED, 0, false, null)));
+                new ChallengeAttemptRow(UUID.randomUUID(), "only", NOW, AttemptOutcome.SOLVED, 0, false, null, false)));
         when(attempts.challengeReviews(USER)).thenReturn(List.of());
         when(attempts.solvedColdExerciseIds(USER)).thenReturn(Set.of());
         when(attempts.firstChallengeAttemptDates(USER)).thenReturn(Map.of());
@@ -155,7 +155,7 @@ class ChallengeServiceTest {
 
         AttemptRepository attempts = mock(AttemptRepository.class);
         when(attempts.challengeReviews(USER)).thenReturn(List.of(new ChallengeAttemptRow(
-                UUID.randomUUID(), "explained", NOW.minus(Duration.ofDays(1)), AttemptOutcome.EXPLAINED, 0, false, null)));
+                UUID.randomUUID(), "explained", NOW.minus(Duration.ofDays(1)), AttemptOutcome.EXPLAINED, 0, false, null, false)));
         when(attempts.solvedColdExerciseIds(USER)).thenReturn(Set.of());
         when(attempts.firstChallengeAttemptDates(USER)).thenReturn(Map.of());
         SubmissionRepository submissions = mock(SubmissionRepository.class);
@@ -166,6 +166,37 @@ class ChallengeServiceTest {
         // Too recent (one day ago, under the default two-day floor): "explained" must not
         // win even though it would otherwise never be gated - "fresh" (genuinely new) wins.
         assertThat(service.selectMain(USER)).contains(fresh);
+    }
+
+    // --- Reference-solution reveal (issue #82) ---------------------------------------
+
+    @Test
+    void aSolutionSeenPassScoresWorseThanAnOrdinaryCleanPassAllElseEqual() {
+        // Same day, same submission count, same everything except one row carries a
+        // pre-pass solution reveal - proving ChallengeAttemptRow#solutionSeen is actually
+        // threaded into ChallengeQuality#derive, not defaulted away.
+        Exercise solutionSeen = minimalChallenge("seen");
+        Exercise clean = minimalChallenge("clean");
+        ExerciseCatalog catalog = Fixtures.catalogOf(solutionSeen, clean);
+
+        UUID seenAttempt = UUID.randomUUID();
+        UUID cleanAttempt = UUID.randomUUID();
+        Instant endedAt = NOW.minus(Duration.ofDays(10));
+
+        AttemptRepository attempts = mock(AttemptRepository.class);
+        when(attempts.challengeReviews(USER)).thenReturn(List.of(
+                new ChallengeAttemptRow(seenAttempt, "seen", endedAt, AttemptOutcome.SOLVED, 0, false, null, true),
+                new ChallengeAttemptRow(cleanAttempt, "clean", endedAt, AttemptOutcome.SOLVED, 0, false, null, false)));
+        when(attempts.solvedColdExerciseIds(USER)).thenReturn(Set.of());
+        when(attempts.firstChallengeAttemptDates(USER)).thenReturn(Map.of());
+        SubmissionRepository submissions = mock(SubmissionRepository.class);
+        when(submissions.countsForAttempts(List.of(seenAttempt, cleanAttempt)))
+                .thenReturn(Map.of(seenAttempt, 1, cleanAttempt, 1));
+
+        ChallengeService service = service(catalog, attempts, submissions, NOW);
+
+        // The worse-scoring (solution-seen) attempt is the one worth revisiting sooner.
+        assertThat(service.selectMain(USER)).contains(solutionSeen);
     }
 
     private static ChallengeService service(
