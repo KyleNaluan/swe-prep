@@ -83,7 +83,12 @@ Prerequisites: Java 21 on `PATH`, Docker running, Node 24, Python 3 on `PATH` (f
    disclosing the case; a "stuck?" nudge quietly offers the next hint after repeated
    failures. A check that carries an explanation of why the answer is right shows it
    automatically on a wrong answer, and offers it one click away once the sitting has
-   ended; asking is recorded but never affects your score - it is not a hint. Runtime is
+   ended; asking is recorded but never affects your score - it is not a hint. The
+   exercise's own reference solution can be revealed on request at any time (issue #82):
+   after you have passed it is offered freely as a style-and-idiom comparison, and before
+   you pass revealing it is still allowed but marks the attempt solution-seen, so the
+   problem is scheduled to come back sooner and stops counting as solved cold until a
+   later clean pass - never a penalty to any score or streak. Runtime is
    shown next to the verdict for interest only, never as part of pass/fail. Once a
    coding exercise is solved, if it carries a complexity target you are asked to state
    your solution's time and space complexity before that target is revealed (issue #17)
@@ -105,7 +110,8 @@ Prerequisites: Java 21 on `PATH`, Docker running, Node 24, Python 3 on `PATH` (f
    revealing a model answer. The Readiness tab (issue #45) is the honest progress
    picture, a first-class surface rather than a screen tucked behind Practice: plain
    X/Y counts of checks retrieved to criterion and challenges solved cold (no hints, no
-   failing case revealed), concepts (lessons) read, and a per-family breakdown - never a
+   failing case revealed, no reference solution seen), concepts (lessons) read, and a
+   per-family breakdown - never a
    score, points, badges, or levels, and a broken streak is only ever described, never
    framed as a loss. Each sitting and every press of Run is
    recorded as durable practice history, shown in a History panel below the editor

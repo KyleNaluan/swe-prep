@@ -13,8 +13,9 @@ import java.util.List;
  *                          successive-relearning criterion (issue #38) versus how many
  *                          exist. Built only from clean machine-verdict passes.
  * @param solvedCold        the objective competence axis over every {@code CHALLENGE}-form
- *                          exercise: how many have been solved with no hint taken and no
- *                          failing case revealed, versus how many exist.
+ *                          exercise: how many have been solved with no hint taken, no
+ *                          failing case revealed, and no reference solution seen before
+ *                          passing (issue #82), versus how many exist.
  * @param conceptsCovered   how many Lessons have been read versus how many the catalog
  *                          holds - the axis that makes reading and verifying understanding
  *                          count as earned progress, not just solving code.
