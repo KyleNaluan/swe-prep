@@ -43,6 +43,13 @@ import java.util.UUID;
  * @param complexityClaim        the solver's self-reported complexity (issue #17)
  * @param measuredComplexity     what measurement said (issue #17)
  * @param complexityClaimCorrect whether the claim matched measurement (issue #17)
+ * @param solutionSeen           whether the reference solution was revealed on this
+ *                               attempt <em>before</em> it ever passed (issue #82). Set
+ *                               only by a pre-pass reveal - never by one after the
+ *                               attempt is already {@code SOLVED}, which is unrestricted
+ *                               and carries no honesty cost. A later clean pass on a
+ *                               fresh attempt (this flag {@code false}) is what makes the
+ *                               exercise count toward "solved cold" again.
  */
 public record Attempt(
         UUID id,
@@ -60,14 +67,15 @@ public record Attempt(
         boolean explanationRequested,
         String complexityClaim,
         String measuredComplexity,
-        Boolean complexityClaimCorrect) {
+        Boolean complexityClaimCorrect,
+        boolean solutionSeen) {
 
     /** This attempt with a different outcome and end time; identity is unchanged. */
     public Attempt withOutcome(AttemptOutcome newOutcome, Instant endedAt) {
         return new Attempt(
                 id, userId, exerciseId, exerciseTitle, domain, form, newOutcome, startedAt, endedAt,
                 hintsTaken, failingCaseRevealed, revealHypothesis, explanationRequested,
-                complexityClaim, measuredComplexity, complexityClaimCorrect);
+                complexityClaim, measuredComplexity, complexityClaimCorrect, solutionSeen);
     }
 
     /** This attempt with the hint ladder advanced to {@code newHintsTaken} rungs. */
@@ -75,7 +83,7 @@ public record Attempt(
         return new Attempt(
                 id, userId, exerciseId, exerciseTitle, domain, form, outcome, startedAt, endedAt,
                 newHintsTaken, failingCaseRevealed, revealHypothesis, explanationRequested,
-                complexityClaim, measuredComplexity, complexityClaimCorrect);
+                complexityClaim, measuredComplexity, complexityClaimCorrect, solutionSeen);
     }
 
     /**
@@ -86,7 +94,7 @@ public record Attempt(
         return new Attempt(
                 id, userId, exerciseId, exerciseTitle, domain, form, outcome, startedAt, endedAt,
                 hintsTaken, true, hypothesis, explanationRequested,
-                complexityClaim, measuredComplexity, complexityClaimCorrect);
+                complexityClaim, measuredComplexity, complexityClaimCorrect, solutionSeen);
     }
 
     /**
@@ -98,7 +106,7 @@ public record Attempt(
         return new Attempt(
                 id, userId, exerciseId, exerciseTitle, domain, form, outcome, startedAt, endedAt,
                 hintsTaken, failingCaseRevealed, revealHypothesis, true,
-                complexityClaim, measuredComplexity, complexityClaimCorrect);
+                complexityClaim, measuredComplexity, complexityClaimCorrect, solutionSeen);
     }
 
     /**
@@ -111,6 +119,19 @@ public record Attempt(
         return new Attempt(
                 id, userId, exerciseId, exerciseTitle, domain, form, outcome, startedAt, endedAt,
                 hintsTaken, failingCaseRevealed, revealHypothesis, explanationRequested,
-                claim, measured, claimCorrect);
+                claim, measured, claimCorrect, solutionSeen);
+    }
+
+    /**
+     * This attempt with the reference-solution reveal recorded (issue #82). Set only for
+     * a pre-pass reveal - the attempt has not yet passed, so a later clean pass on it is
+     * tainted for "solved cold" and its spacing quality is scored low, per the policy.
+     * Never called for a reveal after the attempt is already {@code SOLVED}.
+     */
+    public Attempt withSolutionSeen() {
+        return new Attempt(
+                id, userId, exerciseId, exerciseTitle, domain, form, outcome, startedAt, endedAt,
+                hintsTaken, failingCaseRevealed, revealHypothesis, explanationRequested,
+                complexityClaim, measuredComplexity, complexityClaimCorrect, true);
     }
 }

@@ -10,14 +10,22 @@ import com.sweprep.backend.exercise.ContentCatalog;
 import com.sweprep.backend.exercise.Exercise;
 import com.sweprep.backend.exercise.ExerciseCatalog;
 import com.sweprep.backend.testsupport.Fixtures;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.annotation.Transactional;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -45,6 +53,26 @@ class AttemptPersistenceTest {
     @Container
     @ServiceConnection
     static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine");
+
+    // A content clone for ReferenceSolutionCatalog (issue #82): the reveal-solution tests
+    // need a real solutions/<id>.java on disk, the same convention the content-authoring
+    // tool writes - never a real problem's solution, just Fixtures.PAIR_SOLUTION, already
+    // an invented sample used elsewhere in this suite (never committed - a @TempDir).
+    @TempDir
+    static Path contentDir;
+
+    @DynamicPropertySource
+    static void referenceSolution(DynamicPropertyRegistry registry) {
+        registry.add("sweprep.content.path", () -> contentDir.toString());
+    }
+
+    @BeforeAll
+    static void writeReferenceSolution() throws IOException {
+        Path solutionsDir = contentDir.resolve("solutions");
+        Files.createDirectories(solutionsDir);
+        Files.writeString(
+                solutionsDir.resolve("pair-in-any-order.java"), Fixtures.PAIR_SOLUTION, StandardCharsets.UTF_8);
+    }
 
     @Autowired
     private AttemptService service;
@@ -238,6 +266,86 @@ class AttemptPersistenceTest {
         // A blank hypothesis is allowed (skipping is not forced) and stored as null.
         assertThat(reloaded.revealHypothesis()).isNull();
         assertThat(reloaded.outcome()).isEqualTo(AttemptOutcome.IN_PROGRESS);
+    }
+
+    // --- Reference-solution reveal (issue #82) ---------------------------------------
+
+    @Test
+    void revealingTheSolutionBeforePassingMarksTheAttemptSolutionSeen() {
+        Attempt started = service.start("pair-in-any-order");
+
+        ReferenceSolutionResult result = service.revealSolution(started.id());
+
+        assertThat(result.solution()).isEqualTo(Fixtures.PAIR_SOLUTION);
+        assertThat(result.prePass()).isTrue();
+        assertThat(result.attempt().attempt().solutionSeen()).isTrue();
+
+        Attempt reloaded = attempts.findById(started.id()).orElseThrow();
+        assertThat(reloaded.solutionSeen()).isTrue();
+        // Recording the reveal does not end the attempt or count against it.
+        assertThat(reloaded.outcome()).isEqualTo(AttemptOutcome.IN_PROGRESS);
+    }
+
+    @Test
+    void aLaterPassOnASolutionSeenAttemptStillSolvesButIsNoLongerSolvedCold() {
+        Attempt started = service.start("pair-in-any-order");
+        service.revealSolution(started.id());
+        service.submit(started.id(), Fixtures.PAIR_SOLUTION);
+
+        Attempt reloaded = attempts.findById(started.id()).orElseThrow();
+        assertThat(reloaded.outcome()).isEqualTo(AttemptOutcome.SOLVED);
+        assertThat(reloaded.solutionSeen()).isTrue();
+        // Solved, but not solved cold: issue #82's exclusion until a later clean pass.
+        assertThat(attempts.solvedColdExerciseIds(currentUser.id())).isEmpty();
+    }
+
+    @Test
+    void aFreshAttemptSolvedCleanlyAfterASolutionSeenOneCountsAsSolvedCold() {
+        Attempt tainted = service.start("pair-in-any-order");
+        service.revealSolution(tainted.id());
+        service.submit(tainted.id(), Fixtures.PAIR_SOLUTION);
+
+        // A fresh sitting, never revealed, passes clean - the "later clean pass" the
+        // policy asks for.
+        Attempt clean = service.start("pair-in-any-order");
+        service.submit(clean.id(), Fixtures.PAIR_SOLUTION);
+
+        assertThat(attempts.solvedColdExerciseIds(currentUser.id())).contains("pair-in-any-order");
+    }
+
+    @Test
+    void revealingTheSolutionAfterPassingIsUnrestrictedAndRecordsNothing() {
+        Attempt started = service.start("pair-in-any-order");
+        service.submit(started.id(), Fixtures.PAIR_SOLUTION);
+
+        ReferenceSolutionResult result = service.revealSolution(started.id());
+
+        assertThat(result.solution()).isEqualTo(Fixtures.PAIR_SOLUTION);
+        assertThat(result.prePass()).isFalse();
+
+        Attempt reloaded = attempts.findById(started.id()).orElseThrow();
+        assertThat(reloaded.solutionSeen()).isFalse();
+        assertThat(attempts.solvedColdExerciseIds(currentUser.id())).contains("pair-in-any-order");
+    }
+
+    @Test
+    void revealingTheSolutionOnAnAbandonedAttemptStillMarksItSolutionSeen() {
+        Attempt started = service.start("pair-in-any-order");
+        service.abandon(started.id());
+
+        ReferenceSolutionResult result = service.revealSolution(started.id());
+
+        assertThat(result.prePass()).isTrue();
+        assertThat(attempts.findById(started.id()).orElseThrow().solutionSeen()).isTrue();
+    }
+
+    @Test
+    void revealingTheSolutionOnANonCodeExerciseIsRejected() {
+        Attempt started = service.start("concept-demo");
+
+        UUID id = started.id();
+        assertThatThrownBy(() -> service.revealSolution(id))
+                .isInstanceOf(InvalidAttemptRequestException.class);
     }
 
     @Test

@@ -92,6 +92,18 @@ public class AttemptController {
     }
 
     /**
+     * Discloses the exercise's reference solution (issue #82): available on request at
+     * any time, recorded, and never penalised. A reveal before this attempt has ever
+     * passed marks it solution-seen (a low spacing quality and exclusion from "solved
+     * cold" until a later clean pass); a reveal after it is already solved is
+     * unrestricted and unrecorded.
+     */
+    @PostMapping("/{id}/solution")
+    public ReferenceSolutionResponse revealSolution(@PathVariable UUID id) {
+        return ReferenceSolutionResponse.of(attempts.revealSolution(id));
+    }
+
+    /**
      * Commits a self-check explanation and reveals the model answer for self-comparison
      * (issue #41). Nothing is machine-graded; the produced text is frozen as a submission
      * before the answer is handed back.
