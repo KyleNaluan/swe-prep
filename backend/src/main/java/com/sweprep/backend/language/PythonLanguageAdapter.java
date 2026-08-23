@@ -202,6 +202,15 @@ public class PythonLanguageAdapter implements LanguageAdapter {
      * solution that mutates its input in place is timed fairly on every repetition, not
      * just the first. The copy is taken outside the timed window, before
      * {@code perf_counter_ns()}, so copying never inflates a measurement.
+     *
+     * <p>Warm-up is bounded by a time budget rather than a call count, exactly as the
+     * Java harness is and for the same reason (see {@link
+     * JavaLanguageAdapter#generateTimingHarness}): every measured size has to be timed
+     * from the same steady state, and a fixed call count does not deliver that. CPython
+     * has no JIT to warm up, so the effect it corrects for here is smaller - filled
+     * allocator free lists, warm caches, resolved attribute lookups - but the harness
+     * protocol is deliberately identical across languages rather than per-language
+     * tuned, so the measurer drives both through one set of arguments.
      */
     private static String buildTimingHarness(Signature signature) {
         StringBuilder h = new StringBuilder();
@@ -217,10 +226,15 @@ public class PythonLanguageAdapter implements LanguageAdapter {
         h.append("def main():\n");
         h.append(INDENT).append("with open(sys.argv[1]) as input_file:\n");
         h.append(INDENT).append(INDENT).append("case_input = json.load(input_file)\n");
-        h.append(INDENT).append("warmup = int(sys.argv[2])\n");
-        h.append(INDENT).append("repetitions = int(sys.argv[3])\n\n");
+        h.append(INDENT).append("warmup_budget_nanos = int(sys.argv[2])\n");
+        h.append(INDENT).append("max_warmup_calls = int(sys.argv[3])\n");
+        h.append(INDENT).append("repetitions = int(sys.argv[4])\n\n");
 
-        h.append(INDENT).append("for _ in range(warmup):\n");
+        h.append(INDENT).append("# Warm up by elapsed time rather than by call count, so every\n");
+        h.append(INDENT).append("# measured size is timed from the same steady state (see the\n");
+        h.append(INDENT).append("# adapter's Javadoc).\n");
+        h.append(INDENT).append("warmup_start_nanos = time.perf_counter_ns()\n");
+        h.append(INDENT).append("for _ in range(max_warmup_calls):\n");
         h.append(INDENT).append(INDENT).append("solution = ").append(SUBMISSION_MODULE).append("()\n");
         h.append(INDENT).append(INDENT).append("try:\n");
         appendBindings(h, signature, INDENT.repeat(3), true);
@@ -229,7 +243,10 @@ public class PythonLanguageAdapter implements LanguageAdapter {
         h.append(INDENT.repeat(3))
                 .append("# A warm-up call raising is not itself a failure - only the timed\n");
         h.append(INDENT.repeat(3)).append("# repetitions below need a usable sample.\n");
-        h.append(INDENT.repeat(3)).append("pass\n\n");
+        h.append(INDENT.repeat(3)).append("pass\n");
+        h.append(INDENT).append(INDENT)
+                .append("if time.perf_counter_ns() - warmup_start_nanos >= warmup_budget_nanos:\n");
+        h.append(INDENT.repeat(3)).append("break\n\n");
 
         h.append(INDENT).append("results = []\n");
         h.append(INDENT).append("for _ in range(repetitions):\n");
@@ -248,7 +265,7 @@ public class PythonLanguageAdapter implements LanguageAdapter {
         h.append(INDENT.repeat(3)).append("entry[\"threw\"] = True\n");
         h.append(INDENT).append(INDENT).append("results.append(entry)\n\n");
 
-        h.append(INDENT).append("with open(sys.argv[4], \"w\") as result_file:\n");
+        h.append(INDENT).append("with open(sys.argv[5], \"w\") as result_file:\n");
         h.append(INDENT).append(INDENT).append("json.dump(results, result_file)\n\n\n");
         h.append("if __name__ == \"__main__\":\n");
         h.append(INDENT).append("main()\n");
