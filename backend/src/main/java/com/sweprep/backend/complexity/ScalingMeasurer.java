@@ -41,10 +41,32 @@ import org.springframework.stereotype.Component;
  * submission - the case this check exists to catch - comfortably finishes every size
  * inside the shared {@code sweprep.grader.timeout}.
  *
+ * <p>The size ladder is adaptive at the cheap end, which is what lets a textbook linear
+ * algorithm be classified at all. A cheap submission's smallest sizes time below {@link
+ * ComplexityClassifier#MIN_RELIABLE_NANOS} - dominated by the fixed per-call cost, and by
+ * whether that input still fits in cache - so the classifier drops them, and this loop
+ * keeps doubling the input until enough points clear the floor (or {@link
+ * ComplexityProperties#maxSizes} is reached). It stops the moment it has enough, so an
+ * expensive submission never pays for a size it did not need. Growing the input is the
+ * lever here rather than subtracting a measured baseline: the timed window excludes
+ * process start, compilation, parsing and argument binding by construction, so the fixed
+ * per-call cost measures ~0.3-0.5 microseconds - four orders of magnitude below the
+ * signal at the sizes that matter, and far too small a constant to be worth fitting.
+ *
+ * <p>Measurement runs inside an interactive request (the complexity-claim endpoint), so
+ * its cost is bounded twice over: each size is capped by the shared {@code
+ * sweprep.grader.timeout} the runner already enforces, and no further size is started
+ * once {@link ComplexityProperties#totalBudget} of cumulative wall-clock has been spent.
+ * Worst-case added latency is therefore that budget plus one size's timeout - ~40 s at
+ * the defaults, against a measured typical cost of 1-6 s.
+ *
  * <p>Every failure mode this class can hit collapses to {@link
  * MeasurementOutcome.Inconclusive} rather than a guess: a submission that throws on
  * generated inputs, one whose result is unreadable, one that never produces enough
- * usable sizes. Never {@link MeasurementOutcome.Conclusive} without genuine signal.
+ * usable sizes, one whose timings scatter too much to pin a growth rate down. Never
+ * {@link MeasurementOutcome.Conclusive} without genuine signal - this class collects the
+ * points and {@link ComplexityClassifier} owns the gates that decide whether they
+ * support a verdict at all.
  *
  * <p>Which language the submission is measured as is resolved per call through {@link
  * LanguageAdapterRegistry}/{@link RunnerRegistry} (issue #26), the same seam {@code
@@ -105,7 +127,25 @@ public class ScalingMeasurer {
         GeneratedHarness harness = adapter.generateTimingHarness(signature);
 
         List<ComplexityClassifier.SizeTiming> points = new ArrayList<>();
-        for (int size : properties.sizes()) {
+        long deadlineNanos = System.nanoTime() + properties.totalBudget().toNanos();
+        // How many usable points to aim for: as many as the configured ladder has entries,
+        // but never fewer than the classifier can fit at all - otherwise a short configured
+        // ladder would stop the loop at a point count guaranteed to be refused.
+        int wantedPoints = Math.max(properties.sizes().size(), ComplexityClassifier.MIN_POINTS);
+        int reliablePoints = 0;
+
+        for (int size : ladder(properties)) {
+            if (reliablePoints >= wantedPoints) {
+                // Enough points already clear the classifier's reliability floor; growing
+                // the input further would only cost time.
+                break;
+            }
+            if (System.nanoTime() >= deadlineNanos) {
+                // The total budget is spent. Whatever sizes completed are still fit; the
+                // classifier reports inconclusive if too few of them did. Measurement runs
+                // inside an interactive request, so it is bounded rather than open-ended.
+                break;
+            }
             JsonNode input = generator.generate(size, seedFor(exercise.id(), size));
             SizeSample sample = runOneSize(adapter, runner, harness, submission, input);
             if (sample instanceof SizeSample.TimedOut) {
@@ -113,19 +153,41 @@ public class ScalingMeasurer {
                 break;
             }
             if (sample instanceof SizeSample.Measured measured) {
-                points.add(new ComplexityClassifier.SizeTiming(size, measured.medianNanos()));
+                ComplexityClassifier.SizeTiming point =
+                        new ComplexityClassifier.SizeTiming(size, measured.medianNanos());
+                points.add(point);
+                if (ComplexityClassifier.isReliable(point)) {
+                    reliablePoints++;
+                }
             }
             // SizeSample.Unusable: this size produced no usable sample (every repetition
             // threw, or the result was unreadable) - skip it and keep trying larger ones.
         }
 
-        if (points.size() < 2) {
+        if (points.isEmpty()) {
             return new MeasurementOutcome.Inconclusive(
-                    "the submission could not be measured at enough input sizes to fit a trend "
-                            + "(it may not run to completion on the generated inputs, or ran out "
-                            + "of measurement time)");
+                    "the submission could not be measured at any input size (it may not run to "
+                            + "completion on the generated inputs, or ran out of measurement time)");
         }
         return ComplexityClassifier.classify(points);
+    }
+
+    /**
+     * The sizes that may be measured, ascending: the configured ladder, then further
+     * doublings of its largest entry up to {@link ComplexityProperties#maxSizes}. The
+     * loop above stops as soon as enough measured points clear the classifier's
+     * reliability floor, so those extra sizes are only ever reached by a submission whose
+     * configured ladder ran too fast to fit - which is exactly the case they exist for.
+     */
+    private static List<Integer> ladder(ComplexityProperties properties) {
+        List<Integer> configured = properties.sizes();
+        List<Integer> ladder = new ArrayList<>(configured);
+        int size = configured.get(configured.size() - 1);
+        while (ladder.size() < properties.maxSizes() && size <= Integer.MAX_VALUE / 2) {
+            size *= 2;
+            ladder.add(size);
+        }
+        return ladder;
     }
 
     /** What running the timing harness at one size produced. */
@@ -148,7 +210,8 @@ public class ScalingMeasurer {
                 harness.mainClass(),
                 List.of(
                         INPUT_FILE,
-                        String.valueOf(properties.warmupRepetitions()),
+                        String.valueOf(properties.warmupBudget().toNanos()),
+                        String.valueOf(properties.maxWarmupCalls()),
                         String.valueOf(properties.repetitions()),
                         RESULT_FILE),
                 harness.runtimeClasspath(),

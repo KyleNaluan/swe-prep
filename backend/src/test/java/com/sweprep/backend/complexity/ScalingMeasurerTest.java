@@ -15,8 +15,10 @@ import com.sweprep.backend.exercise.Response;
 import com.sweprep.backend.exercise.Signature;
 import com.sweprep.backend.exercise.Signature.Parameter;
 import com.sweprep.backend.language.JavaLanguageAdapter;
+import com.sweprep.backend.language.PythonLanguageAdapter;
 import com.sweprep.backend.language.LanguageAdapterRegistry;
 import com.sweprep.backend.runner.LocalJavaRunner;
+import com.sweprep.backend.runner.LocalPythonRunner;
 import com.sweprep.backend.runner.RunnerRegistry;
 import java.time.Duration;
 import java.util.List;
@@ -30,20 +32,20 @@ import org.junit.jupiter.api.Test;
  * input generator skips the check without error, and a submission that cannot be
  * measured at all is reported inconclusive rather than guessed at.
  *
- * <p>Both timing assertions are deliberately one-sided in the safe direction rather than
- * pinning an exact bucket, because real wall-clock timing of cheap code is the hardest
- * case for this technique (see {@code ComplexityProperties}'s Javadoc on the warm-up
- * phase and the JIT/vectorisation effects that motivated it) and a shared CI runner can
- * drift the measured slope out of the classifier's confident window on either side. The
+ * <p>Every timing assertion here is deliberately one-sided in the safe direction rather
+ * than pinning an exact bucket, because real wall-clock timing of cheap code is the
+ * hardest case for this technique (see {@code ComplexityProperties}'s Javadoc on the
+ * warm-up, cache-residency and JIT effects that shape it) and a shared CI runner can
+ * drift a measured slope out of the classifier's confident window on either side. The
  * quadratic run asserts it is never wrongly *cleared* (never {@code Conclusive} as
  * {@code LINEAR}/{@code SUBLINEAR}, i.e. never reported as matching a linear-or-faster
- * claim), accepting {@code QUADRATIC}-or-higher or {@code Inconclusive}; the linear run
- * asserts the mirror - never wrongly *contradicted*. The exact-bucket guarantee the
- * acceptance criterion asks for ("reliably caught") is proven deterministically against
- * synthetic curves in {@code ComplexityClassifierTest}, where it belongs; what these
- * real-execution runs add, without depending on an unrealistically noise-free machine, is
- * that the full compile/execute/measure pipeline never produces a false verdict in either
- * direction.
+ * claim), accepting {@code QUADRATIC}-or-higher or {@code Inconclusive}; the linear runs
+ * assert the mirror - never wrongly *contradicted*, and in particular never the confident
+ * {@code SUBLINEAR} that a textbook BFS used to measure. The exact-bucket guarantee is
+ * proven deterministically in {@code ComplexityClassifierTest}, replaying the timing
+ * curves these very solutions actually produced; what these real-execution runs add,
+ * without depending on an unrealistically noise-free machine, is that the full
+ * compile/execute/measure pipeline never produces a false verdict in either direction.
  */
 class ScalingMeasurerTest {
 
@@ -58,7 +60,7 @@ class ScalingMeasurerTest {
                 new LanguageAdapterRegistry(List.of(new JavaLanguageAdapter())),
                 new RunnerRegistry(List.of(new LocalJavaRunner())),
                 mapper,
-                new ComplexityProperties(FAST_SIZES, 0, 1),
+                new ComplexityProperties(FAST_SIZES, Duration.ZERO, 0, 1, FAST_SIZES.size(), null),
                 Duration.ofSeconds(10));
     }
 
@@ -73,7 +75,7 @@ class ScalingMeasurerTest {
                 new LanguageAdapterRegistry(List.of(new JavaLanguageAdapter())),
                 new RunnerRegistry(List.of(new LocalJavaRunner())),
                 mapper,
-                new ComplexityProperties(null, null, null),
+                new ComplexityProperties(null, null, null, null, null, null),
                 Duration.ofSeconds(10));
     }
 
@@ -184,13 +186,136 @@ class ScalingMeasurerTest {
         MeasurementOutcome outcome = defaultsMeasurer().measure(exerciseWithGenerator(), linear, "java");
 
         // Inconclusive is an acceptable outcome here (never a false contradiction either);
-        // what must never happen is measurement confidently calling genuinely linear code
-        // QUADRATIC or worse - the actual safety property this checks.
+        // what must never happen is measurement confidently placing genuinely linear code
+        // in any other bucket - QUADRATIC or worse, and equally the SUBLINEAR that the
+        // overhead-dominated regime used to produce for cheap linear code.
+        assertNeverContradictsLinear(outcome);
+    }
+
+    /**
+     * The two shapes that used to fail (issue: the ledger's LINEAR spot-checks), run at
+     * the shipped defaults through real compilation and execution. Both are cheap enough
+     * per call that the fixed per-call cost and cache residency used to dominate them -
+     * the overhead-dominated regime this class's Javadoc calls the technique's hardest
+     * case, and the one a monotonic stack and an unconditional BFS actually sit in.
+     */
+    @Test
+    void aCheapLinearMonotonicStackIsNeverConfidentlyMisclassified() {
+        // daily-temperatures' shape: one pass, a stack of indices, no early exit. Roughly
+        // 170 microseconds per call at size 32 000 - fast enough that it used to measure
+        // as timing noise rather than as growth.
+        String monotonicStack =
+                """
+                import java.util.ArrayDeque;
+                import java.util.Deque;
+                class Solution {
+                    public int solve(int[] nums) {
+                        int n = nums.length;
+                        int[] answer = new int[n];
+                        Deque<Integer> stack = new ArrayDeque<>();
+                        for (int i = 0; i < n; i++) {
+                            while (!stack.isEmpty() && nums[stack.peek()] < nums[i]) {
+                                int prev = stack.pop();
+                                answer[prev] = i - prev;
+                            }
+                            stack.push(i);
+                        }
+                        int total = 0;
+                        for (int v : answer) {
+                            total += v;
+                        }
+                        return total;
+                    }
+                }
+                """;
+
+        MeasurementOutcome outcome = defaultsMeasurer().measure(exerciseWithGenerator(), monotonicStack, "java");
+
+        assertNeverContradictsLinear(outcome);
+    }
+
+    @Test
+    void aCheapLinearTreeTraversalIsNeverConfidentlyMisclassifiedAsSublinear() {
+        // binary-tree-level-order-traversal's shape: an unconditional level-order walk of
+        // every node. This is the exact case that once measured a confident SUBLINEAR
+        // with a fitted exponent of 0.12-0.19 - a false verdict, and the one outcome this
+        // run must make impossible.
+        Signature signature = new Signature(
+                "solve", List.of(new Parameter("root", DataType.TREE_NODE)), DataType.INT);
+        ComplexityCheck check = new ComplexityCheck(
+                Complexity.LINEAR,
+                Complexity.CONSTANT,
+                new InputGenerator(List.of(new InputGenerator.Argument.ScalingTreeNode(-1_000_000, 1_000_000))));
+        String levelOrder =
+                """
+                import java.util.ArrayList;
+                import java.util.List;
+                class Solution {
+                    public int solve(TreeNode root) {
+                        List<int[]> levels = new ArrayList<>();
+                        List<TreeNode> queue = new ArrayList<>();
+                        if (root != null) {
+                            queue.add(root);
+                        }
+                        while (!queue.isEmpty()) {
+                            List<TreeNode> next = new ArrayList<>();
+                            int[] level = new int[queue.size()];
+                            for (int i = 0; i < queue.size(); i++) {
+                                TreeNode node = queue.get(i);
+                                level[i] = node.val;
+                                if (node.left != null) {
+                                    next.add(node.left);
+                                }
+                                if (node.right != null) {
+                                    next.add(node.right);
+                                }
+                            }
+                            levels.add(level);
+                            queue = next;
+                        }
+                        return levels.size();
+                    }
+                }
+                """;
+
+        MeasurementOutcome outcome =
+                defaultsMeasurer().measure(exercise(signature, check), levelOrder, "java");
+
+        assertNeverContradictsLinear(outcome);
+    }
+
+    @Test
+    void aSubmissionThatIsOnlyOverheadIsNeverGivenASublinearVerdictOnNoise() {
+        // An O(1) submission: every measured time is the fixed per-call cost, a few
+        // hundred nanoseconds, wandering with input size purely as noise. A verdict of
+        // SUBLINEAR here would be right about the algorithm for entirely the wrong
+        // reason, so the honest answers are CONSTANT's bucket only if the timings genuinely
+        // support it - which at these magnitudes they never do - or Inconclusive.
+        String constant =
+                """
+                class Solution {
+                    public int solve(int[] nums) {
+                        return nums.length;
+                    }
+                }
+                """;
+
+        MeasurementOutcome outcome = defaultsMeasurer().measure(exerciseWithGenerator(), constant, "java");
+
+        assertThat(outcome).isInstanceOf(MeasurementOutcome.Inconclusive.class);
+    }
+
+    /**
+     * The safe-direction assertion for a genuinely linear submission: measurement may
+     * honestly decline to classify, and may say LINEAR, but must never confidently place
+     * it in any other bucket - not the SUBLINEAR the overhead-dominated regime used to
+     * produce, and not QUADRATIC or worse either.
+     */
+    private static void assertNeverContradictsLinear(MeasurementOutcome outcome) {
         assertThat(outcome).satisfiesAnyOf(
                 o -> assertThat(o).isInstanceOf(MeasurementOutcome.Inconclusive.class),
                 o -> assertThat(o).isInstanceOfSatisfying(MeasurementOutcome.Conclusive.class,
-                        conclusive -> assertThat(conclusive.bucket())
-                                .isIn(ComplexityBucket.SUBLINEAR, ComplexityBucket.LINEAR)));
+                        conclusive -> assertThat(conclusive.bucket()).isEqualTo(ComplexityBucket.LINEAR)));
     }
 
     @Test
@@ -320,6 +445,57 @@ class ScalingMeasurerTest {
         MeasurementOutcome outcome = measurer().measure(exercise(signature, check), solution, "java");
 
         assertThat(outcome).isNotInstanceOf(MeasurementOutcome.Skipped.class);
+    }
+
+    @Test
+    void aPythonSubmissionIsMeasuredThroughItsOwnTimingHarnessNotJavas() {
+        // The timing harness protocol - input file, warm-up nanosecond budget, warm-up
+        // call cap, repetitions, result file - is one contract every adapter implements,
+        // so a submission solved in a second language is measured by that language's own
+        // harness rather than assumed to be Java (issue #26). What this proves is that the
+        // Python harness still parses its arguments and produces readable timings; the
+        // growth rate itself is not asserted, for the wall-clock reasons in the class
+        // Javadoc.
+        ScalingMeasurer pythonMeasurer = new ScalingMeasurer(
+                new LanguageAdapterRegistry(List.of(new JavaLanguageAdapter(), new PythonLanguageAdapter())),
+                new RunnerRegistry(List.of(new LocalJavaRunner(), new LocalPythonRunner("python3"))),
+                mapper,
+                new ComplexityProperties(FAST_SIZES, Duration.ZERO, 1, 1, FAST_SIZES.size(), null),
+                Duration.ofSeconds(10));
+        String linear =
+                """
+                class Solution:
+                    def solve(self, nums):
+                        return sum(nums)
+                """;
+
+        MeasurementOutcome outcome = pythonMeasurer.measure(exerciseWithGenerator(), linear, "python");
+
+        assertThat(outcome).isInstanceOf(MeasurementOutcome.Inconclusive.class);
+    }
+
+    @Test
+    void theTotalBudgetStopsMeasurementRatherThanRunningEverySize() {
+        // Measurement runs inside an interactive request, so its cost is bounded: once the
+        // cumulative budget is spent no further size is started. A budget of one
+        // nanosecond is already gone before the first size, which proves the check is a
+        // real gate on the loop and not merely a limit nothing ever reaches - and the
+        // result is the honest Inconclusive, never an exception and never a guess.
+        ScalingMeasurer noBudget = new ScalingMeasurer(
+                new LanguageAdapterRegistry(List.of(new JavaLanguageAdapter())),
+                new RunnerRegistry(List.of(new LocalJavaRunner())),
+                mapper,
+                new ComplexityProperties(FAST_SIZES, Duration.ZERO, 0, 1, FAST_SIZES.size(), Duration.ofNanos(1)),
+                Duration.ofSeconds(10));
+
+        long startedAt = System.nanoTime();
+        MeasurementOutcome outcome = noBudget.measure(exerciseWithGenerator(), "class Solution {}", "java");
+        long elapsedMillis = (System.nanoTime() - startedAt) / 1_000_000;
+
+        assertThat(outcome).isInstanceOf(MeasurementOutcome.Inconclusive.class);
+        // Nothing was compiled or executed at all - a real run of even one size costs
+        // hundreds of milliseconds.
+        assertThat(elapsedMillis).isLessThan(100);
     }
 
     @Test
