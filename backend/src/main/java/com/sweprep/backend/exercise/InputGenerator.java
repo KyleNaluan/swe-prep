@@ -21,7 +21,7 @@ import java.util.Random;
  * Argument.Fixed} value, e.g. a search target). The sealed {@link Argument}
  * hierarchy is extended the same way {@link Comparison} is (see the architecture
  * notes) - a new scaling shape is one more permitted record, not a redesign; the
- * four structural kinds beyond the original {@code ScalingIntArray} (issue #26's
+ * four structural kinds beyond the original {@code ScalingIntArray} (issue #86's
  * follow-on) are what let the content set's STRING, INT_MATRIX, LIST_NODE and
  * TREE_NODE problems carry the same empirical scaling check the array ones already
  * had.
