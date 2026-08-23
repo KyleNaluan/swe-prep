@@ -297,14 +297,6 @@ final class ExerciseParser {
     }
 
     /**
-     * The linked-structure gate (issue #6's adopted LeetCode serialisation): when a code
-     * signature declares a {@code LIST_NODE} or {@code TREE_NODE}, every value that has
-     * to be built into - or compared against - one of those structures is checked here,
-     * so a mistyped case names the file and the field instead of surfacing later as an
-     * opaque "the submission threw" against a correct solution. See {@link NodeShapes}.
-     * A no-op for every signature that declares neither, so no existing content changes.
-     */
-    /**
      * Catches an explicit {@code "expected": null} for a linked-structure return before
      * {@link #grading} reads {@code expected} as a required field and reports it as a
      * misleading "missing required field" instead. See {@link NodeShapes#rejectNullReturn}.
@@ -329,6 +321,14 @@ final class ExerciseParser {
         }
     }
 
+    /**
+     * The linked-structure gate (issue #6's adopted LeetCode serialisation): when a code
+     * signature declares a {@code LIST_NODE} or {@code TREE_NODE}, every value that has
+     * to be built into - or compared against - one of those structures is checked here,
+     * so a mistyped case names the file and the field instead of surfacing later as an
+     * opaque "the submission threw" against a correct solution. See {@link NodeShapes}.
+     * A no-op for every signature that declares neither, so no existing content changes.
+     */
     private static void validateLinkedStructureValues(
             ContentJson json, Response response, Grading grading) {
         if (!(response instanceof Response.Code code)) {
