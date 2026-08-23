@@ -9,6 +9,7 @@ import com.sweprep.backend.exercise.Signature;
 import com.sweprep.backend.exercise.Signature.Parameter;
 import java.security.CodeSource;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -26,6 +27,13 @@ import org.springframework.stereotype.Component;
  * <p>The result goes to a dedicated file (the harness's second argument), never
  * to the submission's own stdout, so a submission that prints past the runner's
  * output cap and then returns correctly cannot truncate away its own result.
+ *
+ * <p>A {@link DataType#LIST_NODE}/{@link DataType#TREE_NODE} parameter is the one
+ * place binding is not a Jackson conversion: the harness builds the real structure
+ * from the case's LeetCode-form JSON and hands the submission an idiomatic {@code
+ * ListNode}/{@code TreeNode}, then serialises a returned structure back to that same
+ * form. The classes and helpers that do it are {@link JavaNodeSources}, emitted
+ * alongside the harness only when the signature actually declares one.
  */
 @Component
 public class JavaLanguageAdapter implements LanguageAdapter {
@@ -52,7 +60,10 @@ public class JavaLanguageAdapter implements LanguageAdapter {
                 .map(p -> declaredType(p.type()) + " " + p.name())
                 .collect(Collectors.joining(", "));
         String returnType = declaredType(signature.returnType());
-        return """
+        // LeetCode shows the node definitions above the stub rather than in it; the
+        // solver writes against ListNode/TreeNode and the harness supplies the classes.
+        return JavaNodeSources.stubPreamble(signature)
+                + """
                 class %s {
                     public %s %s(%s) {
                         // Write your solution here.
@@ -65,16 +76,30 @@ public class JavaLanguageAdapter implements LanguageAdapter {
 
     @Override
     public GeneratedHarness generateHarness(Signature signature) {
-        String harness = buildHarness(signature);
         return new GeneratedHarness(
-                Map.of(HARNESS_CLASS + ".java", harness), HARNESS_CLASS, jacksonClasspath());
+                withSupport(signature, HARNESS_CLASS + ".java", buildHarness(signature)),
+                HARNESS_CLASS,
+                jacksonClasspath());
     }
 
     @Override
     public GeneratedHarness generateTimingHarness(Signature signature) {
-        String harness = buildTimingHarness(signature);
         return new GeneratedHarness(
-                Map.of(TIMING_HARNESS_CLASS + ".java", harness), TIMING_HARNESS_CLASS, jacksonClasspath());
+                withSupport(signature, TIMING_HARNESS_CLASS + ".java", buildTimingHarness(signature)),
+                TIMING_HARNESS_CLASS,
+                jacksonClasspath());
+    }
+
+    /**
+     * The harness file plus whatever support the signature's declared types need - the
+     * {@code ListNode}/{@code TreeNode} classes and their build/serialise helpers when it
+     * declares a linked structure, nothing at all when it does not. Both harnesses take
+     * the same support, since both have to bind the same arguments.
+     */
+    private static Map<String, String> withSupport(Signature signature, String fileName, String source) {
+        Map<String, String> sources = new LinkedHashMap<>(JavaNodeSources.supportSources(signature));
+        sources.put(fileName, source);
+        return sources;
     }
 
     /**
@@ -93,8 +118,8 @@ public class JavaLanguageAdapter implements LanguageAdapter {
             Parameter parameter = parameters.get(i);
             String local = "arg" + i;
             callArgs.add(local);
-            code.append("                %s %s = mapper.convertValue(input.get(%d), %s);%n"
-                    .formatted(declaredType(parameter.type()), local, i, classLiteral(parameter.type())));
+            code.append("                %s %s = %s;%n"
+                    .formatted(declaredType(parameter.type()), local, bindExpression(parameter.type(), i)));
         }
         String call = "%s actual = solution.%s(%s);"
                 .formatted(declaredType(signature.returnType()), signature.methodName(),
@@ -125,7 +150,7 @@ public class JavaLanguageAdapter implements LanguageAdapter {
                             ObjectNode entry = mapper.createObjectNode();
                             try {
                 %3$s                %4$s
-                                entry.set("returned", mapper.valueToTree(actual));
+                                entry.set("returned", %5$s);
                             } catch (Throwable t) {
                                 // A case whose call throws produces no answer; the grader fails it.
                                 entry.put("threw", true);
@@ -138,7 +163,12 @@ public class JavaLanguageAdapter implements LanguageAdapter {
                     }
                 }
                 """
-                .formatted(HARNESS_CLASS, SUBMISSION_CLASS, binding.code(), binding.call());
+                .formatted(
+                        HARNESS_CLASS,
+                        SUBMISSION_CLASS,
+                        binding.code(),
+                        binding.call(),
+                        returnedExpression(signature.returnType()));
     }
 
     /**
@@ -234,6 +264,36 @@ public class JavaLanguageAdapter implements LanguageAdapter {
             case INT_MATRIX -> "int[][]";
             case BOOLEAN -> "boolean";
             case STRING -> "String";
+            case LIST_NODE -> "ListNode";
+            case TREE_NODE -> "TreeNode";
+        };
+    }
+
+    /**
+     * How one argument is bound from the case's JSON. Every type a JSON library can
+     * bind directly goes through {@code convertValue}; a linked structure is built by
+     * the generated {@code Structures} helper instead, since there is no Java type
+     * Jackson could bind {@code [1,2,3]} or {@code [3,9,20,null,null,15,7]} to that a
+     * solver would want to write against.
+     */
+    private static String bindExpression(DataType type, int index) {
+        return switch (type) {
+            case LIST_NODE -> "Structures.buildList(input.get(%d))".formatted(index);
+            case TREE_NODE -> "Structures.buildTree(input.get(%d))".formatted(index);
+            default -> "mapper.convertValue(input.get(%d), %s)".formatted(index, classLiteral(type));
+        };
+    }
+
+    /**
+     * How the return value is turned back into the JSON the grader compares. A linked
+     * structure is serialised by the same helper that built it, so a case authored in
+     * the LeetCode form is graded in that form; everything else Jackson handles.
+     */
+    private static String returnedExpression(DataType returnType) {
+        return switch (returnType) {
+            case LIST_NODE -> "Structures.serializeList(actual, mapper)";
+            case TREE_NODE -> "Structures.serializeTree(actual, mapper)";
+            default -> "mapper.valueToTree(actual)";
         };
     }
 
@@ -244,6 +304,9 @@ public class JavaLanguageAdapter implements LanguageAdapter {
             case INT_MATRIX -> "int[][].class";
             case BOOLEAN -> "boolean.class";
             case STRING -> "String.class";
+            // A linked structure is never bound by Jackson - see bindExpression.
+            case LIST_NODE, TREE_NODE -> throw new IllegalStateException(
+                    "A " + type + " is built by Structures, not bound by Jackson");
         };
     }
 

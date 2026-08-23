@@ -3,6 +3,7 @@ package com.sweprep.backend.language;
 import com.sweprep.backend.exercise.DataType;
 import com.sweprep.backend.exercise.Signature;
 import com.sweprep.backend.exercise.Signature.Parameter;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -19,10 +20,19 @@ import org.springframework.stereotype.Component;
  * json} module, calls the submission, and records the raw return value of each case
  * into a result file - it does not decide pass/fail, exactly like {@link
  * JavaLanguageAdapter}'s. Unlike Java, Python needs no per-parameter type-conversion
- * code: {@code json.load} already hands back native Python values (a JSON array is a
- * {@code list}, a JSON number an {@code int}/{@code float}, and so on), so binding an
- * argument is always the same one-line positional extraction regardless of {@link
- * DataType} - only the stub's type hints vary by declared type.
+ * code for the value types: {@code json.load} already hands back native Python values
+ * (a JSON array is a {@code list}, a JSON number an {@code int}/{@code float}, and so
+ * on), so binding one of those is the same one-line positional extraction regardless of
+ * {@link DataType} - only the stub's type hints vary by declared type.
+ *
+ * <p>The exception is a {@link DataType#LIST_NODE}/{@link DataType#TREE_NODE}
+ * parameter, where there <em>is</em> a structure to build: the harness turns the case's
+ * LeetCode-form JSON into real nodes and hands the submission an idiomatic {@code
+ * ListNode}/{@code TreeNode}, then serialises a returned structure back to that same
+ * form. {@link PythonNodeSources} supplies both the classes and the helpers, emitted
+ * alongside the harness only when the signature actually declares one - the exact
+ * counterpart of {@link JavaNodeSources}, which is what lets one authored case run in
+ * both languages.
  *
  * <p>Generated with a plain {@link StringBuilder}, not the {@code """}-text-block
  * {@code .formatted()} style {@link JavaLanguageAdapter} uses: Python's indentation is
@@ -57,6 +67,9 @@ public class PythonLanguageAdapter implements LanguageAdapter {
                 .map(p -> p.name() + ": " + declaredType(p.type()))
                 .collect(Collectors.joining(", "));
         StringBuilder stub = new StringBuilder();
+        // The node types the harness supplies are imported by name, so the solver's own
+        // file resolves them exactly as it will when the harness runs it.
+        stub.append(PythonNodeSources.stubImport(signature));
         stub.append("class ").append(SUBMISSION_MODULE).append(":\n");
         stub.append(INDENT)
                 .append("def ")
@@ -78,15 +91,28 @@ public class PythonLanguageAdapter implements LanguageAdapter {
     @Override
     public GeneratedHarness generateHarness(Signature signature) {
         return new GeneratedHarness(
-                Map.of(HARNESS_MODULE + ".py", buildHarness(signature)), HARNESS_MODULE + ".py", List.of());
+                withSupport(signature, HARNESS_MODULE + ".py", buildHarness(signature)),
+                HARNESS_MODULE + ".py",
+                List.of());
     }
 
     @Override
     public GeneratedHarness generateTimingHarness(Signature signature) {
         return new GeneratedHarness(
-                Map.of(TIMING_HARNESS_MODULE + ".py", buildTimingHarness(signature)),
+                withSupport(signature, TIMING_HARNESS_MODULE + ".py", buildTimingHarness(signature)),
                 TIMING_HARNESS_MODULE + ".py",
                 List.of());
+    }
+
+    /**
+     * The harness module plus the {@code Structures.py} support module when - and only
+     * when - the signature declares a linked structure. Both harnesses take the same
+     * support, since both bind the same arguments.
+     */
+    private static Map<String, String> withSupport(Signature signature, String fileName, String source) {
+        Map<String, String> sources = new LinkedHashMap<>(PythonNodeSources.supportSources(signature));
+        sources.put(fileName, source);
+        return sources;
     }
 
     /**
@@ -104,10 +130,19 @@ public class PythonLanguageAdapter implements LanguageAdapter {
         List<Parameter> parameters = signature.parameters();
         for (int i = 0; i < parameters.size(); i++) {
             out.append(indent).append("arg").append(i).append(" = ");
-            if (copyPerCall) {
-                out.append("copy.deepcopy(case_input[").append(i).append("])\n");
-            } else {
-                out.append("case_input[").append(i).append("]\n");
+            switch (parameters.get(i).type()) {
+                // A linked structure is built fresh from the case's JSON on every call, so
+                // it needs no deep copy even in timing mode - building one already is the
+                // copy, and the JSON it is built from is never mutated.
+                case LIST_NODE -> out.append("Structures.build_list(case_input[").append(i).append("])\n");
+                case TREE_NODE -> out.append("Structures.build_tree(case_input[").append(i).append("])\n");
+                default -> {
+                    if (copyPerCall) {
+                        out.append("copy.deepcopy(case_input[").append(i).append("])\n");
+                    } else {
+                        out.append("case_input[").append(i).append("]\n");
+                    }
+                }
             }
         }
     }
@@ -124,6 +159,7 @@ public class PythonLanguageAdapter implements LanguageAdapter {
         h.append("# Generated from the exercise signature - do not edit.\n");
         h.append("import json\n");
         h.append("import sys\n\n");
+        appendStructuresImport(h, signature);
         h.append("from ").append(SUBMISSION_MODULE).append(" import ").append(SUBMISSION_MODULE).append("\n\n\n");
         h.append("def main():\n");
         h.append(INDENT).append("with open(sys.argv[1]) as cases_file:\n");
@@ -135,7 +171,11 @@ public class PythonLanguageAdapter implements LanguageAdapter {
         h.append(INDENT).append(INDENT).append("entry = {}\n");
         h.append(INDENT).append(INDENT).append("try:\n");
         appendBindings(h, signature, INDENT.repeat(3));
-        h.append(INDENT.repeat(3)).append("entry[\"returned\"] = ").append(callExpression(signature)).append('\n');
+        h.append(INDENT.repeat(3)).append("actual = ").append(callExpression(signature)).append('\n');
+        h.append(INDENT.repeat(3))
+                .append("entry[\"returned\"] = ")
+                .append(returnedExpression(signature.returnType()))
+                .append('\n');
         h.append(INDENT).append(INDENT).append("except Exception:\n");
         h.append(INDENT.repeat(3))
                 .append("# A case whose call raises produces no answer; the grader fails it.\n");
@@ -172,6 +212,7 @@ public class PythonLanguageAdapter implements LanguageAdapter {
         h.append("import json\n");
         h.append("import sys\n");
         h.append("import time\n\n");
+        appendStructuresImport(h, signature);
         h.append("from ").append(SUBMISSION_MODULE).append(" import ").append(SUBMISSION_MODULE).append("\n\n\n");
         h.append("def main():\n");
         h.append(INDENT).append("with open(sys.argv[1]) as input_file:\n");
@@ -221,6 +262,29 @@ public class PythonLanguageAdapter implements LanguageAdapter {
             case INT_MATRIX -> "list[list[int]]";
             case BOOLEAN -> "bool";
             case STRING -> "str";
+            case LIST_NODE -> "ListNode";
+            case TREE_NODE -> "TreeNode";
         };
+    }
+
+    /**
+     * How the return value is turned back into the JSON the grader compares. A linked
+     * structure goes through the same helper module that built it, so a case authored
+     * once in the LeetCode form is graded in that form in either language; everything
+     * else is already a JSON-serialisable Python value.
+     */
+    private static String returnedExpression(DataType returnType) {
+        return switch (returnType) {
+            case LIST_NODE -> "Structures.serialize_list(actual)";
+            case TREE_NODE -> "Structures.serialize_tree(actual)";
+            default -> "actual";
+        };
+    }
+
+    /** The support module import, emitted only when the signature needs it. */
+    private static void appendStructuresImport(StringBuilder out, Signature signature) {
+        if (PythonNodeSources.usesLinkedStructure(signature)) {
+            out.append("import Structures\n\n");
+        }
     }
 }

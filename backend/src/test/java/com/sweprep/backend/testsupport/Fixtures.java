@@ -587,6 +587,189 @@ public final class Fixtures {
         };
     }
 
+    // --- Linked lists and binary trees (issue #6's adopted LeetCode serialisation) ------
+
+    /**
+     * A linked-list exercise: {@code dropFirst(head)} returns the list with its first
+     * node removed. Synthetic like every other fixture here, and chosen because it
+     * exercises the whole path a linked structure travels - built from a case's array,
+     * handed to the solver as a {@code ListNode}, and serialised back for comparison -
+     * without being a real interview problem (issue #4/#14).
+     *
+     * <p>Its cases deliberately include both spellings of "empty" ({@code []} and
+     * {@code null}) and a one-element list, since the empty answer is exactly where a
+     * serialisation convention is easiest to get wrong.
+     */
+    public static Exercise listDropFirst() {
+        Signature signature = new Signature(
+                "dropFirst", List.of(new Parameter("head", DataType.LIST_NODE)), DataType.LIST_NODE);
+        List<TestCase> cases = List.of(
+                testCase("[[1, 2, 3]]", "[2, 3]"),
+                testCase("[[-1, -2]]", "[-2]"),
+                testCase("[[7]]", "[]"),
+                testCase("[[]]", "[]"),
+                testCase("[null]", "[]"));
+        return new Exercise(
+                "list-drop-first-demo",
+                "Drop First",
+                "Return the list with its first node removed.",
+                "algorithms",
+                List.of("demo", "linked list"),
+                Difficulty.EASY,
+                Form.CHALLENGE,
+                new Response.Code(signature),
+                new Grading.TestCases(Comparison.exact(), cases),
+                List.of());
+    }
+
+    /** A correct Java solution to {@link #listDropFirst()}. */
+    public static final String LIST_DROP_FIRST_SOLUTION =
+            """
+            class Solution {
+                public ListNode dropFirst(ListNode head) {
+                    return head == null ? null : head.next;
+                }
+            }
+            """;
+
+    /** The same solution to {@link #listDropFirst()}, in Python. */
+    public static final String LIST_DROP_FIRST_SOLUTION_PYTHON =
+            """
+            from Structures import ListNode
+
+
+            class Solution:
+                def dropFirst(self, head: ListNode) -> ListNode:
+                    return None if head is None else head.next
+            """;
+
+    /**
+     * The cycle case (issue #6, the shape LeetCode's linked-list-cycle problem needs):
+     * {@code revisits(head)} answers whether walking the list ever returns to a node it
+     * has already seen. The cycle travels as ordinary case data on the argument itself -
+     * {@code { "values": [...], "pos": k }}, LeetCode's own way of posing it - and the
+     * solver is handed the built, genuinely cyclic list, never the JSON.
+     *
+     * <p>Its return type is {@code BOOLEAN} on purpose: a cyclic structure is something a
+     * submission is <em>given</em>, never something it hands back, which is why the
+     * serialiser only ever has to handle acyclic values.
+     */
+    public static Exercise listRevisitsItself() {
+        Signature signature = new Signature(
+                "revisits", List.of(new Parameter("head", DataType.LIST_NODE)), DataType.BOOLEAN);
+        List<TestCase> cases = List.of(
+                testCase("[{ \"values\": [3, 2, 0, -4], \"pos\": 1 }]", "true"),
+                testCase("[{ \"values\": [1, 2], \"pos\": 0 }]", "true"),
+                testCase("[{ \"values\": [9], \"pos\": 0 }]", "true"),
+                testCase("[{ \"values\": [1, 2], \"pos\": -1 }]", "false"),
+                testCase("[[1, 2, 3]]", "false"),
+                testCase("[[]]", "false"));
+        return new Exercise(
+                "list-revisits-demo",
+                "Revisits Itself",
+                "Return true when walking the list returns to a node it has already visited.",
+                "algorithms",
+                List.of("demo", "linked list"),
+                Difficulty.EASY,
+                Form.CHALLENGE,
+                new Response.Code(signature),
+                new Grading.TestCases(Comparison.exact(), cases),
+                List.of());
+    }
+
+    /** A correct Java solution to {@link #listRevisitsItself()}. */
+    public static final String LIST_REVISITS_SOLUTION =
+            """
+            class Solution {
+                public boolean revisits(ListNode head) {
+                    ListNode slow = head;
+                    ListNode fast = head;
+                    while (fast != null && fast.next != null) {
+                        slow = slow.next;
+                        fast = fast.next.next;
+                        if (slow == fast) {
+                            return true;
+                        }
+                    }
+                    return false;
+                }
+            }
+            """;
+
+    /** The same solution to {@link #listRevisitsItself()}, in Python. */
+    public static final String LIST_REVISITS_SOLUTION_PYTHON =
+            """
+            from Structures import ListNode
+
+
+            class Solution:
+                def revisits(self, head: ListNode) -> bool:
+                    slow = head
+                    fast = head
+                    while fast is not None and fast.next is not None:
+                        slow = slow.next
+                        fast = fast.next.next
+                        if slow is fast:
+                            return True
+                    return False
+            """;
+
+    /**
+     * A binary-tree exercise: {@code dropRight(root)} returns the tree with the root's
+     * right subtree removed. Synthetic, and shaped so the answer's level-order form is
+     * genuinely different from the input's - including a case whose answer carries an
+     * internal null and one whose trailing nulls must be trimmed, the two things a
+     * level-order serialisation has to get right.
+     */
+    public static Exercise treeDropRight() {
+        Signature signature = new Signature(
+                "dropRight", List.of(new Parameter("root", DataType.TREE_NODE)), DataType.TREE_NODE);
+        List<TestCase> cases = List.of(
+                testCase("[[1, 2, 3]]", "[1, 2]"),
+                testCase("[[3, 9, 20, null, null, 15, 7]]", "[3, 9]"),
+                testCase("[[1, null, 2]]", "[1]"),
+                testCase("[[5, 4, 6, 3, null, null, 7]]", "[5, 4, null, 3]"),
+                testCase("[[]]", "[]"),
+                testCase("[null]", "[]"));
+        return new Exercise(
+                "tree-drop-right-demo",
+                "Drop Right",
+                "Return the tree with the root's right subtree removed.",
+                "algorithms",
+                List.of("demo", "binary tree"),
+                Difficulty.EASY,
+                Form.CHALLENGE,
+                new Response.Code(signature),
+                new Grading.TestCases(Comparison.exact(), cases),
+                List.of());
+    }
+
+    /** A correct Java solution to {@link #treeDropRight()}. */
+    public static final String TREE_DROP_RIGHT_SOLUTION =
+            """
+            class Solution {
+                public TreeNode dropRight(TreeNode root) {
+                    if (root == null) {
+                        return null;
+                    }
+                    return new TreeNode(root.val, root.left, null);
+                }
+            }
+            """;
+
+    /** The same solution to {@link #treeDropRight()}, in Python. */
+    public static final String TREE_DROP_RIGHT_SOLUTION_PYTHON =
+            """
+            from Structures import TreeNode
+
+
+            class Solution:
+                def dropRight(self, root: TreeNode) -> TreeNode:
+                    if root is None:
+                        return None
+                    return TreeNode(root.val, root.left, None)
+            """;
+
     private static TestCase testCase(String input, String expected) {
         return new TestCase(json(input), json(expected));
     }
