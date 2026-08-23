@@ -94,7 +94,9 @@ public class RepDueService {
                         .map(entry -> new Review(
                                 entry.getKey(),
                                 ReviewQuality.derive(
-                                        entry.getValue().solved(), entry.getValue().explanationRequested())))
+                                        entry.getValue().solved(),
+                                        entry.getValue().explanationRequested(),
+                                        entry.getValue().solutionSeen())))
                         .toList()));
         return result;
     }

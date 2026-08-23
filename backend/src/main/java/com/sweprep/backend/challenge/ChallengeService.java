@@ -158,6 +158,7 @@ public class ChallengeService {
                 submissionCount,
                 row.hintsTaken(),
                 row.failingCaseRevealed(),
+                row.solutionSeen(),
                 row.complexityClaimCorrect());
     }
 

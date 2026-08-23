@@ -5,11 +5,13 @@ import com.sweprep.backend.commit.SolutionCommitService;
 import com.sweprep.backend.complexity.ComplexityBucket;
 import com.sweprep.backend.complexity.MeasurementOutcome;
 import com.sweprep.backend.complexity.ScalingMeasurer;
+import com.sweprep.backend.content.ReferenceSolutionCatalog;
 import com.sweprep.backend.exercise.ComplexityCheck;
 import com.sweprep.backend.exercise.Exercise;
 import com.sweprep.backend.exercise.ExerciseCatalog;
 import com.sweprep.backend.exercise.Grading;
 import com.sweprep.backend.exercise.Hint;
+import com.sweprep.backend.exercise.Response;
 import com.sweprep.backend.grader.FailingCase;
 import com.sweprep.backend.grader.GraderRegistry;
 import com.sweprep.backend.grader.SelfCheckGrader;
@@ -32,7 +34,8 @@ import org.springframework.transaction.support.TransactionTemplate;
  * an absence: {@link #start} opens an {@code IN_PROGRESS} attempt, {@link #submit}
  * grades and stores each press of Run (marking the attempt {@code SOLVED} the moment
  * one passes), {@link #abandon} records giving up, {@link #takeHint} climbs the hint
- * ladder, and {@link #revealFailingCase} discloses the failing case. Grading itself is
+ * ladder, {@link #revealFailingCase} discloses the failing case, and {@link
+ * #revealSolution} discloses the reference solution (issue #82). Grading itself is
  * delegated to the {@link GraderRegistry}; this service only records what happened.
  *
  * <p>Judging withholds by default (issues #16/#5): a normal verdict tells the solver
@@ -60,6 +63,7 @@ public class AttemptService {
     private final CurrentUser currentUser;
     private final TransactionTemplate transactionTemplate;
     private final SolutionCommitService solutionCommitService;
+    private final ReferenceSolutionCatalog referenceSolutions;
 
     public AttemptService(
             ExerciseCatalog catalog,
@@ -70,7 +74,8 @@ public class AttemptService {
             SubmissionRepository submissions,
             CurrentUser currentUser,
             PlatformTransactionManager transactionManager,
-            SolutionCommitService solutionCommitService) {
+            SolutionCommitService solutionCommitService,
+            ReferenceSolutionCatalog referenceSolutions) {
         this.catalog = catalog;
         this.graders = graders;
         this.selfCheckGrader = selfCheckGrader;
@@ -80,6 +85,7 @@ public class AttemptService {
         this.currentUser = currentUser;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.solutionCommitService = solutionCommitService;
+        this.referenceSolutions = referenceSolutions;
     }
 
     /** Opens a new sitting with an exercise, snapshotting its title, domain and form. */
@@ -105,7 +111,8 @@ public class AttemptService {
                 false,
                 null,
                 null,
-                null);
+                null,
+                false);
         attempts.insert(attempt);
         return attempt;
     }
@@ -398,6 +405,51 @@ public class AttemptService {
         Attempt revealed = attempt.withFailingCaseRevealed(blankToNull(hypothesis));
         attempts.update(revealed);
         return new RevealResult(withCount(revealed), failingCase);
+    }
+
+    /**
+     * Discloses the exercise's reference solution when the solver explicitly asks
+     * (issue #82), extending the failing-case-reveal precedent (issues #16/#5):
+     * available on request at any time, recorded, and never penalised in any score or
+     * streak mechanic.
+     *
+     * <p>The timing is what the policy hinges on, not the request itself. Revealed
+     * before this attempt has ever passed - while it is still {@code IN_PROGRESS}, or
+     * after giving up without ever solving it - the attempt is marked {@link
+     * Attempt#solutionSeen()}: a later passing submission on it maps to a low spacing
+     * quality score (so the problem comes back soon, {@link
+     * com.sweprep.backend.scheduler.ReviewQuality}/{@link
+     * com.sweprep.backend.scheduler.ChallengeQuality}) and is excluded from the "solved
+     * cold" readiness axis ({@link AttemptRepository#solvedColdExerciseIds}) until a
+     * later, clean pass. Revealed after the attempt is already {@code SOLVED}, the
+     * reveal is unrestricted and carries no honesty cost - nothing is recorded on the
+     * attempt, since the clean pass already happened before this reveal.
+     *
+     * <p>Returns a {@code null} solution (with {@link ReferenceSolutionResult#prePass}
+     * {@code false} and nothing recorded) when the exercise carries none to reveal -
+     * content has not supplied one yet - rather than throwing, since that is a content
+     * gap, not a malformed request.
+     *
+     * @throws InvalidAttemptRequestException if the exercise is not a {@code
+     *                                        Response.Code} exercise (no reference
+     *                                        solution kind exists for it at all)
+     */
+    @Transactional
+    public ReferenceSolutionResult revealSolution(UUID attemptId) {
+        Attempt attempt = requireOwned(attemptId);
+        Exercise exercise = requireExercise(attempt);
+        if (!(exercise.response() instanceof Response.Code)) {
+            throw new InvalidAttemptRequestException(
+                    "Exercise '" + exercise.id() + "' has no reference solution to reveal; it is"
+                            + " not a code exercise");
+        }
+        String solution = referenceSolutions.forExercise(exercise.id()).orElse(null);
+        boolean prePass = solution != null && attempt.outcome() != AttemptOutcome.SOLVED;
+        Attempt recorded = prePass ? attempt.withSolutionSeen() : attempt;
+        if (prePass) {
+            attempts.update(recorded);
+        }
+        return new ReferenceSolutionResult(withCount(recorded), solution, prePass);
     }
 
     /**

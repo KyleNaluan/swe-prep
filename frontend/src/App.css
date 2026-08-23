@@ -237,14 +237,16 @@
 .hints,
 .reveal,
 .explanation,
-.complexity {
+.complexity,
+.solution {
   margin-top: 1.5rem;
 }
 
 .hints h2,
 .reveal h2,
 .explanation h2,
-.complexity h2 {
+.complexity h2,
+.solution h2 {
   font-size: 0.85rem;
   font-weight: 600;
   color: #64748b;
@@ -303,6 +305,18 @@
   border-radius: 0.5rem;
 }
 
+.solution-body {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  margin: 0.4rem 0;
+  padding: 0.7rem 0.95rem;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  border-radius: 0.5rem;
+  overflow-x: auto;
+  white-space: pre;
+}
+
 .hints-note {
   font-size: 0.85rem;
   color: #64748b;
@@ -347,7 +361,8 @@
 .hint-offer button,
 .reveal button,
 .explanation button,
-.complexity button {
+.complexity button,
+.solution button {
   padding: 0.5rem 1.1rem;
   border-radius: 0.5rem;
   border: 1px solid rgba(148, 163, 184, 0.5);
@@ -360,7 +375,8 @@
 .hint-offer button:disabled,
 .reveal button:disabled,
 .explanation button:disabled,
-.complexity button:disabled {
+.complexity button:disabled,
+.solution button:disabled {
   opacity: 0.6;
   cursor: default;
 }

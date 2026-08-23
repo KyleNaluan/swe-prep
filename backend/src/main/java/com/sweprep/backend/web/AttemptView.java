@@ -25,6 +25,8 @@ import java.time.Instant;
  * @param complexityClaim        the self-reported complexity (issue #17)
  * @param measuredComplexity     what measurement said (issue #17)
  * @param complexityClaimCorrect whether the claim matched measurement (issue #17)
+ * @param solutionSeen           whether the reference solution was revealed on this
+ *                               attempt before it ever passed (issue #82)
  */
 public record AttemptView(
         String id,
@@ -42,7 +44,8 @@ public record AttemptView(
         boolean explanationRequested,
         String complexityClaim,
         String measuredComplexity,
-        Boolean complexityClaimCorrect) {
+        Boolean complexityClaimCorrect,
+        boolean solutionSeen) {
 
     static AttemptView of(Attempt attempt, int submissionCount) {
         return new AttemptView(
@@ -61,7 +64,8 @@ public record AttemptView(
                 attempt.explanationRequested(),
                 attempt.complexityClaim(),
                 attempt.measuredComplexity(),
-                attempt.complexityClaimCorrect());
+                attempt.complexityClaimCorrect(),
+                attempt.solutionSeen());
     }
 
     static AttemptView of(AttemptWithCount withCount) {

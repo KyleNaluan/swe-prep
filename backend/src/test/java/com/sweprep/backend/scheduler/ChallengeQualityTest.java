@@ -14,43 +14,43 @@ class ChallengeQualityTest {
 
     @Test
     void aCleanFirstTryPassWithNoHelpAndNoComplexityCheckIsPerfect() {
-        assertThat(ChallengeQuality.derive(true, 1, 0, false, null))
+        assertThat(ChallengeQuality.derive(true, 1, 0, false, false, null))
                 .isEqualTo(ChallengeQuality.PERFECT);
     }
 
     @Test
     void aCleanFirstTryPassWhoseComplexityClaimWasConsistentIsPerfect() {
-        assertThat(ChallengeQuality.derive(true, 1, 0, false, true))
+        assertThat(ChallengeQuality.derive(true, 1, 0, false, false, true))
                 .isEqualTo(ChallengeQuality.PERFECT);
     }
 
     @Test
     void aFailedOrAbandonedAttemptIsIncorrectRegardlessOfAnythingElse() {
-        assertThat(ChallengeQuality.derive(false, 5, 2, true, true))
+        assertThat(ChallengeQuality.derive(false, 5, 2, true, true, true))
                 .isEqualTo(ChallengeQuality.INCORRECT);
     }
 
     @Test
     void aPassThatClimbedTheHintLadderIsWeak() {
-        assertThat(ChallengeQuality.derive(true, 1, 1, false, null))
+        assertThat(ChallengeQuality.derive(true, 1, 1, false, false, null))
                 .isEqualTo(ChallengeQuality.WEAK_PASS);
     }
 
     @Test
     void aPassThatRevealedTheFailingCaseIsWeak() {
-        assertThat(ChallengeQuality.derive(true, 1, 0, true, null))
+        assertThat(ChallengeQuality.derive(true, 1, 0, true, false, null))
                 .isEqualTo(ChallengeQuality.WEAK_PASS);
     }
 
     @Test
     void aPassThatTookMoreThanOneSubmissionIsWeak() {
-        assertThat(ChallengeQuality.derive(true, 3, 0, false, null))
+        assertThat(ChallengeQuality.derive(true, 3, 0, false, false, null))
                 .isEqualTo(ChallengeQuality.WEAK_PASS);
     }
 
     @Test
     void aPassWhoseComplexityClaimWasContradictedIsWeakEvenWithoutAnyOtherHelp() {
-        assertThat(ChallengeQuality.derive(true, 1, 0, false, false))
+        assertThat(ChallengeQuality.derive(true, 1, 0, false, false, false))
                 .isEqualTo(ChallengeQuality.WEAK_PASS);
     }
 
@@ -58,7 +58,30 @@ class ChallengeQualityTest {
     void anInconclusiveComplexityMeasurementIsNeverTreatedAsAContradiction() {
         // null covers both "no complexity check at all" and "measurement was inconclusive"
         // (issue #17's honesty constraint: inconclusive is never worded as a failure).
-        assertThat(ChallengeQuality.derive(true, 1, 0, false, null))
+        assertThat(ChallengeQuality.derive(true, 1, 0, false, false, null))
                 .isEqualTo(ChallengeQuality.PERFECT);
+    }
+
+    // --- Reference-solution reveal (issue #82) ---------------------------------------
+
+    @Test
+    void aPassThatSawTheSolutionFirstIsWeakerThanAnOrdinaryWeakPass() {
+        assertThat(ChallengeQuality.derive(true, 1, 0, false, true, null))
+                .isEqualTo(ChallengeQuality.SOLUTION_SEEN);
+        assertThat(ChallengeQuality.SOLUTION_SEEN).isLessThan(ChallengeQuality.WEAK_PASS);
+    }
+
+    @Test
+    void seeingTheSolutionTakesPrecedenceOverAnOtherwiseCleanFirstTryPass() {
+        // No hint, no reveal, first try, consistent complexity - would be PERFECT, except
+        // the solution was seen before this attempt ever passed.
+        assertThat(ChallengeQuality.derive(true, 1, 0, false, true, true))
+                .isEqualTo(ChallengeQuality.SOLUTION_SEEN);
+    }
+
+    @Test
+    void aFailedAttemptStaysIncorrectEvenIfTheSolutionWasSeen() {
+        assertThat(ChallengeQuality.derive(false, 1, 0, false, true, null))
+                .isEqualTo(ChallengeQuality.INCORRECT);
     }
 }

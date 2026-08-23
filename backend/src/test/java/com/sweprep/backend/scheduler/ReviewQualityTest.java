@@ -12,20 +12,40 @@ class ReviewQualityTest {
 
     @Test
     void aCorrectAnswerWithNoExplanationRequestIsThePerfectScore() {
-        assertThat(ReviewQuality.derive(true, false)).isEqualTo(ReviewQuality.PERFECT);
+        assertThat(ReviewQuality.derive(true, false, false)).isEqualTo(ReviewQuality.PERFECT);
     }
 
     @Test
     void aCorrectAnswerWhereTheExplanationWasRequestedIsWeakerThanPerfect() {
-        int weaker = ReviewQuality.derive(true, true);
+        int weaker = ReviewQuality.derive(true, true, false);
 
         assertThat(weaker).isEqualTo(ReviewQuality.CORRECT_BUT_UNSURE);
-        assertThat(weaker).isLessThan(ReviewQuality.derive(true, false));
+        assertThat(weaker).isLessThan(ReviewQuality.derive(true, false, false));
     }
 
     @Test
     void aWrongAnswerIsTheBottomScoreRegardlessOfTheExplanationFlag() {
-        assertThat(ReviewQuality.derive(false, false)).isEqualTo(ReviewQuality.INCORRECT);
-        assertThat(ReviewQuality.derive(false, true)).isEqualTo(ReviewQuality.INCORRECT);
+        assertThat(ReviewQuality.derive(false, false, false)).isEqualTo(ReviewQuality.INCORRECT);
+        assertThat(ReviewQuality.derive(false, true, false)).isEqualTo(ReviewQuality.INCORRECT);
+    }
+
+    // --- Reference-solution reveal (issue #82) ---------------------------------------
+
+    @Test
+    void aCorrectAnswerWhereTheSolutionWasSeenIsWeakerThanAskingForTheExplanation() {
+        int solutionSeen = ReviewQuality.derive(true, false, true);
+
+        assertThat(solutionSeen).isEqualTo(ReviewQuality.SOLUTION_SEEN);
+        assertThat(solutionSeen).isLessThan(ReviewQuality.derive(true, true, false));
+    }
+
+    @Test
+    void seeingTheSolutionTakesPrecedenceOverTheExplanationFlagWhenBothAreTrue() {
+        assertThat(ReviewQuality.derive(true, true, true)).isEqualTo(ReviewQuality.SOLUTION_SEEN);
+    }
+
+    @Test
+    void aWrongAnswerStaysTheBottomScoreEvenIfTheSolutionWasSeen() {
+        assertThat(ReviewQuality.derive(false, false, true)).isEqualTo(ReviewQuality.INCORRECT);
     }
 }

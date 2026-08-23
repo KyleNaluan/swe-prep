@@ -17,14 +17,22 @@ import com.sweprep.backend.exercise.Exercise;
 import com.sweprep.backend.exercise.ExerciseCatalog;
 import com.sweprep.backend.scheduler.ChallengeQuality;
 import com.sweprep.backend.testsupport.Fixtures;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.annotation.Transactional;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -49,6 +57,26 @@ class ChallengeServicePersistenceTest {
     @Container
     @ServiceConnection
     static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine");
+
+    // A content clone for ReferenceSolutionCatalog (issue #82) to read from - the
+    // reveal-solution tests below need a real solutions/<id>.java file on disk, the same
+    // convention the content-authoring tool writes. Never a real problem's solution text:
+    // just Fixtures.PAIR_SOLUTION, already an invented sample used elsewhere in this suite.
+    @TempDir
+    static Path contentDir;
+
+    @DynamicPropertySource
+    static void referenceSolution(DynamicPropertyRegistry registry) {
+        registry.add("sweprep.content.path", () -> contentDir.toString());
+    }
+
+    @BeforeAll
+    static void writeReferenceSolution() throws IOException {
+        Path solutionsDir = contentDir.resolve("solutions");
+        Files.createDirectories(solutionsDir);
+        Files.writeString(
+                solutionsDir.resolve("pair-in-any-order.java"), Fixtures.PAIR_SOLUTION, StandardCharsets.UTF_8);
+    }
 
     @Autowired
     private AttemptService attemptService;
@@ -115,6 +143,51 @@ class ChallengeServicePersistenceTest {
                 submissionCount,
                 review.hintsTaken(),
                 review.failingCaseRevealed(),
+                review.solutionSeen(),
+                review.complexityClaimCorrect());
+        assertThat(quality).isEqualTo(ChallengeQuality.PERFECT);
+    }
+
+    // --- Reference-solution reveal (issue #82) ---------------------------------------
+
+    @Test
+    void revealingTheSolutionBeforePassingTaintsTheSubsequentCleanReviewsQuality() {
+        Attempt attempt = attemptService.start(challenge.id());
+        attemptService.revealSolution(attempt.id());
+        attemptService.submit(attempt.id(), Fixtures.PAIR_SOLUTION);
+
+        ChallengeAttemptRow review = attempts.challengeReviews(currentUser.id()).get(0);
+        assertThat(review.solutionSeen()).isTrue();
+
+        int submissionCount = submissions.countByAttempt(review.attemptId());
+        int quality = ChallengeQuality.derive(
+                review.outcome() == AttemptOutcome.SOLVED,
+                submissionCount,
+                review.hintsTaken(),
+                review.failingCaseRevealed(),
+                review.solutionSeen(),
+                review.complexityClaimCorrect());
+        // Otherwise a clean first-try pass, but seeing the solution first weakens it below
+        // even a WEAK_PASS - "schedules the problem back soon".
+        assertThat(quality).isEqualTo(ChallengeQuality.SOLUTION_SEEN);
+    }
+
+    @Test
+    void revealingTheSolutionAfterAlreadyPassingIsUnrestrictedAndDoesNotTaintTheReview() {
+        Attempt attempt = attemptService.start(challenge.id());
+        attemptService.submit(attempt.id(), Fixtures.PAIR_SOLUTION);
+        attemptService.revealSolution(attempt.id());
+
+        ChallengeAttemptRow review = attempts.challengeReviews(currentUser.id()).get(0);
+        assertThat(review.solutionSeen()).isFalse();
+
+        int submissionCount = submissions.countByAttempt(review.attemptId());
+        int quality = ChallengeQuality.derive(
+                review.outcome() == AttemptOutcome.SOLVED,
+                submissionCount,
+                review.hintsTaken(),
+                review.failingCaseRevealed(),
+                review.solutionSeen(),
                 review.complexityClaimCorrect());
         assertThat(quality).isEqualTo(ChallengeQuality.PERFECT);
     }
