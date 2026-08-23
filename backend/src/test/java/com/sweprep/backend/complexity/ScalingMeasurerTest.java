@@ -214,6 +214,114 @@ class ScalingMeasurerTest {
         assertThat(outcome).isInstanceOf(MeasurementOutcome.Skipped.class);
     }
 
+    // --- Scaling kinds beyond scalingIntArray, driven end to end (issue #86 follow-on) --
+
+    @Test
+    void aScalingStringGeneratorDrivesMeasurementEndToEnd() {
+        Signature signature = new Signature(
+                "solve", List.of(new Parameter("s", DataType.STRING)), DataType.INT);
+        ComplexityCheck check = new ComplexityCheck(
+                Complexity.LINEAR,
+                Complexity.CONSTANT,
+                new InputGenerator(List.of(new InputGenerator.Argument.ScalingString("abc"))));
+        String solution =
+                """
+                class Solution {
+                    public int solve(String s) {
+                        return s.length();
+                    }
+                }
+                """;
+
+        MeasurementOutcome outcome = measurer().measure(exercise(signature, check), solution, "java");
+
+        // Not tied to an exact bucket (see the class Javadoc on why real wall-clock timing
+        // is asserted one-sided elsewhere) - what this proves is the full pipeline (parse
+        // generator -> synthesize a growing STRING -> compile -> run -> classify) completes
+        // without error, which a Skipped outcome would mean it never even attempted.
+        assertThat(outcome).isNotInstanceOf(MeasurementOutcome.Skipped.class);
+    }
+
+    @Test
+    void aScalingIntMatrixGeneratorDrivesMeasurementEndToEnd() {
+        Signature signature = new Signature(
+                "solve", List.of(new Parameter("grid", DataType.INT_MATRIX)), DataType.INT);
+        ComplexityCheck check = new ComplexityCheck(
+                Complexity.QUADRATIC,
+                Complexity.CONSTANT,
+                new InputGenerator(List.of(new InputGenerator.Argument.ScalingIntMatrix(0, 100))));
+        String solution =
+                """
+                class Solution {
+                    public int solve(int[][] grid) {
+                        int sum = 0;
+                        for (int[] row : grid) {
+                            for (int cell : row) {
+                                sum += cell;
+                            }
+                        }
+                        return sum;
+                    }
+                }
+                """;
+
+        MeasurementOutcome outcome = measurer().measure(exercise(signature, check), solution, "java");
+
+        assertThat(outcome).isNotInstanceOf(MeasurementOutcome.Skipped.class);
+    }
+
+    @Test
+    void aScalingListNodeGeneratorDrivesMeasurementEndToEnd() {
+        Signature signature = new Signature(
+                "solve", List.of(new Parameter("head", DataType.LIST_NODE)), DataType.INT);
+        ComplexityCheck check = new ComplexityCheck(
+                Complexity.LINEAR,
+                Complexity.CONSTANT,
+                new InputGenerator(List.of(new InputGenerator.Argument.ScalingListNode(0, 1000))));
+        String solution =
+                """
+                class Solution {
+                    public int solve(ListNode head) {
+                        int count = 0;
+                        while (head != null) {
+                            count++;
+                            head = head.next;
+                        }
+                        return count;
+                    }
+                }
+                """;
+
+        MeasurementOutcome outcome = measurer().measure(exercise(signature, check), solution, "java");
+
+        assertThat(outcome).isNotInstanceOf(MeasurementOutcome.Skipped.class);
+    }
+
+    @Test
+    void aScalingTreeNodeGeneratorDrivesMeasurementEndToEnd() {
+        Signature signature = new Signature(
+                "solve", List.of(new Parameter("root", DataType.TREE_NODE)), DataType.INT);
+        ComplexityCheck check = new ComplexityCheck(
+                Complexity.LINEAR,
+                Complexity.CONSTANT,
+                new InputGenerator(List.of(new InputGenerator.Argument.ScalingTreeNode(0, 1000))));
+        String solution =
+                """
+                class Solution {
+                    public int solve(TreeNode root) {
+                        if (root == null) {
+                            return 0;
+                        }
+                        return 1 + solve(root.left) + solve(root.right);
+                    }
+                }
+                """;
+
+        MeasurementOutcome outcome = measurer().measure(exercise(signature, check), solution, "java");
+
+        assertThat(outcome).isNotInstanceOf(MeasurementOutcome.Skipped.class);
+    }
+
     @Test
     void aSubmissionThatAlwaysThrowsIsInconclusiveNeverAsserted() {
         String alwaysThrows =

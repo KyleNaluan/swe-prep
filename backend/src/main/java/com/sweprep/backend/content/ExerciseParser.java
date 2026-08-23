@@ -77,12 +77,28 @@ import java.util.regex.Pattern;
  *     "targetTime": "LINEAR", "targetSpace": "CONSTANT",
  *     "generator": {                                           // optional; omit to still
  *       "arguments": [                                         // ask + reveal but skip
- *          { "kind": "scalingIntArray", "min": 0, "max": 1000 },// the empirical check
- *          { "kind": "fixed", "value": 9 } ]                   // one entry per signature
- *     }                                                        // parameter, in order
- *   }
+ *          { "kind": "scalingIntArray", "min": 0, "max": 1000 },// the empirical check;
+ *          { "kind": "scalingString", "alphabet": "abc" },      // one entry per signature
+ *          { "kind": "scalingIntMatrix", "min": 0, "max": 100 },// parameter, in order.
+ *          { "kind": "scalingListNode", "min": 0, "max": 1000 },// Each kind fits exactly
+ *          { "kind": "scalingTreeNode", "min": 0, "max": 1000 },// one DataType (issue #86's
+ *          { "kind": "fixed", "value": 9 } ]                    // scaling-kinds follow-on);
+ *     }                                                        // see InputGenerator for the
+ *   }                                                          // full field list and shape.
  * }
  * </pre>
+ *
+ * <p>{@code scalingString}'s {@code alphabet} is optional (default lowercase a-z);
+ * {@code scalingIntMatrix}/{@code scalingListNode}/{@code scalingTreeNode} each take
+ * {@code min}/{@code max} like {@code scalingIntArray}. {@code scalingIntMatrix}'s
+ * measured size drives one matrix dimension (rows, equivalently columns) so a quoted
+ * target stays meaningful. {@code scalingListNode} is always the plain-array,
+ * always-acyclic form. {@code scalingTreeNode}'s {@code size} nodes are placed by random
+ * walk from the root (equal-probability left/right at each visited node until an empty
+ * slot is reached) - the same construction as a random binary search tree in
+ * distribution, so the tree does not degenerate into a list on average; see {@link
+ * com.sweprep.backend.exercise.InputGenerator.Argument.ScalingTreeNode} for why that
+ * matters to the empirical check.
  */
 final class ExerciseParser {
 
@@ -179,6 +195,43 @@ final class ExerciseParser {
                                     + parameter.name() + "', which is not an INT_ARRAY");
                 }
                 yield new InputGenerator.Argument.ScalingIntArray(
+                        json.requireField(node, "min").asInt(), json.requireField(node, "max").asInt());
+            }
+            case "scalingString" -> {
+                if (parameter.type() != DataType.STRING) {
+                    throw json.malformed(
+                            "'complexity.generator' declares a scalingString for parameter '"
+                                    + parameter.name() + "', which is not a STRING");
+                }
+                String alphabet = json.optionalText(node, "alphabet");
+                yield new InputGenerator.Argument.ScalingString(
+                        alphabet == null ? InputGenerator.Argument.ScalingString.DEFAULT_ALPHABET : alphabet);
+            }
+            case "scalingIntMatrix" -> {
+                if (parameter.type() != DataType.INT_MATRIX) {
+                    throw json.malformed(
+                            "'complexity.generator' declares a scalingIntMatrix for parameter '"
+                                    + parameter.name() + "', which is not an INT_MATRIX");
+                }
+                yield new InputGenerator.Argument.ScalingIntMatrix(
+                        json.requireField(node, "min").asInt(), json.requireField(node, "max").asInt());
+            }
+            case "scalingListNode" -> {
+                if (parameter.type() != DataType.LIST_NODE) {
+                    throw json.malformed(
+                            "'complexity.generator' declares a scalingListNode for parameter '"
+                                    + parameter.name() + "', which is not a LIST_NODE");
+                }
+                yield new InputGenerator.Argument.ScalingListNode(
+                        json.requireField(node, "min").asInt(), json.requireField(node, "max").asInt());
+            }
+            case "scalingTreeNode" -> {
+                if (parameter.type() != DataType.TREE_NODE) {
+                    throw json.malformed(
+                            "'complexity.generator' declares a scalingTreeNode for parameter '"
+                                    + parameter.name() + "', which is not a TREE_NODE");
+                }
+                yield new InputGenerator.Argument.ScalingTreeNode(
                         json.requireField(node, "min").asInt(), json.requireField(node, "max").asInt());
             }
             case "fixed" -> new InputGenerator.Argument.Fixed(json.requireField(node, "value"));

@@ -100,6 +100,40 @@ class FileExerciseCatalogTest {
             }
             """;
 
+    // A code exercise with a scalable STRING parameter, for the scalingString
+    // input-generator tests (issue #86 follow-on).
+    private static final String CODE_EXERCISE_WITH_STRING =
+            """
+            {
+              "id": "length-demo", "title": "Length", "statement": "Return the string's length.",
+              "domain": "algorithms", "topics": ["demo"],
+              "difficulty": "EASY", "form": "CHALLENGE",
+              "response": { "kind": "code", "signature": {
+                "method": "length",
+                "parameters": [ { "name": "s", "type": "STRING" } ],
+                "returns": "INT" } },
+              "grading": { "kind": "testCases", "comparison": "exact",
+                "cases": [ { "input": ["abc"], "expected": 3 } ] }
+            }
+            """;
+
+    // A code exercise with a scalable INT_MATRIX parameter, for the scalingIntMatrix
+    // input-generator tests (issue #86 follow-on).
+    private static final String CODE_EXERCISE_WITH_MATRIX =
+            """
+            {
+              "id": "matrix-demo", "title": "Matrix", "statement": "Sum every cell.",
+              "domain": "algorithms", "topics": ["demo"],
+              "difficulty": "EASY", "form": "CHALLENGE",
+              "response": { "kind": "code", "signature": {
+                "method": "sumCells",
+                "parameters": [ { "name": "grid", "type": "INT_MATRIX" } ],
+                "returns": "INT" } },
+              "grading": { "kind": "testCases", "comparison": "exact",
+                "cases": [ { "input": [[[1, 2], [3, 4]]], "expected": 10 } ] }
+            }
+            """;
+
     private static final String LESSON =
             """
             {
@@ -829,6 +863,225 @@ class FileExerciseCatalogTest {
                 .hasMessageContaining("sum.json")
                 .hasMessageContaining("targetTime")
                 .hasMessageContaining("SLOW");
+    }
+
+    // --- Scaling kinds beyond scalingIntArray (issue #86 follow-on) -------------------
+
+    @Test
+    void parsesAScalingStringWithItsAlphabet(@TempDir Path dir) throws IOException {
+        String withComplexity = CODE_EXERCISE_WITH_STRING.replaceFirst(
+                "\\}\\s*$",
+                """
+                ,
+                  "complexity": {
+                    "targetTime": "LINEAR", "targetSpace": "CONSTANT",
+                    "generator": { "arguments": [
+                      { "kind": "scalingString", "alphabet": "ab" } ] }
+                  }
+                }
+                """);
+        write(dir, "length.json", withComplexity);
+
+        InputGenerator.Argument argument =
+                catalog(dir).byId("length-demo").orElseThrow().complexityCheck().generator().arguments().get(0);
+
+        assertThat(argument).isInstanceOfSatisfying(
+                InputGenerator.Argument.ScalingString.class,
+                scaling -> assertThat(scaling.alphabet()).isEqualTo("ab"));
+    }
+
+    @Test
+    void aScalingStringWithNoAlphabetDefaultsToLowercaseLetters(@TempDir Path dir) throws IOException {
+        String withComplexity = CODE_EXERCISE_WITH_STRING.replaceFirst(
+                "\\}\\s*$",
+                """
+                ,
+                  "complexity": {
+                    "targetTime": "LINEAR", "targetSpace": "CONSTANT",
+                    "generator": { "arguments": [ { "kind": "scalingString" } ] }
+                  }
+                }
+                """);
+        write(dir, "length.json", withComplexity);
+
+        InputGenerator.Argument argument =
+                catalog(dir).byId("length-demo").orElseThrow().complexityCheck().generator().arguments().get(0);
+
+        assertThat(argument).isInstanceOfSatisfying(
+                InputGenerator.Argument.ScalingString.class,
+                scaling -> assertThat(scaling.alphabet())
+                        .isEqualTo(InputGenerator.Argument.ScalingString.DEFAULT_ALPHABET));
+    }
+
+    @Test
+    void aScalingStringOnANonStringParameterFailsTheGate(@TempDir Path dir) throws IOException {
+        // "nums" is an INT_ARRAY, not a STRING - declaring it as a scaling string is wrong.
+        String badType = CODE_EXERCISE_WITH_ARRAY.replaceFirst(
+                "\\}\\s*$",
+                """
+                ,
+                  "complexity": {
+                    "targetTime": "LINEAR", "targetSpace": "CONSTANT",
+                    "generator": { "arguments": [
+                      { "kind": "scalingString" },
+                      { "kind": "fixed", "value": 5 } ] }
+                  }
+                }
+                """);
+        write(dir, "sum.json", badType);
+
+        assertThatThrownBy(catalog(dir)::all)
+                .isInstanceOf(ContentException.class)
+                .hasMessageContaining("sum.json")
+                .hasMessageContaining("nums")
+                .hasMessageContaining("STRING");
+    }
+
+    @Test
+    void parsesAScalingIntMatrix(@TempDir Path dir) throws IOException {
+        String withComplexity = CODE_EXERCISE_WITH_MATRIX.replaceFirst(
+                "\\}\\s*$",
+                """
+                ,
+                  "complexity": {
+                    "targetTime": "QUADRATIC", "targetSpace": "QUADRATIC",
+                    "generator": { "arguments": [
+                      { "kind": "scalingIntMatrix", "min": 0, "max": 100 } ] }
+                  }
+                }
+                """);
+        write(dir, "matrix.json", withComplexity);
+
+        InputGenerator.Argument argument =
+                catalog(dir).byId("matrix-demo").orElseThrow().complexityCheck().generator().arguments().get(0);
+
+        assertThat(argument).isInstanceOfSatisfying(
+                InputGenerator.Argument.ScalingIntMatrix.class,
+                scaling -> {
+                    assertThat(scaling.min()).isEqualTo(0);
+                    assertThat(scaling.max()).isEqualTo(100);
+                });
+    }
+
+    @Test
+    void aScalingIntMatrixOnANonMatrixParameterFailsTheGate(@TempDir Path dir) throws IOException {
+        String badType = CODE_EXERCISE_WITH_ARRAY.replaceFirst(
+                "\\}\\s*$",
+                """
+                ,
+                  "complexity": {
+                    "targetTime": "LINEAR", "targetSpace": "CONSTANT",
+                    "generator": { "arguments": [
+                      { "kind": "scalingIntMatrix", "min": 0, "max": 100 },
+                      { "kind": "fixed", "value": 5 } ] }
+                  }
+                }
+                """);
+        write(dir, "sum.json", badType);
+
+        assertThatThrownBy(catalog(dir)::all)
+                .isInstanceOf(ContentException.class)
+                .hasMessageContaining("sum.json")
+                .hasMessageContaining("nums")
+                .hasMessageContaining("INT_MATRIX");
+    }
+
+    @Test
+    void parsesAScalingListNode(@TempDir Path dir) throws IOException {
+        String withComplexity = LIST_EXERCISE.replaceFirst(
+                "\\}\\s*$",
+                """
+                ,
+                  "complexity": {
+                    "targetTime": "LINEAR", "targetSpace": "CONSTANT",
+                    "generator": { "arguments": [
+                      { "kind": "scalingListNode", "min": 0, "max": 1000 } ] }
+                  }
+                }
+                """);
+        write(dir, "drop-first.json", withComplexity);
+
+        InputGenerator.Argument argument =
+                catalog(dir).byId("drop-first").orElseThrow().complexityCheck().generator().arguments().get(0);
+
+        assertThat(argument).isInstanceOfSatisfying(
+                InputGenerator.Argument.ScalingListNode.class,
+                scaling -> {
+                    assertThat(scaling.min()).isEqualTo(0);
+                    assertThat(scaling.max()).isEqualTo(1000);
+                });
+    }
+
+    @Test
+    void aScalingListNodeOnANonListParameterFailsTheGate(@TempDir Path dir) throws IOException {
+        String badType = CODE_EXERCISE_WITH_ARRAY.replaceFirst(
+                "\\}\\s*$",
+                """
+                ,
+                  "complexity": {
+                    "targetTime": "LINEAR", "targetSpace": "CONSTANT",
+                    "generator": { "arguments": [
+                      { "kind": "scalingListNode", "min": 0, "max": 1000 },
+                      { "kind": "fixed", "value": 5 } ] }
+                  }
+                }
+                """);
+        write(dir, "sum.json", badType);
+
+        assertThatThrownBy(catalog(dir)::all)
+                .isInstanceOf(ContentException.class)
+                .hasMessageContaining("sum.json")
+                .hasMessageContaining("nums")
+                .hasMessageContaining("LIST_NODE");
+    }
+
+    @Test
+    void parsesAScalingTreeNode(@TempDir Path dir) throws IOException {
+        String withComplexity = TREE_EXERCISE.replaceFirst(
+                "\\}\\s*$",
+                """
+                ,
+                  "complexity": {
+                    "targetTime": "LINEAR", "targetSpace": "LINEAR",
+                    "generator": { "arguments": [
+                      { "kind": "scalingTreeNode", "min": 0, "max": 1000 } ] }
+                  }
+                }
+                """);
+        write(dir, "drop-right.json", withComplexity);
+
+        InputGenerator.Argument argument =
+                catalog(dir).byId("drop-right").orElseThrow().complexityCheck().generator().arguments().get(0);
+
+        assertThat(argument).isInstanceOfSatisfying(
+                InputGenerator.Argument.ScalingTreeNode.class,
+                scaling -> {
+                    assertThat(scaling.min()).isEqualTo(0);
+                    assertThat(scaling.max()).isEqualTo(1000);
+                });
+    }
+
+    @Test
+    void aScalingTreeNodeOnANonTreeParameterFailsTheGate(@TempDir Path dir) throws IOException {
+        String badType = CODE_EXERCISE_WITH_ARRAY.replaceFirst(
+                "\\}\\s*$",
+                """
+                ,
+                  "complexity": {
+                    "targetTime": "LINEAR", "targetSpace": "CONSTANT",
+                    "generator": { "arguments": [
+                      { "kind": "scalingTreeNode", "min": 0, "max": 1000 },
+                      { "kind": "fixed", "value": 5 } ] }
+                  }
+                }
+                """);
+        write(dir, "sum.json", badType);
+
+        assertThatThrownBy(catalog(dir)::all)
+                .isInstanceOf(ContentException.class)
+                .hasMessageContaining("sum.json")
+                .hasMessageContaining("nums")
+                .hasMessageContaining("TREE_NODE");
     }
 
     // The SQL domain (issue #25): a Query response paired with a ResultSet grading. Rows
