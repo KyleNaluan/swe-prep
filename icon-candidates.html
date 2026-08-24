@@ -1,0 +1,612 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Re-solve — brand icon candidates</title>
+<style>
+  :root {
+    --bg: #f6f4fb;
+    --surface: #ffffff;
+    --surface2: #f0edf9;
+    --ink: #191426;
+    --muted: #645c80;
+    --line: #e3def2;
+    --primary: #5b4be8;
+    --display: 'Palatino Linotype', Palatino, 'Book Antiqua', 'URW Palladio L', 'DejaVu Serif', Georgia, serif;
+    --body: 'Segoe UI Variable Text', 'Segoe UI', Ubuntu, 'Ubuntu Sans', system-ui, sans-serif;
+    --wordmark: 'Brush Script MT', 'Segoe Script', 'Bradley Hand', cursive;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--body);
+    padding: 32px 40px 120px;
+  }
+  h1 {
+    font-family: var(--display);
+    font-weight: 600;
+    margin: 0 0 6px;
+  }
+  p.lede {
+    color: var(--muted);
+    max-width: 680px;
+    margin: 0 0 36px;
+    line-height: 1.5;
+  }
+  .candidate {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 24px 28px 28px;
+    margin-bottom: 28px;
+    box-shadow: 0 2px 4px rgba(25, 20, 38, 0.05), 0 10px 24px -12px rgba(25, 20, 38, 0.15);
+  }
+  .candidate-title {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin-bottom: 4px;
+  }
+  .candidate-title h2 {
+    margin: 0;
+    font-size: 19px;
+    font-family: var(--display);
+    font-weight: 600;
+  }
+  .candidate-title .key {
+    font-family: var(--mono, monospace);
+    font-size: 12px;
+    color: var(--muted);
+    background: var(--surface2);
+    padding: 2px 8px;
+    border-radius: 6px;
+  }
+  .candidate-desc {
+    color: var(--muted);
+    font-size: 14px;
+    margin: 0 0 20px;
+    max-width: 640px;
+    line-height: 1.5;
+  }
+  .row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 28px;
+    align-items: flex-end;
+  }
+  .swatch-group {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+  .swatch-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .swatch {
+    display: grid;
+    place-items: center;
+    border-radius: 8px;
+  }
+  .swatch.light { background: #f6f4fb; border: 1px solid #e3def2; }
+  .swatch.dark { background: #131020; border: 1px solid #332c4c; }
+  .swatch.tile-light { background: #ffffff; border: 1px solid #e3def2; }
+  .swatch.tile-dark { background: #1d192e; border: 1px solid #332c4c; }
+
+  .sz-16 { width: 40px; height: 40px; }
+  .sz-16 svg { width: 16px; height: 16px; }
+  .sz-32 { width: 64px; height: 64px; }
+  .sz-32 svg { width: 32px; height: 32px; }
+  .sz-128 { width: 168px; height: 168px; }
+  .sz-128 svg { width: 128px; height: 128px; }
+
+  .ink-light svg { color: #191426; }
+  .ink-dark svg { color: #efebfa; }
+  .primary-light svg { color: #5b4be8; }
+  .primary-dark svg { color: #8b7bff; }
+
+  /* header-tile mimics .mark: rounded gradient square, icon rendered white */
+  .header-tile {
+    width: 48px;
+    height: 48px;
+    border-radius: 13px;
+    display: grid;
+    place-items: center;
+    color: #fff;
+    box-shadow: 0 4px 14px -5px var(--primary);
+  }
+  .header-tile.light { background: linear-gradient(145deg, #5b4be8, #8e63f0); }
+  .header-tile.dark { background: linear-gradient(145deg, #8b7bff, #8e63f0); }
+  .header-tile svg { width: 30px; height: 30px; }
+
+  /* full header mock */
+  .header-mock {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    padding: 16px 22px;
+    border-radius: 12px;
+  }
+  .header-mock.light { background: #f6f4fb; border: 1px solid #e3def2; }
+  .header-mock.dark { background: #131020; border: 1px solid #332c4c; }
+  .header-mock .mark {
+    width: 32px;
+    height: 32px;
+    border-radius: 9px;
+    display: grid;
+    place-items: center;
+    color: #fff;
+    box-shadow: 0 4px 14px -5px var(--primary);
+    flex: none;
+  }
+  .header-mock.light .mark { background: linear-gradient(145deg, #5b4be8, #8e63f0); }
+  .header-mock.dark .mark { background: linear-gradient(145deg, #8b7bff, #8e63f0); }
+  .header-mock .mark svg { width: 20px; height: 20px; }
+  .header-mock.light .wordmark { color: #191426; }
+  .header-mock.dark .wordmark { color: #efebfa; }
+  .header-mock .wordmark {
+    font-family: var(--wordmark);
+    font-size: 26px;
+    font-weight: 400;
+  }
+  .header-mock .topmeta {
+    margin-left: auto;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+  }
+  .header-mock .pill {
+    font-size: 12px;
+    padding: 6px 12px;
+    border-radius: 999px;
+  }
+  .header-mock.light .pill { background: #edeaff; color: #4436c9; }
+  .header-mock.dark .pill { background: #2a2350; color: #a79aff; }
+
+  footer.note {
+    max-width: 680px;
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.5;
+  }
+</style>
+</head>
+<body>
+
+<h1>Re-solve — brand icon candidates</h1>
+<p class="lede">
+  Replacing the current abstract two-arrows-plus-<code>&lt;/&gt;</code>-glyph mark
+  (reported as "jumbled" at small size) with an actual pictorial icon.
+  Each candidate below is shown at favicon size (16px), header size (32px, in the
+  header's rounded gradient tile), and large (128px), on both light and dark
+  backgrounds, plus mocked into the real header bar next to the "Re-solve" wordmark.
+</p>
+
+<!-- ============================================================ -->
+<div class="candidate" id="badge">
+  <div class="candidate-title"><h2>1. Seal / Mastery Badge</h2><span class="key">badge</span></div>
+  <p class="candidate-desc">
+    A medallion with a checkmark and a two-tail ribbon underneath, like an
+    award seal — daily practice building toward mastery, stamped and earned.
+  </p>
+  <div class="row">
+    <div class="swatch-group">
+      <span class="swatch-label">16px · light</span>
+      <div class="swatch light sz-16 primary-light" data-icon="badge"></div>
+    </div>
+    <div class="swatch-group">
+      <span class="swatch-label">16px · dark</span>
+      <div class="swatch dark sz-16 primary-dark" data-icon="badge"></div>
+    </div>
+    <div class="swatch-group">
+      <span class="swatch-label">32px · header tile · light</span>
+      <div class="header-tile light" data-icon="badge"></div>
+    </div>
+    <div class="swatch-group">
+      <span class="swatch-label">32px · header tile · dark</span>
+      <div class="header-tile dark" data-icon="badge"></div>
+    </div>
+    <div class="swatch-group">
+      <span class="swatch-label">128px · light</span>
+      <div class="swatch light sz-128 primary-light" data-icon="badge"></div>
+    </div>
+    <div class="swatch-group">
+      <span class="swatch-label">128px · dark</span>
+      <div class="swatch dark sz-128 primary-dark" data-icon="badge"></div>
+    </div>
+  </div>
+  <div class="row" style="margin-top:22px">
+    <div class="header-mock light" style="flex:1; min-width:320px">
+      <span class="mark" data-icon="badge"></span>
+      <b class="wordmark">Re-solve</b>
+      <div class="topmeta"><span class="pill">Full-Stack + AI/ML</span></div>
+    </div>
+    <div class="header-mock dark" style="flex:1; min-width:320px">
+      <span class="mark" data-icon="badge"></span>
+      <b class="wordmark">Re-solve</b>
+      <div class="topmeta"><span class="pill">Full-Stack + AI/ML</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<div class="candidate" id="notebook">
+  <div class="candidate-title"><h2>2. Notebook / Ledger</h2><span class="key">notebook</span></div>
+  <p class="candidate-desc">
+    A closed notebook with a bold spine and a bookmark ribbon tucked in the
+    top edge — the daily practice log / taught-fundamentals reference.
+  </p>
+  <div class="row">
+    <div class="swatch-group">
+      <span class="swatch-label">16px · light</span>
+      <div class="swatch light sz-16 primary-light" data-icon="notebook"></div>
+    </div>
+    <div class="swatch-group">
+      <span class="swatch-label">16px · dark</span>
+      <div class="swatch dark sz-16 primary-dark" data-icon="notebook"></div>
+    </div>
+    <div class="swatch-group">
+      <span class="swatch-label">32px · header tile · light</span>
+      <div class="header-tile light" data-icon="notebook"></div>
+    </div>
+    <div class="swatch-group">
+      <span class="swatch-label">32px · header tile · dark</span>
+      <div class="header-tile dark" data-icon="notebook"></div>
+    </div>
+    <div class="swatch-group">
+      <span class="swatch-label">128px · light</span>
+      <div class="swatch light sz-128 primary-light" data-icon="notebook"></div>
+    </div>
+    <div class="swatch-group">
+      <span class="swatch-label">128px · dark</span>
+      <div class="swatch dark sz-128 primary-dark" data-icon="notebook"></div>
+    </div>
+  </div>
+  <div class="row" style="margin-top:22px">
+    <div class="header-mock light" style="flex:1; min-width:320px">
+      <span class="mark" data-icon="notebook"></span>
+      <b class="wordmark">Re-solve</b>
+      <div class="topmeta"><span class="pill">Full-Stack + AI/ML</span></div>
+    </div>
+    <div class="header-mock dark" style="flex:1; min-width:320px">
+      <span class="mark" data-icon="notebook"></span>
+      <b class="wordmark">Re-solve</b>
+      <div class="topmeta"><span class="pill">Full-Stack + AI/ML</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<div class="candidate" id="ribbon-r">
+  <div class="candidate-title"><h2>3. Ribbon-loop "R"</h2><span class="key">ribbon-r</span></div>
+  <p class="candidate-desc">
+    A single bold ribbon-weight stroke traced into the letter R — the initial
+    of Re-solve, drawn as a physical ribbon rather than a typeface.
+  </p>
+  <div class="row">
+    <div class="swatch-group">
+      <span class="swatch-label">16px · light</span>
+      <div class="swatch light sz-16 primary-light" data-icon="ribbon-r"></div>
+    </div>
+    <div class="swatch-group">
+      <span class="swatch-label">16px · dark</span>
+      <div class="swatch dark sz-16 primary-dark" data-icon="ribbon-r"></div>
+    </div>
+    <div class="swatch-group">
+      <span class="swatch-label">32px · header tile · light</span>
+      <div class="header-tile light" data-icon="ribbon-r"></div>
+    </div>
+    <div class="swatch-group">
+      <span class="swatch-label">32px · header tile · dark</span>
+      <div class="header-tile dark" data-icon="ribbon-r"></div>
+    </div>
+    <div class="swatch-group">
+      <span class="swatch-label">128px · light</span>
+      <div class="swatch light sz-128 primary-light" data-icon="ribbon-r"></div>
+    </div>
+    <div class="swatch-group">
+      <span class="swatch-label">128px · dark</span>
+      <div class="swatch dark sz-128 primary-dark" data-icon="ribbon-r"></div>
+    </div>
+  </div>
+  <div class="row" style="margin-top:22px">
+    <div class="header-mock light" style="flex:1; min-width:320px">
+      <span class="mark" data-icon="ribbon-r"></span>
+      <b class="wordmark">Re-solve</b>
+      <div class="topmeta"><span class="pill">Full-Stack + AI/ML</span></div>
+    </div>
+    <div class="header-mock dark" style="flex:1; min-width:320px">
+      <span class="mark" data-icon="ribbon-r"></span>
+      <b class="wordmark">Re-solve</b>
+      <div class="topmeta"><span class="pill">Full-Stack + AI/ML</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<div class="candidate" id="terminal">
+  <div class="candidate-title"><h2>4. Terminal Window</h2><span class="key">terminal</span></div>
+  <p class="candidate-desc">
+    A little window frame with a titlebar and a bold <code>&gt;</code> prompt
+    and cursor inside — a literal small picture of a code editor, rather than
+    a floating glyph.
+  </p>
+  <div class="row">
+    <div class="swatch-group">
+      <span class="swatch-label">16px · light</span>
+      <div class="swatch light sz-16 primary-light" data-icon="terminal"></div>
+    </div>
+    <div class="swatch-group">
+      <span class="swatch-label">16px · dark</span>
+      <div class="swatch dark sz-16 primary-dark" data-icon="terminal"></div>
+    </div>
+    <div class="swatch-group">
+      <span class="swatch-label">32px · header tile · light</span>
+      <div class="header-tile light" data-icon="terminal"></div>
+    </div>
+    <div class="swatch-group">
+      <span class="swatch-label">32px · header tile · dark</span>
+      <div class="header-tile dark" data-icon="terminal"></div>
+    </div>
+    <div class="swatch-group">
+      <span class="swatch-label">128px · light</span>
+      <div class="swatch light sz-128 primary-light" data-icon="terminal"></div>
+    </div>
+    <div class="swatch-group">
+      <span class="swatch-label">128px · dark</span>
+      <div class="swatch dark sz-128 primary-dark" data-icon="terminal"></div>
+    </div>
+  </div>
+  <div class="row" style="margin-top:22px">
+    <div class="header-mock light" style="flex:1; min-width:320px">
+      <span class="mark" data-icon="terminal"></span>
+      <b class="wordmark">Re-solve</b>
+      <div class="topmeta"><span class="pill">Full-Stack + AI/ML</span></div>
+    </div>
+    <div class="header-mock dark" style="flex:1; min-width:320px">
+      <span class="mark" data-icon="terminal"></span>
+      <b class="wordmark">Re-solve</b>
+      <div class="topmeta"><span class="pill">Full-Stack + AI/ML</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<div class="candidate" id="target">
+  <div class="candidate-title"><h2>5. Target / Bullseye</h2><span class="key">target</span></div>
+  <p class="candidate-desc">
+    An arrow striking the center of a target ring — hitting the mark in an
+    interview, "on target" prep.
+  </p>
+  <div class="row">
+    <div class="swatch-group">
+      <span class="swatch-label">16px · light</span>
+      <div class="swatch light sz-16 primary-light" data-icon="target"></div>
+    </div>
+    <div class="swatch-group">
+      <span class="swatch-label">16px · dark</span>
+      <div class="swatch dark sz-16 primary-dark" data-icon="target"></div>
+    </div>
+    <div class="swatch-group">
+      <span class="swatch-label">32px · header tile · light</span>
+      <div class="header-tile light" data-icon="target"></div>
+    </div>
+    <div class="swatch-group">
+      <span class="swatch-label">32px · header tile · dark</span>
+      <div class="header-tile dark" data-icon="target"></div>
+    </div>
+    <div class="swatch-group">
+      <span class="swatch-label">128px · light</span>
+      <div class="swatch light sz-128 primary-light" data-icon="target"></div>
+    </div>
+    <div class="swatch-group">
+      <span class="swatch-label">128px · dark</span>
+      <div class="swatch dark sz-128 primary-dark" data-icon="target"></div>
+    </div>
+  </div>
+  <div class="row" style="margin-top:22px">
+    <div class="header-mock light" style="flex:1; min-width:320px">
+      <span class="mark" data-icon="target"></span>
+      <b class="wordmark">Re-solve</b>
+      <div class="topmeta"><span class="pill">Full-Stack + AI/ML</span></div>
+    </div>
+    <div class="header-mock dark" style="flex:1; min-width:320px">
+      <span class="mark" data-icon="target"></span>
+      <b class="wordmark">Re-solve</b>
+      <div class="topmeta"><span class="pill">Full-Stack + AI/ML</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<div class="candidate" id="flashcards">
+  <div class="candidate-title"><h2>6. Flashcard Stack</h2><span class="key">flashcards</span></div>
+  <p class="candidate-desc">
+    Two stacked drill cards, the front one carrying a checkmark — the
+    warm-up rep deck, worked through daily.
+  </p>
+  <div class="row">
+    <div class="swatch-group">
+      <span class="swatch-label">16px · light</span>
+      <div class="swatch light sz-16 primary-light" data-icon="flashcards"></div>
+    </div>
+    <div class="swatch-group">
+      <span class="swatch-label">16px · dark</span>
+      <div class="swatch dark sz-16 primary-dark" data-icon="flashcards"></div>
+    </div>
+    <div class="swatch-group">
+      <span class="swatch-label">32px · header tile · light</span>
+      <div class="header-tile light" data-icon="flashcards"></div>
+    </div>
+    <div class="swatch-group">
+      <span class="swatch-label">32px · header tile · dark</span>
+      <div class="header-tile dark" data-icon="flashcards"></div>
+    </div>
+    <div class="swatch-group">
+      <span class="swatch-label">128px · light</span>
+      <div class="swatch light sz-128 primary-light" data-icon="flashcards"></div>
+    </div>
+    <div class="swatch-group">
+      <span class="swatch-label">128px · dark</span>
+      <div class="swatch dark sz-128 primary-dark" data-icon="flashcards"></div>
+    </div>
+  </div>
+  <div class="row" style="margin-top:22px">
+    <div class="header-mock light" style="flex:1; min-width:320px">
+      <span class="mark" data-icon="flashcards"></span>
+      <b class="wordmark">Re-solve</b>
+      <div class="topmeta"><span class="pill">Full-Stack + AI/ML</span></div>
+    </div>
+    <div class="header-mock dark" style="flex:1; min-width:320px">
+      <span class="mark" data-icon="flashcards"></span>
+      <b class="wordmark">Re-solve</b>
+      <div class="topmeta"><span class="pill">Full-Stack + AI/ML</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<div class="candidate" id="arrows-redux">
+  <div class="candidate-title"><h2>7. Arrows Redux</h2><span class="key">arrows-redux</span></div>
+  <p class="candidate-desc">
+    A faithful, cleanly-redrawn version of the <em>shipped</em> concept — the
+    two-arrows-in-a-loop with a code element inside — not a new idea. Fixes
+    what made the original read as jumbled: the two arcs previously swept
+    ~290° each and nearly doubled up into one solid ring with no visible
+    gaps; here each arc is a clean ~120° sweep with a real 60°-wide gap on
+    both sides, at a heavier stroke weight, and the center glyph is redrawn
+    as two bold filled geometric chevrons (a real <code>&lt;</code>
+    <code>&gt;</code> shape at icon weight) instead of an 11px rendered
+    font string that vanished at favicon size.
+  </p>
+  <div class="row">
+    <div class="swatch-group">
+      <span class="swatch-label">16px · light</span>
+      <div class="swatch light sz-16 primary-light" data-icon="arrows-redux"></div>
+    </div>
+    <div class="swatch-group">
+      <span class="swatch-label">16px · dark</span>
+      <div class="swatch dark sz-16 primary-dark" data-icon="arrows-redux"></div>
+    </div>
+    <div class="swatch-group">
+      <span class="swatch-label">32px · header tile · light</span>
+      <div class="header-tile light" data-icon="arrows-redux"></div>
+    </div>
+    <div class="swatch-group">
+      <span class="swatch-label">32px · header tile · dark</span>
+      <div class="header-tile dark" data-icon="arrows-redux"></div>
+    </div>
+    <div class="swatch-group">
+      <span class="swatch-label">128px · light</span>
+      <div class="swatch light sz-128 primary-light" data-icon="arrows-redux"></div>
+    </div>
+    <div class="swatch-group">
+      <span class="swatch-label">128px · dark</span>
+      <div class="swatch dark sz-128 primary-dark" data-icon="arrows-redux"></div>
+    </div>
+  </div>
+  <div class="row" style="margin-top:22px">
+    <div class="header-mock light" style="flex:1; min-width:320px">
+      <span class="mark" data-icon="arrows-redux"></span>
+      <b class="wordmark">Re-solve</b>
+      <div class="topmeta"><span class="pill">Full-Stack + AI/ML</span></div>
+    </div>
+    <div class="header-mock dark" style="flex:1; min-width:320px">
+      <span class="mark" data-icon="arrows-redux"></span>
+      <b class="wordmark">Re-solve</b>
+      <div class="topmeta"><span class="pill">Full-Stack + AI/ML</span></div>
+    </div>
+  </div>
+</div>
+
+<footer class="note">
+  Every icon is drawn with <code>currentColor</code> so the same SVG source works
+  tinted indigo (favicon / standalone contexts) or white (inside the header's
+  gradient tile) with no per-context variant. Source paths below, for reference.
+</footer>
+
+<template id="tpl-badge">
+  <svg viewBox="0 0 32 32" fill="none" aria-hidden="true">
+    <circle cx="16" cy="13" r="9" stroke="currentColor" stroke-width="3"/>
+    <path d="M12 13.3 L15 16.3 L20.6 9.3" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M10.3 20.2 L8.2 29.4 L13 25.7 Z" fill="currentColor"/>
+    <path d="M21.7 20.2 L23.8 29.4 L19 25.7 Z" fill="currentColor"/>
+  </svg>
+</template>
+
+<template id="tpl-notebook">
+  <svg viewBox="0 0 32 32" fill="none" aria-hidden="true">
+    <rect x="6" y="5" width="20" height="23" rx="2.5" stroke="currentColor" stroke-width="2.8"/>
+    <rect x="6" y="5" width="6.2" height="23" rx="2.2" fill="currentColor"/>
+    <path d="M19 5 L19 15.5 L22 12.6 L25 15.5 L25 5 Z" fill="currentColor"/>
+  </svg>
+</template>
+
+<template id="tpl-ribbon-r">
+  <svg viewBox="0 0 32 32" fill="none" aria-hidden="true">
+    <path d="M10 27 L10 6 L18 6 A6 6 0 0 1 18 18 L11 18 M17.5 17.5 L25 27"
+      stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>
+</template>
+
+<template id="tpl-terminal">
+  <svg viewBox="0 0 32 32" fill="none" aria-hidden="true">
+    <rect x="4" y="6" width="24" height="20" rx="3.4" stroke="currentColor" stroke-width="2.6"/>
+    <line x1="4" y1="12.3" x2="28" y2="12.3" stroke="currentColor" stroke-width="2.6"/>
+    <circle cx="8.3" cy="9.1" r="1.15" fill="currentColor"/>
+    <circle cx="12" cy="9.1" r="1.15" fill="currentColor"/>
+    <path d="M8 17.3 L13.5 20.8 L8 24.3" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+    <line x1="15.5" y1="24.3" x2="22" y2="24.3" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/>
+  </svg>
+</template>
+
+<template id="tpl-target">
+  <svg viewBox="0 0 32 32" fill="none" aria-hidden="true">
+    <circle cx="14" cy="18" r="10" stroke="currentColor" stroke-width="2.6"/>
+    <circle cx="14" cy="18" r="4.2" fill="currentColor"/>
+    <path d="M14 18 L25 7" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"/>
+    <path d="M21 4 L28 4 L28 11 Z" fill="currentColor"/>
+  </svg>
+</template>
+
+<template id="tpl-flashcards">
+  <svg viewBox="0 0 32 32" fill="none" aria-hidden="true">
+    <rect x="10" y="4" width="17" height="13" rx="2.5" fill="currentColor" opacity="0.55"/>
+    <rect x="5" y="10" width="19" height="15" rx="2.5" stroke="currentColor" stroke-width="2.8"/>
+    <path d="M10 17.7 L14 21.7 L20 13.7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>
+</template>
+
+<template id="tpl-arrows-redux">
+  <svg viewBox="0 0 32 32" fill="none" aria-hidden="true">
+    <g transform="translate(16 16) scale(1.25) translate(-16 -16)">
+      <g stroke="currentColor" stroke-width="3.8" stroke-linecap="butt">
+        <path d="M 23.79 11.5 A 9 9 0 0 0 8.21 11.5" />
+        <path d="M 8.21 20.5 A 9 9 0 0 0 23.79 20.5" />
+      </g>
+      <g fill="currentColor">
+        <path d="M6.46 14.53 6.51 8.44 11.71 11.44Z" />
+        <path d="M25.54 17.47 25.49 23.56 20.29 20.56Z" />
+      </g>
+      <g fill="currentColor">
+        <path d="M14.5 11.5 10 16 14.5 20.5 16.3 18.7 13.2 16 16.3 13.3Z" />
+        <path d="M17.5 11.5 22 16 17.5 20.5 15.7 18.7 18.8 16 15.7 13.3Z" />
+      </g>
+    </g>
+  </svg>
+</template>
+
+<script>
+  document.querySelectorAll('[data-icon]').forEach(function (el) {
+    var tpl = document.getElementById('tpl-' + el.getAttribute('data-icon'));
+    if (tpl) el.appendChild(tpl.content.cloneNode(true));
+  });
+</script>
+</body>
+</html>
