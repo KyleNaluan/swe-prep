@@ -1,4 +1,12 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  waitForElementToBeRemoved,
+  within,
+} from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import Session from './Session'
 
@@ -144,8 +152,18 @@ function mockFetch(
 
 // Selects an exercise through the TreeBrowser (issue #90's replacement for the old flat
 // `<select id="exercise-select">`): search narrows the tree to a cross-domain match, then
-// the matching item card is clicked.
-function selectExercise(title: string) {
+// the matching item card is clicked. Practice always arrives on a content page (the
+// current exercise), so this first returns to browse via the breadcrumb - the real
+// user path, since the tree is not reachable while a content page is open. Leaving is
+// a real, asynchronous history navigation (`history.back()`), so this awaits the
+// content page actually unmounting before touching the tree.
+async function selectExercise(title: string) {
+  fireEvent.click(
+    within(screen.getByRole('navigation', { name: 'Breadcrumb' })).getByRole('button', {
+      name: 'Practice',
+    }),
+  )
+  await waitForElementToBeRemoved(() => screen.queryByRole('navigation', { name: 'Breadcrumb' }))
   fireEvent.change(screen.getByLabelText('Find a problem'), { target: { value: title } })
   fireEvent.click(screen.getByRole('button', { name: new RegExp(title) }))
 }
@@ -160,6 +178,11 @@ async function finishWarmup() {
 describe('Session (daily loop, issue #19)', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn())
+    // jsdom's `window.history` is shared across every test in this file, so an entry
+    // a prior test pushed while entering a content page would otherwise still be
+    // there for this test's own `history.back()` to land on - reset to a clean base,
+    // matching a real fresh page load, before each test.
+    window.history.replaceState(null, '', '/')
   })
   afterEach(() => {
     cleanup()
@@ -216,7 +239,7 @@ describe('Session (daily loop, issue #19)', () => {
     expect(screen.getByText(/keep going as long as you like/i)).toBeInTheDocument()
 
     // Continuation is uncapped: another exercise can always be picked next.
-    selectExercise('Code Main')
+    await selectExercise('Code Main')
     expect(await screen.findByRole('heading', { name: 'Code Main' })).toBeInTheDocument()
   })
 

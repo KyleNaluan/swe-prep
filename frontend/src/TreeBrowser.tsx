@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { defaultDomainLabel, topicLabel } from './treeLabels'
 
 // The tiered navigation Practice and Learn share (issue #90/#7's map: "tiered/under
 // categories" - the flat 583-item dropdowns this replaces lived in Practice.tsx's
@@ -50,7 +51,13 @@ export type TreeBrowserProps = {
   activeFilters: Record<string, Set<string>>
   onToggleFilter: (groupKey: string, value: string) => void
   selectedId: string | null
-  onSelect: (item: TreeItem) => void
+  // Fires on a click on an item card. `context` is the tree's own drill state at the
+  // moment of the click - the domain and pattern (topic) node open when the item was
+  // picked - so a consumer's dedicated content page can render a breadcrumb ("Practice
+  // > <area> > <pattern> > <item>") without re-deriving TreeBrowser's own grouping.
+  // `pattern` is null when the pick came from a domain-level view or a cross-domain
+  // search result, where no single pattern context applies.
+  onSelect: (item: TreeItem, context: { domain: string; pattern: string | null }) => void
   findLabel: string
   findPlaceholder?: string
   emptyMessage: string
@@ -63,17 +70,6 @@ export type TreeBrowserProps = {
   // screen). Omitted entirely rather than faked - no per-node bar or badge renders
   // without it, since an invented progress signal is worse than none (issue #7).
   solvedIds?: Set<string>
-}
-
-function defaultDomainLabel(domain: string): string {
-  return domain
-    .split(/[-_]/)
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ')
-}
-
-function topicLabel(topic: string): string {
-  return defaultDomainLabel(topic.replace(/-/g, ' '))
 }
 
 function passesFilters(
@@ -323,7 +319,12 @@ function TreeBrowser({
               key={item.id}
               className="item"
               aria-current={selectedId === item.id}
-              onClick={() => onSelect(item)}
+              onClick={() =>
+                onSelect(item, {
+                  domain: item.domain,
+                  pattern: searching ? null : (activePattern?.topic ?? null),
+                })
+              }
             >
               <span className="it">{item.title}</span>
               <span className="im">

@@ -2,6 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Editor from '@monaco-editor/react'
 import { apiFetch, errorMessage } from './api'
 import TreeBrowser, { type FilterGroup } from './TreeBrowser'
+import { defaultDomainLabel, topicLabel } from './treeLabels'
+import ContentPage, { type Crumb } from './ContentPage'
+import {
+  leaveContentEntry,
+  pushContentEntry,
+  useBrowseContentScroll,
+  useContentPopState,
+} from './contentNav'
 import { familyLabel } from './familyLabels'
 import { APP_NAME } from './appName'
 import { useEffectiveDark } from './useEffectiveTheme'
@@ -277,6 +285,29 @@ function Practice({
   const [catalogError, setCatalogError] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
+  // The dedicated-content-page toggle (carrying Direction A's page pattern into
+  // Direction C - AGENTS.md): 'browse' shows the tree/grid, 'content' shows the
+  // breadcrumb + exercise. TreeBrowser is always rendered - only hidden with CSS in
+  // 'content' - so its scroll, expanded nodes and filters need no restore at all.
+  // `browseContext` is the domain/pattern the tree had open at the moment of the
+  // click, for the breadcrumb; it is left untouched by view changes, so it is still
+  // correct if the browser's own forward button re-enters a content page.
+  const [view, setView] = useState<'browse' | 'content'>('browse')
+  const [browseContext, setBrowseContext] = useState<{ domain: string; pattern: string | null }>(
+    { domain: '', pattern: null },
+  )
+  useBrowseContentScroll(view)
+  // Browser back/forward (issue carrying Direction A's page pattern into Direction C -
+  // AGENTS.md): re-entering a content page (forward) just needs `view`/`selectedId`
+  // set - `browseContext` was already set by whatever click first opened that content
+  // page and view changes never touch it, so it is still correct here.
+  const handleContentPopEnter = useCallback((id: string) => {
+    setSelectedId(id)
+    setView('content')
+  }, [])
+  const handleContentPopLeave = useCallback(() => setView('browse'), [])
+  useContentPopState('practice', handleContentPopEnter, handleContentPopLeave)
+
   // The TreeBrowser's difficulty and family filters (issue #90), each its own labeled
   // group per the captain's refinement. Both default to "everything active" - nothing
   // is suppressed before a choice is made - and toggling either is a prop change into
@@ -355,10 +386,6 @@ function Practice({
   // The active sitting for the selected exercise. Held in a ref so the selection
   // effect's cleanup can abandon it on switch-away without re-subscribing.
   const attemptRef = useRef<{ id: string; solved: boolean } | null>(null)
-  // Scrolled into view on every TreeBrowser selection (issue #90) - the grid above it
-  // can run to hundreds of cards, so without this a freshly picked exercise could
-  // land far below the fold.
-  const exerciseSectionRef = useRef<HTMLDivElement | null>(null)
 
   const refreshHistory = useCallback(() => {
     apiFetch(`/api/attempts`)
@@ -403,7 +430,20 @@ function Practice({
           setFamilyFilter(seen)
         }
         if (loaded.length === 0) return
-        setSelectedId(await pickMain(loaded))
+        const pickedId = await pickMain(loaded)
+        if (cancelled) return
+        setSelectedId(pickedId)
+        // The scheduler's pick (or the static fallback) arrives ready to solve, exactly
+        // as it did before content pages existed - it opens straight to its content
+        // page rather than requiring an extra click into the tree. No pattern context
+        // exists for an auto-pick (it did not come from drilling a tree node), so the
+        // breadcrumb simply omits that segment. A history entry is pushed here too -
+        // entering a content page always pushes exactly one, whether by a tree click
+        // or an auto-pick, so leaving is always exactly one `back()` either way.
+        const pickedSummary = loaded.find((summary) => summary.id === pickedId)
+        setBrowseContext({ domain: pickedSummary?.domain ?? '', pattern: null })
+        setView('content')
+        pushContentEntry('practice', pickedId)
       })
       .catch((error: unknown) => {
         if (!cancelled) setCatalogError(error instanceof Error ? error.message : String(error))
@@ -824,6 +864,23 @@ function Practice({
     )
   }
 
+  // Practice > <area> > <pattern> > <item> (issue carrying Direction A's page pattern
+  // into Direction C - AGENTS.md). Area/pattern segments are omitted, not left blank,
+  // when there is no real one to show (an auto-picked main exercise has no pattern -
+  // it was never drilled to - and a still-loading selection has no domain yet); every
+  // non-leaf segment does the identical thing (return to browse), which is correct
+  // because the tree's own live state already reflects exactly the drill path shown.
+  const crumbs: Crumb[] = [
+    { label: 'Practice', onClick: leaveContentEntry },
+    ...(browseContext.domain
+      ? [{ label: defaultDomainLabel(browseContext.domain), onClick: leaveContentEntry }]
+      : []),
+    ...(browseContext.pattern
+      ? [{ label: topicLabel(browseContext.pattern), onClick: leaveContentEntry }]
+      : []),
+    { label: exercise?.title ?? catalog.find((s) => s.id === selectedId)?.title ?? '…' },
+  ]
+
   return (
     <>
       <div className="browsehead">
@@ -836,37 +893,41 @@ function Practice({
         </div>
       </div>
 
-      <TreeBrowser
-        items={catalog.map((summary) => ({
-          id: summary.id,
-          title: summary.title,
-          domain: summary.domain,
-          difficulty: summary.difficulty,
-          topics: summary.topics ?? [],
-          family: summary.family ?? [],
-        }))}
-        filterGroups={filterGroups}
-        activeFilters={activeFilters}
-        onToggleFilter={onToggleFilter}
-        selectedId={selectedId}
-        onSelect={(item) => {
-          setSelectedId(item.id)
-          // The grid above can run to hundreds of cards (issue #90 kept Practice's
-          // existing unfiltered catalog scope - only the navigation changed), so
-          // without this a selection could land far below the fold, behind the very
-          // grid the solver just picked from. The old flat `<select>` never had this
-          // problem: it was only ever a few lines tall.
-          exerciseSectionRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' })
-        }}
-        findLabel="Find a problem"
-        findPlaceholder="two sum, koko, window…"
-        emptyMessage="No exercises available."
-        sectionLabel="Practice"
-        itemNoun="problem"
-        solvedIds={solvedIds}
-      />
+      {/* The tree/grid pane is always rendered, only hidden while a content page is
+          open (issue carrying Direction A's page pattern into Direction C -
+          AGENTS.md) - never unmounted, so its scroll position, expanded nodes and
+          filters are exactly as the solver left them when they return. */}
+      <div style={view === 'content' ? { display: 'none' } : undefined}>
+        <TreeBrowser
+          items={catalog.map((summary) => ({
+            id: summary.id,
+            title: summary.title,
+            domain: summary.domain,
+            difficulty: summary.difficulty,
+            topics: summary.topics ?? [],
+            family: summary.family ?? [],
+          }))}
+          filterGroups={filterGroups}
+          activeFilters={activeFilters}
+          onToggleFilter={onToggleFilter}
+          selectedId={selectedId}
+          onSelect={(item, context) => {
+            setSelectedId(item.id)
+            setBrowseContext(context)
+            setView('content')
+            pushContentEntry('practice', item.id)
+          }}
+          findLabel="Find a problem"
+          findPlaceholder="two sum, koko, window…"
+          emptyMessage="No exercises available."
+          sectionLabel="Practice"
+          itemNoun="problem"
+          solvedIds={solvedIds}
+        />
+      </div>
 
-      <div ref={exerciseSectionRef}>
+      {view === 'content' && (
+      <ContentPage crumbs={crumbs}>
       {loadError && <p className="status down">Could not load the exercise: {loadError}</p>}
       {!exercise && !loadError && <p className="status loading">Loading exercise...</p>}
 
@@ -1051,7 +1112,8 @@ function Practice({
         </div>
         </div>
       )}
-      </div>
+      </ContentPage>
+      )}
 
       <History attempts={history} />
     </>
