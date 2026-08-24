@@ -1,4 +1,12 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  waitForElementToBeRemoved,
+  within,
+} from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import Lesson from './Lesson'
 
@@ -68,7 +76,15 @@ const STRUCTURED_DETAIL = {
 }
 
 describe('Lesson renderer (issue #41/#46)', () => {
-  beforeEach(() => vi.stubGlobal('fetch', vi.fn()))
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn())
+    // jsdom's `window.history` is shared across every test in this file (its own
+    // `window` is not recreated per test), so an entry a prior test pushed while
+    // entering a content page would otherwise still be there for this test's own
+    // `history.back()` to land on - reset to a clean base, matching a real fresh
+    // page load, before each test.
+    window.history.replaceState(null, '', '/')
+  })
   afterEach(() => {
     cleanup()
     vi.unstubAllGlobals()
@@ -175,6 +191,16 @@ describe('Lesson renderer (issue #41/#46)', () => {
     )
     render(<Lesson />)
     await screen.findByRole('heading', { name: 'Why an index is not used' })
+
+    // The filter row lives in the tree/grid pane, which is hidden while the auto-picked
+    // lesson's content page is open (issue carrying Direction A's page pattern into
+    // Direction C - AGENTS.md) - return to browse via the breadcrumb first.
+    fireEvent.click(
+      within(screen.getByRole('navigation', { name: 'Breadcrumb' })).getByRole('button', {
+        name: 'Learn',
+      }),
+    )
+    await waitForElementToBeRemoved(() => screen.queryByRole('navigation', { name: 'Breadcrumb' }))
 
     const difficultyGroup = screen.getByText('Difficulty').closest('fieldset')
     const familyGroup = screen.getByText('Family').closest('fieldset')

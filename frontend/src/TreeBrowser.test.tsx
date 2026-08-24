@@ -125,6 +125,50 @@ describe('TreeBrowser (issue #90)', () => {
     expect(screen.getByRole('button', { name: /Two Sum/ })).toHaveAttribute('aria-current', 'true')
   })
 
+  // A consumer's own dedicated content-page breadcrumb (issue carrying Direction A's
+  // page pattern into Direction C - AGENTS.md) needs the tree's own drill state at the
+  // moment of the click, since it never re-derives TreeBrowser's grouping itself.
+  it('passes the open domain and pattern as onSelect context, and omits the pattern for a domain-level or search pick', () => {
+    const onSelect = vi.fn()
+    render(
+      <TreeBrowser
+        items={ITEMS}
+        filterGroups={FILTER_GROUPS}
+        activeFilters={{ difficulty: new Set(['EASY', 'MEDIUM', 'HARD']) }}
+        onToggleFilter={vi.fn()}
+        selectedId={null}
+        onSelect={onSelect}
+        findLabel="Find a problem"
+        emptyMessage="No items."
+        sectionLabel="Practice"
+        itemNoun="problem"
+      />,
+    )
+
+    // Domain-level pick (no pattern drilled into): algorithms is open by default.
+    fireEvent.click(screen.getByRole('button', { name: /Climbing Stairs/ }))
+    expect(onSelect).toHaveBeenLastCalledWith(
+      expect.objectContaining({ id: 'a2' }),
+      { domain: 'algorithms', pattern: null },
+    )
+
+    // Drill into a pattern, then pick from it: both domain and pattern are reported.
+    fireEvent.click(screen.getByRole('button', { name: /^Array/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Two Sum/ }))
+    expect(onSelect).toHaveBeenLastCalledWith(
+      expect.objectContaining({ id: 'a1' }),
+      { domain: 'algorithms', pattern: 'array' },
+    )
+
+    // A cross-domain search result has no single pattern context.
+    fireEvent.change(screen.getByLabelText('Find a problem'), { target: { value: 'Top Customers' } })
+    fireEvent.click(screen.getByRole('button', { name: /Top Customers/ }))
+    expect(onSelect).toHaveBeenLastCalledWith(
+      expect.objectContaining({ id: 'b1' }),
+      { domain: 'databases', pattern: null },
+    )
+  })
+
   it('opens the domain of a selection that arrives asynchronously after the items load', () => {
     // Practice sets its items from the catalog fetch, then its selectedId from a
     // second scheduler call (pickMain -> /api/challenges/next), so the tree first
