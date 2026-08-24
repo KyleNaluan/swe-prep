@@ -1,7 +1,9 @@
 package com.sweprep.backend.web;
 
+import com.sweprep.backend.session.DayHistory;
 import com.sweprep.backend.session.SessionService;
 import com.sweprep.backend.session.SessionStatus;
+import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -24,6 +26,11 @@ import org.springframework.web.bind.annotation.RestController;
  * can be repaired by a double session (the warm-up plus a solved challenge) the next
  * day. Nothing new to trigger it - it falls out of the existing warm-up completion and
  * challenge-solving paths, so there is no separate "repair" endpoint.
+ *
+ * <p>{@code GET /api/session/history} serves the Direction C day ribbon and the
+ * Direction A year-record grid (issue #90) from the same projection of {@code
+ * day_completion} - the client slices the trailing 30 days for the ribbon and renders
+ * the whole response for the grid.
  */
 @RestController
 @RequestMapping("/api/session")
@@ -43,5 +50,10 @@ public class SessionController {
     @PostMapping("/complete-warmup")
     public SessionStatus completeWarmup() {
         return session.completeWarmup();
+    }
+
+    @GetMapping("/history")
+    public List<DayHistory> history() {
+        return session.history();
     }
 }
