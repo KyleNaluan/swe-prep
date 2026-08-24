@@ -125,6 +125,46 @@ describe('TreeBrowser (issue #90)', () => {
     expect(screen.getByRole('button', { name: /Two Sum/ })).toHaveAttribute('aria-current', 'true')
   })
 
+  it('opens the domain of a selection that arrives asynchronously after the items load', () => {
+    // Practice sets its items from the catalog fetch, then its selectedId from a
+    // second scheduler call (pickMain -> /api/challenges/next), so the tree first
+    // renders with items but selectedId still null. The scheduler-picked exercise's
+    // real domain must win once it resolves, not be stranded on the largest-domain
+    // default.
+    function AsyncHarness() {
+      const [selectedId, setSelectedId] = useState<string | null>(null)
+      return (
+        <>
+          <button type="button" onClick={() => setSelectedId('b1')}>
+            resolve pick
+          </button>
+          <TreeBrowser
+            items={ITEMS}
+            filterGroups={FILTER_GROUPS}
+            activeFilters={{ difficulty: new Set(['EASY', 'MEDIUM', 'HARD']) }}
+            onToggleFilter={vi.fn()}
+            selectedId={selectedId}
+            onSelect={vi.fn()}
+            findLabel="Find a problem"
+            emptyMessage="No items."
+            sectionLabel="Practice"
+            itemNoun="problem"
+          />
+        </>
+      )
+    }
+    render(<AsyncHarness />)
+
+    // Algorithms (the largest domain) opens first; the databases item isn't in the
+    // pane yet because selectedId is still null.
+    expect(screen.queryByRole('button', { name: /Top Customers/ })).not.toBeInTheDocument()
+
+    // The scheduler pick resolves on a later render, in the databases domain.
+    fireEvent.click(screen.getByRole('button', { name: 'resolve pick' }))
+
+    expect(screen.getByRole('button', { name: /Top Customers/ })).toBeInTheDocument()
+  })
+
   it('searching finds an item across domains without requiring the right one to be open', () => {
     render(<Harness />)
     // The databases domain is not open by default (algorithms sorts first, more items).
