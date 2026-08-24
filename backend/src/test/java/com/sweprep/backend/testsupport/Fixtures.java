@@ -3,6 +3,7 @@ package com.sweprep.backend.testsupport;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sweprep.backend.content.ContentException;
+import com.sweprep.backend.exercise.CalloutKind;
 import com.sweprep.backend.exercise.Comparison;
 import com.sweprep.backend.exercise.Complexity;
 import com.sweprep.backend.exercise.ComplexityCheck;
@@ -16,6 +17,7 @@ import com.sweprep.backend.exercise.Grading;
 import com.sweprep.backend.exercise.Hint;
 import com.sweprep.backend.exercise.InputGenerator;
 import com.sweprep.backend.exercise.Lesson;
+import com.sweprep.backend.exercise.LessonBlock;
 import com.sweprep.backend.exercise.Option;
 import com.sweprep.backend.exercise.Response;
 import com.sweprep.backend.exercise.SelfExplainPrompt;
@@ -338,12 +340,67 @@ public final class Fixtures {
                                 "It prefers a sequential scan: reading nearly the whole table in "
                                         + "order is cheaper than the random I/O of walking the index "
                                         + "for almost every row.")),
+                List.of(),
                 List.of(Family.BACKEND, Family.DATA),
                 Stability.STABLE,
                 null);
     }
 
     // ---------------------------------------------------------------------------
+    // A lesson authored with a structured body (issue #90 follow-on visual redesign): one
+    // demonstration of every LessonBlock kind, so the new format has a real fixture behind
+    // it rather than only the parser round-trip test. Content is synthetic, not real
+    // interview material, matching this file's own convention.
+
+    /** A taught lesson whose body is structured blocks rather than a single statement. */
+    public static Lesson lessonWithStructuredBody() {
+        return new Lesson(
+                "lesson-hash-maps",
+                "Hash maps: average O(1) lookup, and when it isn't",
+                "A hash map trades memory for speed: a good hash function spreads keys evenly "
+                        + "across buckets so most lookups touch only one entry.",
+                "fundamentals",
+                List.of("hash-map", "complexity"),
+                Difficulty.EASY,
+                List.of(),
+                List.of(),
+                List.of(
+                        new LessonBlock.Heading(2, "How a lookup works"),
+                        new LessonBlock.Paragraph(
+                                "A hash map applies a hash function to the key, uses that to pick a "
+                                        + "bucket, then scans the (usually short) chain in that bucket "
+                                        + "for a matching key. Calling `map.get(key)` is average O(1) "
+                                        + "because that chain rarely holds more than a couple of "
+                                        + "entries."),
+                        new LessonBlock.Example(
+                                "java",
+                                "Map<String, Integer> counts = new HashMap<>();\n"
+                                        + "counts.put(\"apple\", 3);\n"
+                                        + "counts.get(\"apple\");",
+                                "Average-case O(1) lookup",
+                                "3"),
+                        new LessonBlock.Callout(
+                                CalloutKind.WARNING,
+                                "A poor hash function or an adversarial key set can collide many keys "
+                                        + "into one bucket, degrading lookup to O(n) in the worst case."),
+                        new LessonBlock.Heading(2, "Where the memory goes"),
+                        new LessonBlock.ListBlock(
+                                false,
+                                List.of(
+                                        "Each entry stores the key, the value, and a link to the next "
+                                                + "entry in its bucket's chain.",
+                                        "The bucket array itself is resized (usually doubled) once the "
+                                                + "map gets too full, which is where an occasional `put` "
+                                                + "costs more than O(1).")),
+                        new LessonBlock.Table(
+                                List.of("Operation", "Average", "Worst case"),
+                                List.of(
+                                        List.of("get", "O(1)", "O(n)"),
+                                        List.of("put", "O(1) amortized", "O(n)")))),
+                List.of(),
+                Stability.STABLE,
+                null);
+    }
     // The five warm-up rep types (issue #9's resolution), one synthetic example of
     // each. They exercise rendering, grading and the warm-up endpoint end to end. Each
     // distractor names the specific misconception it targets (issue #42) - the same bar
