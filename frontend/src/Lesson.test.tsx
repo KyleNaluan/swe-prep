@@ -70,4 +70,44 @@ describe('Lesson renderer (issue #41/#46)', () => {
       ),
     )
   })
+
+  // The captain's binding refinement: "make sure the learn has the difficulty filters
+  // too", each filter axis its own labeled group (issue #90).
+  it('carries the same difficulty filter row as Practice, in its own labeled group next to family', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL | Request) => {
+        const href = String(url)
+        if (href.endsWith('/api/lessons'))
+          return {
+            ok: true,
+            json: async () => [
+              {
+                id: 'lesson-idx',
+                title: 'Why an index is not used',
+                domain: 'fundamentals',
+                difficulty: 'MEDIUM',
+                promptCount: 1,
+                topics: ['indexing'],
+                family: ['BACKEND'],
+              },
+            ],
+          } as Response
+        if (href.endsWith('/api/lessons/lesson-idx'))
+          return { ok: true, json: async () => DETAIL } as Response
+        if (href.endsWith('/api/lessons/lesson-idx/read')) return { ok: true, json: async () => ({}) } as Response
+        throw new Error(`unexpected fetch to ${href}`)
+      }),
+    )
+    render(<Lesson />)
+    await screen.findByRole('heading', { name: 'Why an index is not used' })
+
+    const difficultyGroup = screen.getByText('Difficulty').closest('fieldset')
+    const familyGroup = screen.getByText('Family').closest('fieldset')
+    expect(difficultyGroup).not.toBeNull()
+    expect(familyGroup).not.toBeNull()
+    expect(difficultyGroup).not.toBe(familyGroup)
+    expect(screen.getByRole('button', { name: 'Medium' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Backend' })).toBeInTheDocument()
+  })
 })

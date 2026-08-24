@@ -37,6 +37,10 @@ class ComplexityClassifierTest {
         assertThat(outcome).isInstanceOfSatisfying(MeasurementOutcome.Conclusive.class, conclusive -> {
             assertThat(conclusive.bucket()).isEqualTo(ComplexityBucket.QUADRATIC);
             assertThat(conclusive.exponent()).isCloseTo(2.0, org.assertj.core.data.Offset.offset(0.1));
+            // Carried so the editor's log-log plot (issue #90) can draw the actual
+            // fitted line and its confidence band, not a re-derived approximation.
+            assertThat(conclusive.confidenceHalfWidth()).isGreaterThan(0);
+            assertThat(conclusive.points()).isEqualTo(points);
         });
     }
 

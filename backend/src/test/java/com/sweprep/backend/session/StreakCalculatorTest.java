@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.LocalDate;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
@@ -147,5 +148,66 @@ class StreakCalculatorTest {
         assertThat(result.streak()).isZero();
         assertThat(result.repairsUsedThisMonth()).isZero();
         assertThat(result.repairsRemainingThisMonth()).isEqualTo(2);
+    }
+
+    // --- history() - the day ribbon / year-record grid projection (issue #90) ---------
+
+    @Test
+    void historyReturnsExactlyTheRequestedWindowOldestFirst() {
+        List<DayHistory> history =
+                StreakCalculator.history(Set.of(day(0)), Set.of(), TODAY, 5, DEFAULT_CAP);
+
+        assertThat(history).hasSize(5);
+        assertThat(history.get(0).date()).isEqualTo(day(-4));
+        assertThat(history.get(4).date()).isEqualTo(day(0));
+    }
+
+    @Test
+    void historyMarksACompletedDayWithAChallengeAsADoubleSession() {
+        List<DayHistory> history =
+                StreakCalculator.history(Set.of(day(0)), Set.of(day(0)), TODAY, 1, DEFAULT_CAP);
+
+        DayHistory today = history.get(0);
+        assertThat(today.completed()).isTrue();
+        assertThat(today.doubleSession()).isTrue();
+        assertThat(today.bridged()).isFalse();
+    }
+
+    @Test
+    void historyMarksAMissedDayBridgedByTheNextDaysDoubleSession() {
+        Set<LocalDate> completed = Set.of(day(0), day(-2));
+        Set<LocalDate> challengeSolved = Set.of(day(0));
+
+        List<DayHistory> history = StreakCalculator.history(completed, challengeSolved, TODAY, 3, DEFAULT_CAP);
+
+        DayHistory missed = history.stream().filter(d -> d.date().equals(day(-1))).findFirst().orElseThrow();
+        assertThat(missed.completed()).isFalse();
+        assertThat(missed.bridged()).isTrue();
+    }
+
+    @Test
+    void historyLeavesAMissedDayUnbridgedOnceThatMonthsCapIsSpent() {
+        // Three candidate gaps in the same month, each genuinely followed by a double
+        // session - only the cap's first two (the most recent, since the walk runs
+        // backward from today) are bridged in the picture; the third stays a plain miss.
+        Set<LocalDate> completed = Set.of(day(0), day(-2), day(-4), day(-6));
+        Set<LocalDate> challengeSolved = Set.of(day(0), day(-2), day(-4));
+
+        List<DayHistory> history = StreakCalculator.history(completed, challengeSolved, TODAY, 7, DEFAULT_CAP);
+
+        assertThat(dayIn(history, day(-1)).bridged()).isTrue();
+        assertThat(dayIn(history, day(-3)).bridged()).isTrue();
+        assertThat(dayIn(history, day(-5)).bridged()).isFalse();
+    }
+
+    @Test
+    void historyNeverMarksACompletedDayAsBridged() {
+        List<DayHistory> history = StreakCalculator.history(Set.of(day(0)), Set.of(), TODAY, 1, DEFAULT_CAP);
+
+        assertThat(history.get(0).bridged()).isFalse();
+    }
+
+    private static DayHistory dayIn(List<DayHistory> history, LocalDate date) {
+        return history.stream().filter(d -> d.date().equals(date)).findFirst().orElseThrow();
     }
 }

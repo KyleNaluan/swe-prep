@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { apiFetch, errorMessage } from './api'
+import Confetti from './Confetti'
 
 // The warm-up runner: the ~8-rep, ~4-minute daily core (issues #3, #9, #18). It fetches
 // the interleaved, family-filtered, gated set the backend builds, then walks it one rep
@@ -83,6 +84,10 @@ function Warmup({ onComplete, onEmpty }: WarmupProps = {}) {
   const [submitting, setSubmitting] = useState(false)
   const [answered, setAnswered] = useState<Answered | null>(null)
   const [explanationBusy, setExplanationBusy] = useState(false)
+  // Per-position outcome, purely for the HUD's dot row (Direction C's arc + eight dots):
+  // correct/wrong per rep already answered this sitting. A requeued rep gets a fresh dot
+  // at its new position, so the row always matches the actual queue, requeues included.
+  const [resultLog, setResultLog] = useState<Record<number, boolean>>({})
 
   // How many times each rep has been re-queued, so a persistently wrong rep is bounded.
   const requeues = useRef<Record<string, number>>({})
@@ -202,6 +207,7 @@ function Warmup({ onComplete, onEmpty }: WarmupProps = {}) {
       } else {
         requeue(rep.id)
       }
+      setResultLog((log) => ({ ...log, [pos]: correct }))
       // A wrong answer discloses the explanation immediately; a correct one withholds it,
       // one keystroke away below.
       setAnswered({ correct, explanation: correct ? null : (verdict.explanation ?? null) })
@@ -283,18 +289,26 @@ function Warmup({ onComplete, onEmpty }: WarmupProps = {}) {
   }
   if (phase.name === 'done') {
     return (
-      <section className="warmup-done">
+      <section className="card finish warmup-done">
+        <svg className="checkmark" viewBox="0 0 78 78" aria-hidden="true">
+          <circle cx="39" cy="39" r="35" />
+          <path d="M24 40.5 L34.5 51 L55 28" />
+        </svg>
         <h1>Warm-up complete</h1>
-        <p className="status up">
+        <p className="status up lede">
           {correctCount} {correctCount === 1 ? 'rep' : 'reps'} answered correctly. That is your
           streak earned for today.
         </p>
+        <Confetti />
       </section>
     )
   }
 
   return (
     <section className="warmup">
+      <div className="card arcbar">
+        <WarmupArc pos={pos} total={queue.length} resultLog={resultLog} />
+      </div>
       <div className="warmup-progress">
         <span className="warmup-count">
           Rep {pos + 1} of {queue.length}
@@ -314,12 +328,12 @@ function Warmup({ onComplete, onEmpty }: WarmupProps = {}) {
       {!rep && !repError && <p className="status loading">Loading rep...</p>}
 
       {rep && (
-        <>
+        <article className="card repcard">
           <header>
             <h1>{rep.title}</h1>
-            <span className="language-tag">{rep.domain}</span>
+            <span className="language-tag chipx">{rep.domain}</span>
           </header>
-          <p className="statement">{rep.statement}</p>
+          <p className="statement qtext">{rep.statement}</p>
 
           <RepAnswer
             response={rep.response}
@@ -357,7 +371,7 @@ function Warmup({ onComplete, onEmpty }: WarmupProps = {}) {
               onNext={handleNext}
             />
           )}
-        </>
+        </article>
       )}
     </section>
   )
@@ -472,6 +486,56 @@ function RepFeedback({
         <button type="button" onClick={onNext}>
           {lastRep ? 'Finish warm-up' : 'Next rep'}
         </button>
+      </div>
+    </>
+  )
+}
+
+// The small radial arc + dot row (Direction C's warm-up HUD): progress has a shape
+// without dominating the page. The arc tracks how far through the set we are
+// (`pos`/`total`, matching the "Rep X of Y" text below it exactly); each dot is one
+// queue position, coloured once it has been answered - never a score, just a picture
+// of the same "3 of 8" the app already shows.
+function WarmupArc({
+  pos,
+  total,
+  resultLog,
+}: {
+  pos: number
+  total: number
+  resultLog: Record<number, boolean>
+}) {
+  const radius = 28
+  const circumference = 2 * Math.PI * radius
+  const fraction = total > 0 ? Math.min(1, pos / total) : 0
+  return (
+    <>
+      <svg viewBox="0 0 68 68" aria-hidden="true">
+        <circle className="ring" cx="34" cy="34" r={radius} />
+        <circle
+          className="seg"
+          cx="34"
+          cy="34"
+          r={radius}
+          strokeDasharray={`${(fraction * circumference).toFixed(1)} ${circumference.toFixed(1)}`}
+          transform="rotate(-90 34 34)"
+        />
+        <text className="mid" x="34" y="40" textAnchor="middle">
+          {pos + 1}
+        </text>
+      </svg>
+      <div>
+        <h2>Today's warm-up</h2>
+        <p>
+          Rep {pos + 1} of {total} - about 30 seconds each.
+        </p>
+      </div>
+      <div className="dots">
+        {Array.from({ length: total }, (_, i) => {
+          const outcome = resultLog[i]
+          const cls = outcome === undefined ? (i === pos ? 'cur' : '') : outcome ? 'ok' : 'no'
+          return <i key={i} className={cls} />
+        })}
       </div>
     </>
   )

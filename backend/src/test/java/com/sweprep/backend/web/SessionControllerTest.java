@@ -6,9 +6,12 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.sweprep.backend.session.DayHistory;
 import com.sweprep.backend.session.SessionService;
 import com.sweprep.backend.session.SessionStatus;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -63,5 +66,22 @@ class SessionControllerTest {
         mockMvc.perform(get("/api/session"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.repairPending").value(true));
+    }
+
+    @Test
+    void historySharesOneProjectionForTheDayRibbonAndTheYearGrid() throws Exception {
+        when(service.history())
+                .thenReturn(List.of(
+                        new DayHistory(LocalDate.parse("2026-08-10"), false, false, true),
+                        new DayHistory(LocalDate.parse("2026-08-11"), true, true, false)));
+
+        mockMvc.perform(get("/api/session/history"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].date").value("2026-08-10"))
+                .andExpect(jsonPath("$[0].completed").value(false))
+                .andExpect(jsonPath("$[0].bridged").value(true))
+                .andExpect(jsonPath("$[1].completed").value(true))
+                .andExpect(jsonPath("$[1].doubleSession").value(true));
     }
 }

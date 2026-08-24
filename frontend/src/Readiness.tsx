@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { apiFetch, errorMessage } from './api'
+import { familyLabel } from './familyLabels'
+import { fetchSessionHistory, type DayHistory } from './sessionHistory'
 
 // The honest readiness picture (issue #45, design revision t3 section 4.4) - the primary
 // progress surface the map's "no invented currency" ruling (issue #7) replaces points,
@@ -32,22 +34,6 @@ type ReadinessSummary = {
 }
 
 const ALWAYS_ACTIVE = new Set(['CORE', 'PROFESSIONAL'])
-
-const FAMILY_LABELS: Record<string, string> = {
-  CORE: 'Core',
-  PROFESSIONAL: 'Professional',
-  BACKEND: 'Backend',
-  FRONTEND: 'Frontend',
-  DATA: 'Data',
-  DEVOPS: 'DevOps',
-  MOBILE: 'Mobile',
-  SYSTEMS: 'Systems',
-  AIML: 'AI/ML',
-}
-
-function familyLabel(family: string): string {
-  return FAMILY_LABELS[family] ?? family
-}
 
 function Readiness({ streak }: { streak?: number }) {
   const [summary, setSummary] = useState<ReadinessSummary | null>(null)
@@ -118,6 +104,8 @@ function Readiness({ streak }: { streak?: number }) {
           note="Lessons read - so reading counts as earned progress too."
         />
       </div>
+
+      <YearGrid />
 
       <section className="self-check-count">
         <h2>
@@ -200,15 +188,67 @@ function ReadinessCard({
   progress: Progress
   note: string
 }) {
+  const pct = progress.total > 0 ? (progress.achieved / progress.total) * 100 : 0
   return (
-    <div className="readiness-card">
+    <div className="readiness-card axis">
       <h2>{label}</h2>
       <p className="readiness-count">
         {progress.achieved}/{progress.total}
       </p>
+      <div className="tr" aria-hidden="true">
+        <i style={{ width: `${pct}%` }} />
+      </div>
       <p className="readiness-note">{note}</p>
     </div>
   )
+}
+
+// The Direction A graft: "the signature element is the year record - 182 day-cells...
+// filled from real day_completion history. It is the honest streak made into a
+// picture instead of a sentence." Reads the same GET /api/session/history the Today
+// ribbon reads (issue #90) - one endpoint, two windows over one honest record.
+function YearGrid() {
+  const [days, setDays] = useState<DayHistory[] | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    fetchSessionHistory()
+      .then((history) => {
+        if (!cancelled) setDays(history)
+      })
+      .catch(() => {
+        // A secondary flourish; a failure here must never blank the readiness picture.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  if (!days || days.length === 0) return null
+
+  return (
+    <section className="card yeargrid-section">
+      <h2>The record</h2>
+      <div className="yeargrid">
+        {days.map((day, i) => (
+          <i key={day.date} className={yearCellClass(day, i === days.length - 1)} title={day.date} />
+        ))}
+      </div>
+      <p className="readiness-note">
+        Every day you finished the warm-up, since the record began - a picture of what
+        happened, not a score.
+      </p>
+    </section>
+  )
+}
+
+function yearCellClass(day: DayHistory, isToday: boolean): string {
+  const cls = [] as string[]
+  if (isToday) cls.push('today')
+  if (day.doubleSession) cls.push('dbl')
+  else if (day.completed) cls.push('on')
+  else if (day.bridged) cls.push('gap')
+  return cls.join(' ')
 }
 
 export default Readiness
