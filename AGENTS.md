@@ -319,6 +319,57 @@ The captain's visual-review round (mockups at issue #7's follow-on, never commit
 - **`appName.ts`'s `APP_NAME`** is the single source for the product's display name (currently "Re-solve" - a captain naming decision, may still change) - used by the header brand and, via `main.tsx` setting `document.title` at runtime, the browser tab title. `index.html`'s own `<title>` is a static placeholder kept in sync by hand (Vite's index.html cannot import a TS module) and is overwritten on load regardless. The repo/package name stays `swe-prep`; only the user-visible label changed.
 - **Manual local verification against two backends on one box is a real trap**: `vite.config.ts`'s dev proxy hardcodes `localhost:8080`, and another already-running `swe-prep` checkout's backend can be squatting on that exact port with a live Postgres container of its own - a `curl localhost:8080/...` succeeding proves nothing about *whose* backend answered. Confirm the actually-bound PID's working directory (`ps aux` + the classpath it was launched with) before trusting a manual smoke test; when the shared port is taken, run a scratch backend on a different port with its own throwaway Postgres container and temporarily repoint the proxy, reverting `vite.config.ts` before committing.
 
+## Lesson body: structured rendering (issue #90 follow-on)
+
+The captain's visual-review feedback on Direction "Studio" itself: a lesson read as "one
+block of continuous text [...] only takes up one column", because a lesson's whole taught
+content was exactly one field (`statement`, plain text dropped into a single `<p>`) with no
+internal structure for a renderer to work with. This follow-on adds a structured alternative
+without touching how existing lessons are authored - see `docs/lesson-body-format.md` (this
+repo, since content is private and lives in `swe-prep-content`, which this change never
+touches) for the full JSON spec, written to be dropped into that repo's own README by the
+content-restructuring follow-up.
+
+- **`Lesson.body()`** (`exercise` package) is a `List<LessonBlock>`, a new sealed hierarchy
+  (`LessonBlock.java`) mirroring `Comparison`'s shape in this same package: `Heading`,
+  `Paragraph`, `Example` (a standout code panel with optional `caption`/`output`), `Callout`
+  (`CalloutKind` NOTE/TIP/WARNING), `ListBlock` (named to avoid colliding with
+  `java.util.List`) and `Table`. Parsed by `LessonParser`'s new `body()`/`block()` methods,
+  the same `"kind"`-discriminated-object shape `response`/`grading` already use elsewhere in
+  this format. **Additive and legacy-safe by construction, not by a fallback flag**: `body`
+  is simply empty for every lesson authored only with `statement` (every real lesson today,
+  since restructuring content is a separate follow-up task, deliberately out of scope here) -
+  the parser never derives blocks from prose, and the frontend renders the old single
+  paragraph whenever `body` is empty. Inline `` `code` `` spans are deliberately *not* their
+  own block kind - markdown-style backtick syntax inside a block's own text, parsed by the
+  frontend at render time (`LessonBody.tsx`'s `renderInline`), so a sentence can mention a
+  variable name without being split into multiple blocks.
+- **`LessonView.BlockView`** (`web` package) flattens `LessonBlock` into one discriminated-
+  union DTO, the same shape `ResponseView` already uses for its own sealed hierarchy -
+  `@JsonInclude(NON_NULL)` omits whatever fields don't apply to a given `kind`.
+- **`frontend/src/LessonBody.tsx`** renders the block list; `Lesson.tsx` chooses it over the
+  legacy `<p className="lesson-statement">` fallback based on `body.length`. Prose blocks
+  (`.lesson-p`/`.lesson-list`/`.callout`) cap at a 72ch reading measure in `App.css`
+  (deliberately not shared with Practice.tsx's own unrelated `.statement`/68ch, which this
+  change does not touch); a standout example or table is not prose and is free to use far
+  more of the card's width (`max-width: 900px`, matching `.plot`), which is what actually
+  answers the captain's "only takes up one column" complaint - narrow text, wide examples,
+  not everything pinned to one measure.
+- **Syntax highlighting is `frontend/src/highlight.ts`, a thin wrapper over `prismjs`'s
+  tokenizer** (`Prism.highlight`), chosen over mounting Monaco per example: a lesson example
+  is read, never edited or run, so it only needs coloring, not an interactive editor
+  instance. Prism's *bundled themes* are unused on purpose - `App.css`'s `.example-code
+  .token.*` rules supply the colors, tuned directly against that panel's own fixed dark
+  background (the same already-shipped, theme-invariant convention as `.solution-body`/`pre`
+  above), so highlighted examples read consistently with every other code panel in the app
+  rather than importing a second, clashing visual language. An unrecognized `language` value
+  still renders (HTML-escaped, uncolored) rather than failing the block.
+- **The content repo (`swe-prep-content`, gitignored local clone at `./content`) is read-only
+  reference for this whole feature** - nothing under it was touched, and no real lesson has
+  been restructured onto `body` yet; `Fixtures.lessonWithStructuredBody()` (backend
+  `testsupport`) is the one demonstration fixture, exercised by `FileExerciseCatalogTest`,
+  `LessonControllerTest` and `Lesson.test.tsx`.
+
 ## Maintaining this file
 
 Keep this file for knowledge useful to almost every future agent session in this project.

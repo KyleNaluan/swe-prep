@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sweprep.backend.exercise.CalloutKind;
 import com.sweprep.backend.exercise.Comparison;
 import com.sweprep.backend.exercise.Complexity;
 import com.sweprep.backend.exercise.ComplexityCheck;
@@ -17,14 +18,16 @@ import com.sweprep.backend.exercise.Grading;
 import com.sweprep.backend.exercise.Hint;
 import com.sweprep.backend.exercise.InputGenerator;
 import com.sweprep.backend.exercise.Lesson;
+import com.sweprep.backend.exercise.LessonBlock;
 import com.sweprep.backend.exercise.Option;
 import com.sweprep.backend.exercise.Response;
 import com.sweprep.backend.exercise.SelfExplainPrompt;
 import com.sweprep.backend.exercise.Stability;
 import java.io.IOException;
-import java.time.LocalDate;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDate;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -176,6 +179,34 @@ class FileExerciseCatalogTest {
                   "modelAnswer": "The index stores raw values, not the function output." },
                 { "prompt": "Predict the plan for a 90%-selectivity query.",
                   "modelAnswer": "A sequential scan is cheaper than the random I/O." }
+              ]
+            }
+            """;
+
+    // One of every LessonBlock kind (issue #90 follow-on visual redesign), so the loader's
+    // handling of the whole structured-body format is proven in one file rather than one
+    // block kind at a time.
+    private static final String LESSON_WITH_BODY =
+            """
+            {
+              "kind": "lesson",
+              "id": "concept-caching",
+              "title": "Caching: trading staleness for speed",
+              "statement": "A cache trades a small chance of staleness for a large speed win.",
+              "domain": "fundamentals", "topics": ["caching"],
+              "difficulty": "EASY",
+              "checks": [],
+              "body": [
+                { "kind": "heading", "level": 2, "text": "Cache-aside" },
+                { "kind": "paragraph", "text": "Read through the cache first; on a miss, load from the source and populate it." },
+                { "kind": "example", "language": "python",
+                  "code": "value = cache.get(key)\\nif value is None:\\n    value = db.load(key)\\n    cache.set(key, value)",
+                  "caption": "The cache-aside pattern", "output": "value" },
+                { "kind": "callout", "style": "TIP", "text": "Set a TTL so a stale entry cannot live forever." },
+                { "kind": "list", "ordered": true,
+                  "items": ["Check the cache.", "On a miss, load from the source.", "Populate the cache."] },
+                { "kind": "table", "headers": ["Strategy", "Consistency"],
+                  "rows": [["Write-through", "Strong"], ["Write-behind", "Eventual"]] }
               ]
             }
             """;
@@ -667,6 +698,69 @@ class FileExerciseCatalogTest {
                         "Predict the plan for a 90%-selectivity query.");
         assertThat(loaded.prompts().get(0).modelAnswer())
                 .isEqualTo("The index stores raw values, not the function output.");
+    }
+
+    @Test
+    void aLegacyLessonWithNoBodyFieldLoadsWithAnEmptyBody(@TempDir Path dir) throws IOException {
+        // LESSON carries no "body" - every lesson in the content set today. It must still
+        // load fully rather than tripping on a field that isn't there, so the renderer's
+        // fallback to plain `statement` has something real to fall back to.
+        write(dir, "mq.json", LESSON);
+
+        Lesson loaded = (Lesson) catalog(dir).contentById("concept-message-queue").orElseThrow();
+
+        assertThat(loaded.body()).isEmpty();
+    }
+
+    @Test
+    void loadsEveryLessonBlockKindFromTheStructuredBody(@TempDir Path dir) throws IOException {
+        write(dir, "caching.json", LESSON_WITH_BODY);
+
+        Lesson loaded = (Lesson) catalog(dir).contentById("concept-caching").orElseThrow();
+
+        assertThat(loaded.body()).containsExactly(
+                new LessonBlock.Heading(2, "Cache-aside"),
+                new LessonBlock.Paragraph(
+                        "Read through the cache first; on a miss, load from the source and populate it."),
+                new LessonBlock.Example(
+                        "python",
+                        "value = cache.get(key)\nif value is None:\n    value = db.load(key)\n"
+                                + "    cache.set(key, value)",
+                        "The cache-aside pattern",
+                        "value"),
+                new LessonBlock.Callout(
+                        CalloutKind.TIP, "Set a TTL so a stale entry cannot live forever."),
+                new LessonBlock.ListBlock(
+                        true,
+                        List.of(
+                                "Check the cache.",
+                                "On a miss, load from the source.",
+                                "Populate the cache.")),
+                new LessonBlock.Table(
+                        List.of("Strategy", "Consistency"),
+                        List.of(List.of("Write-through", "Strong"), List.of("Write-behind", "Eventual"))));
+    }
+
+    @Test
+    void anUnknownLessonBlockKindNamesFileAndField(@TempDir Path dir) throws IOException {
+        String malformed = LESSON_WITH_BODY.replace("\"heading\"", "\"banner\"");
+        write(dir, "caching.json", malformed);
+
+        assertThatThrownBy(catalog(dir)::allContent)
+                .isInstanceOf(ContentException.class)
+                .hasMessageContaining("caching.json")
+                .hasMessageContaining("banner");
+    }
+
+    @Test
+    void aTableRowWithTheWrongWidthNamesFileAndField(@TempDir Path dir) throws IOException {
+        String malformed = LESSON_WITH_BODY.replace("[\"Write-through\", \"Strong\"]", "[\"Write-through\"]");
+        write(dir, "caching.json", malformed);
+
+        assertThatThrownBy(catalog(dir)::allContent)
+                .isInstanceOf(ContentException.class)
+                .hasMessageContaining("caching.json")
+                .hasMessageContaining("cells");
     }
 
     @Test
