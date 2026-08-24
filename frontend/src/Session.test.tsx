@@ -371,6 +371,68 @@ describe('Session (daily loop, issue #19)', () => {
     await waitFor(() => expect(calls.completeWarmup).toBe(0))
   })
 
+  // The auto-pick each surface opens with enters its content page through
+  // enterAutoPickedContent, which pushes exactly one browse-base -> content entry the
+  // first time but replaces in place on every later remount - so switching Practice <->
+  // Learn (each remounts the surface) never accumulates history depth, and a single
+  // browser Back lands back on Practice's browse view rather than needing one press per
+  // tab switch.
+  it('keeps history depth constant across Practice<->Learn switches, and one Back returns to browse', async () => {
+    const calls = { completeWarmup: 0, abandons: [] as string[] }
+    const base = mockFetch(calls)
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+        const href = String(url)
+        if (href.endsWith('/api/lessons'))
+          return {
+            ok: true,
+            json: async () => [
+              { id: 'l1', title: 'A Lesson', domain: 'fundamentals', difficulty: 'EASY', promptCount: 0 },
+            ],
+          } as Response
+        if (href.endsWith('/api/lessons/l1/read')) return { ok: true, json: async () => ({}) } as Response
+        if (href.endsWith('/api/lessons/l1'))
+          return {
+            ok: true,
+            json: async () => ({
+              id: 'l1',
+              title: 'A Lesson',
+              statement: 'Taught content.',
+              domain: 'fundamentals',
+              difficulty: 'EASY',
+              prompts: [],
+            }),
+          } as Response
+        return base(url, init)
+      }),
+    )
+    render(<Session />)
+    await screen.findByRole('heading', { name: 'Rep One' })
+
+    // Guarantee a clean top-of-stack (a push truncates any forward entries a prior
+    // test in this shared jsdom window may have left) so the depth delta below is
+    // measured against a known baseline, not stale history.
+    window.history.pushState(null, '', '/')
+    const before = window.history.length
+
+    fireEvent.click(screen.getByRole('button', { name: 'Practice' }))
+    await screen.findByRole('heading', { name: 'Concept Main' })
+    fireEvent.click(screen.getByRole('button', { name: 'Learn' }))
+    await screen.findByRole('heading', { name: 'A Lesson' })
+    fireEvent.click(screen.getByRole('button', { name: 'Practice' }))
+    await screen.findByRole('heading', { name: 'Concept Main' })
+
+    // Only one content entry was ever pushed; the rest replaced in place.
+    expect(window.history.length).toBe(before + 1)
+
+    // A single real Back (popstate) returns Practice to its browse view - the content
+    // page's breadcrumb leaves the accessibility tree, and the tree is what shows.
+    window.history.back()
+    await waitForElementToBeRemoved(() => screen.queryByRole('navigation', { name: 'Breadcrumb' }))
+    expect(screen.getByLabelText('Find a problem')).toBeInTheDocument()
+  })
+
   it('shows the repair nudge in the header badge when a repair is available (issue #22)', async () => {
     vi.stubGlobal('fetch', mockFetch({ completeWarmup: 0, abandons: [] }, { repairPending: true }))
     render(<Session />)

@@ -20,6 +20,29 @@ export function pushContentEntry(section: 'practice' | 'learn', id: string) {
   window.history.pushState(state, '', `#/${section}/${encodeURIComponent(id)}`)
 }
 
+// Replaces the current history entry with a content one, adding no depth.
+export function replaceContentEntry(section: 'practice' | 'learn', id: string) {
+  const state: ContentNavState = { view: 'content', section, id }
+  window.history.replaceState(state, '', `#/${section}/${encodeURIComponent(id)}`)
+}
+
+// The mount-time auto-pick each surface opens with (the scheduler's main exercise, the
+// first lesson) enters a content page just like a tree click, but must never accumulate
+// history depth on every remount (a Practice<->Learn tab switch remounts the surface) or
+// stack a fresh entry over the one the browser already restored on reload. It reads the
+// browser's actual current state: any content-shaped entry already sitting here means a
+// browse base exists beneath it (an earlier push this session, or a reload-restored one),
+// so it replaces in place; only a truly fresh position (no content state yet) pushes the
+// single browse-base -> content entry that `leaveContentEntry`'s one `back()` relies on.
+export function enterAutoPickedContent(section: 'practice' | 'learn', id: string) {
+  const current = window.history.state as ContentNavState | null
+  if (current?.view === 'content') {
+    replaceContentEntry(section, id)
+  } else {
+    pushContentEntry(section, id)
+  }
+}
+
 // Returns to the browse view the same way a breadcrumb click and the browser's own
 // Back button do. Entering a content page always pushes exactly one entry - the tree
 // is hidden while a content page is open, so a real user can never reach a second

@@ -4,6 +4,7 @@ import TreeBrowser, { type FilterGroup } from './TreeBrowser'
 import { defaultDomainLabel, topicLabel } from './treeLabels'
 import ContentPage, { type Crumb } from './ContentPage'
 import {
+  enterAutoPickedContent,
   leaveContentEntry,
   pushContentEntry,
   useBrowseContentScroll,
@@ -107,14 +108,14 @@ function Lesson() {
         }
         if (loaded.length > 0) {
           // Same "arrives ready" behavior lessons had before content pages existed -
-          // the first lesson opens straight to its content page. A history entry is
-          // pushed here too - entering a content page always pushes exactly one,
-          // whether by a tree click or this auto-pick, so leaving is always exactly
-          // one `back()` either way.
+          // the first lesson opens straight to its content page. enterAutoPickedContent
+          // pushes exactly one browse-base -> content entry the first time but replaces
+          // in place on a remount (tab switch) or a reload that restored a content entry,
+          // so leaving is always exactly one `back()` and history never accumulates.
           setSelectedId(loaded[0].id)
           setBrowseContext({ domain: loaded[0].domain, pattern: null })
           setView('content')
-          pushContentEntry('learn', loaded[0].id)
+          enterAutoPickedContent('learn', loaded[0].id)
         }
       })
       .catch((error: unknown) => {
@@ -278,7 +279,12 @@ function Lesson() {
         />
       </div>
 
-      {view === 'content' && (
+      {/* Always mounted, only hidden while browsing (issue carrying Direction A's page
+          pattern into Direction C - AGENTS.md) - never conditionally rendered, exactly
+          like the tree pane above and Practice's own content page. The lesson body is
+          stateless today, but keeping it mounted avoids the same conditional-unmount
+          class of bug the moment it ever becomes stateful. */}
+      <div style={view === 'browse' ? { display: 'none' } : undefined}>
       <ContentPage crumbs={crumbs}>
       {loadError && <p className="status down">Could not load the lesson: {loadError}</p>}
       {!lesson && !loadError && <p className="status loading">Loading lesson...</p>}
@@ -308,7 +314,7 @@ function Lesson() {
         </div>
       )}
       </ContentPage>
-      )}
+      </div>
     </>
   )
 }
