@@ -69,7 +69,9 @@ Prerequisites: Java 21 on `PATH`, Docker running, Node 24, Python 3 on `PATH` (f
    main exercise as a bonus - declining keeps the day done and the streak intact, and the
    landing links straight into the Readiness surface at the moment progress is most salient. The
    Practice tab is the free-practice editor: pick an exercise
-   from the selector. A coding
+   from a tiered browser that groups the catalog by area then pattern, with
+   difficulty and family filters that re-filter in place without ever losing your
+   spot in the tree (issue #90). A coding
    exercise opens in a Monaco editor: write a solution and press Run to have the
    backend compile and execute it against the test cases and report
    `N of M tests passed`. Java is the default language; a code exercise's header also
