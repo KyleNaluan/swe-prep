@@ -4,7 +4,7 @@ import { apiFetch, errorMessage } from './api'
 import TreeBrowser, { type FilterGroup } from './TreeBrowser'
 import { familyLabel } from './familyLabels'
 import { APP_NAME } from './appName'
-import { usePrefersDark } from './usePrefersDark'
+import { useEffectiveDark } from './useEffectiveTheme'
 
 // The practice surface: the optional main exercise and the open continuation that follow
 // the warm-up (issue #19, tiers 2 and 3). It is one uncapped browse-and-solve editor -
@@ -269,8 +269,10 @@ function Practice({
   onSolved?: () => void
 }) {
   // Monaco has its own theme, separate from the page's CSS (issue #90) - see
-  // usePrefersDark's own doc for why this can't just be a stylesheet rule.
-  const prefersDark = usePrefersDark()
+  // usePrefersDark's own doc for why this can't just be a stylesheet rule. Reads the
+  // manual theme toggle too (useEffectiveTheme), not just the OS preference, so a
+  // pinned light/dark choice reaches the editor the same as everything else.
+  const prefersDark = useEffectiveDark()
   const [catalog, setCatalog] = useState<Summary[] | null>(null)
   const [catalogError, setCatalogError] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
