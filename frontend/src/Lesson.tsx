@@ -293,7 +293,13 @@ function Lesson() {
         />
       </div>
 
-      <div className="content-pane-wrap">
+      {/* Hidden by an inline style, not CSS, while browsing: CSS-file rules never apply
+          under jsdom (vitest's `test.css` is off by default), and the existing tests
+          assert this pane actually leaves the accessibility tree on that transition -
+          the same reason the pre-existing browse/content toggle always used inline
+          style rather than a class. The nav's own content-view visibility (below) can
+          safely stay CSS/media-query-only since nothing tests it directly. */}
+      <div className="content-pane-wrap" style={view === 'browse' ? { display: 'none' } : undefined}>
       <ContentPage crumbs={crumbs}>
       {loadError && <p className="status down">Could not load the lesson: {loadError}</p>}
       {!lesson && !loadError && <p className="status loading">Loading lesson...</p>}
