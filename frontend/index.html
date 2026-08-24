@@ -4,6 +4,21 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Applies a pinned light/dark theme choice (theme.ts) before first paint, so a
+         non-'system' choice never flashes the wrong palette while React boots. Reads
+         the same localStorage key theme.ts writes; a missing/invalid value (including
+         'system') leaves `data-theme` unset, which is exactly what falls through to
+         App.css's `prefers-color-scheme` block. -->
+    <script>
+      (function () {
+        try {
+          var choice = localStorage.getItem('sweprep-theme')
+          if (choice === 'light' || choice === 'dark') {
+            document.documentElement.setAttribute('data-theme', choice)
+          }
+        } catch (e) {}
+      })()
+    </script>
     <!-- Placeholder only - overwritten at load by main.tsx from src/appName.ts, the
          single source for the app's display name. Static HTML cannot import that
          module, so keep this in sync by hand if it ever drifts. -->

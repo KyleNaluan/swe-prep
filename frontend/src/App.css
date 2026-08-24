@@ -65,9 +65,9 @@
   --shadow-l: 0 4px 8px rgba(0, 0, 0, 0.3), 0 26px 50px -22px rgba(0, 0, 0, 0.8);
 }
 
-/* The app has no explicit theme toggle wired yet (issue #90 ships the token system;
-   a manual light/dark switch is a follow-on), so dark mode follows the OS/browser
-   the same way the rest of the app already promised via `color-scheme: light dark`. */
+/* Dark mode follows the OS/browser by default, matching `color-scheme: light dark`
+   below - unless the header's ThemeToggle (theme.ts) has pinned `data-theme` to
+   'light' or 'dark', which the `:not([data-theme='light'])` guard here defers to. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
     --bg: #131020;
