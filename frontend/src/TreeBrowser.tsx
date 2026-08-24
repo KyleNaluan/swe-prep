@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 // The tiered navigation Practice and Learn share (issue #90/#7's map: "tiered/under
 // categories" - the flat 583-item dropdowns this replaces lived in Practice.tsx's
@@ -146,6 +146,10 @@ function TreeBrowser({
   const [find, setFind] = useState('')
   const [openDomain, setOpenDomain] = useState<string | null>(null)
   const [openPattern, setOpenPattern] = useState<string | null>(null)
+  // Once the initial domain is chosen for a real reason - a resolved selection, or the
+  // user opening a node themselves - it is pinned so no later render (a filter toggle,
+  // items re-mapping to a fresh array) can move the open node out from under them.
+  const initialDomainPinned = useRef(false)
 
   const filtered = useMemo(
     () => items.filter((item) => passesFilters(item, filterGroups, activeFilters)),
@@ -153,16 +157,27 @@ function TreeBrowser({
   )
   const domains = useMemo(() => groupByDomain(filtered), [filtered])
 
-  // Pick an initial domain exactly once, when the catalog first arrives - never
-  // re-derived on a later render, or a filter toggle would silently move the tree's
-  // open node out from under the solver (the captain's refinement this whole design
-  // exists to satisfy).
+  // Pick the initial open domain from the current selection, then pin it - never
+  // re-derived once pinned, or a filter toggle would silently move the tree's open
+  // node out from under the solver (the captain's refinement this whole design exists
+  // to satisfy). The selection can arrive asynchronously *after* the catalog does -
+  // Practice sets its items from the catalog fetch, then its selectedId from a second,
+  // separate scheduler call (pickMain -> /api/challenges/next). So until a selection
+  // resolves we only *tentatively* open the largest domain and stay unpinned, letting
+  // the scheduler-picked exercise's real domain win the moment selectedId flips from
+  // null to a value rather than being stranded on the largest-domain default.
   useEffect(() => {
-    if (openDomain !== null || items.length === 0) return
-    const initial = selectedId ? items.find((item) => item.id === selectedId)?.domain : undefined
-    setOpenDomain(initial ?? groupByDomain(items)[0]?.domain ?? null)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items])
+    if (initialDomainPinned.current || items.length === 0) return
+    const selectedDomain = selectedId
+      ? items.find((item) => item.id === selectedId)?.domain
+      : undefined
+    if (selectedDomain) {
+      setOpenDomain(selectedDomain)
+      initialDomainPinned.current = true
+      return
+    }
+    setOpenDomain((current) => current ?? groupByDomain(items)[0]?.domain ?? null)
+  }, [items, selectedId])
 
   const query = find.trim().toLowerCase()
   const searching = query.length > 0
@@ -232,6 +247,7 @@ function TreeBrowser({
                   className={`node${open ? ' open' : ''}`}
                   aria-current={open && !openPattern}
                   onClick={() => {
+                    initialDomainPinned.current = true
                     setOpenDomain(open ? null : group.domain)
                     setOpenPattern(null)
                   }}
@@ -256,9 +272,10 @@ function TreeBrowser({
                         key={pattern.topic}
                         className="node l2"
                         aria-current={openPattern === pattern.topic}
-                        onClick={() =>
+                        onClick={() => {
+                          initialDomainPinned.current = true
                           setOpenPattern(openPattern === pattern.topic ? null : pattern.topic)
-                        }
+                        }}
                       >
                         <span className="nm">{topicLabel(pattern.topic)}</span>
                         {ppct !== null && (
