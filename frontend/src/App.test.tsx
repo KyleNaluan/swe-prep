@@ -248,6 +248,60 @@ describe('App', () => {
     )
   })
 
+  // The content page is kept mounted (hidden with CSS) across the browse<->content
+  // toggle, never conditionally rendered - so returning to browse and re-opening the
+  // SAME exercise never remounts the uncontrolled Monaco editor. If it did, the visible
+  // editor would reset to the stub while codeRef still held the typed code, and Submit
+  // (which reads codeRef) would send code the solver could no longer see.
+  it('preserves typed code when returning to browse and re-opening the same exercise, and Submit sends it', async () => {
+    const typed = 'class Solution { int answer = 42; }'
+    let lastSubmission: string | null = null
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+        const href = String(url)
+        if (href.endsWith('/api/reps/warmup')) return { ok: true, json: async () => [] } as Response
+        if (href.endsWith('/api/session')) return { ok: true, json: async () => ({ dayComplete: false, completedAt: null, streak: 0 }) } as Response
+        if (href.endsWith('/api/exercises')) return { ok: true, json: async () => CATALOG } as Response
+        if (href.includes('/api/exercises/two-sum'))
+          return { ok: true, json: async () => CODE_EXERCISE } as Response
+        if (href.includes('/api/exercises/hashmap-lookup'))
+          return { ok: true, json: async () => CHOICE_EXERCISE } as Response
+        if (href.endsWith('/api/attempts')) {
+          if (init?.method === 'POST')
+            return { ok: true, json: async () => ({ id: 'attempt-1' }) } as Response
+          return { ok: true, json: async () => [] } as Response
+        }
+        if (href.endsWith('/submissions')) {
+          lastSubmission = JSON.parse(String(init?.body)).submission
+          return {
+            ok: true,
+            json: async () => ({ outcome: 'PASSED', passed: 1, total: 1, detail: '' }),
+          } as Response
+        }
+        if (href.endsWith('/abandon')) return { ok: true, json: async () => ({ id: 'attempt-1' }) } as Response
+        throw new Error(`unexpected fetch to ${href}`)
+      }) as unknown as typeof fetch,
+    )
+
+    render(<App />)
+    await gotoPractice()
+    await screen.findByRole('heading', { name: 'Two Sum' })
+
+    // Type code into the editor, then leave to browse and re-open the same exercise.
+    fireEvent.change(screen.getByLabelText('editor'), { target: { value: typed } })
+    await selectExercise('Two Sum')
+    await screen.findByRole('heading', { name: 'Two Sum' })
+
+    // The visible editor still shows the typed code, not the original stub.
+    expect(screen.getByLabelText('editor')).toHaveValue(typed)
+
+    // ...and Submit sends exactly that, so the editor and codeRef never disagree.
+    fireEvent.click(screen.getByRole('button', { name: 'Run' }))
+    await screen.findByText('1 of 1 tests passed')
+    expect(lastSubmission).toBe(typed)
+  })
+
   it('shows past attempts in the history list', async () => {
     const attempts = [
       {

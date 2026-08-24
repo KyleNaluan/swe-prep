@@ -5,6 +5,7 @@ import TreeBrowser, { type FilterGroup } from './TreeBrowser'
 import { defaultDomainLabel, topicLabel } from './treeLabels'
 import ContentPage, { type Crumb } from './ContentPage'
 import {
+  enterAutoPickedContent,
   leaveContentEntry,
   pushContentEntry,
   useBrowseContentScroll,
@@ -437,13 +438,15 @@ function Practice({
         // as it did before content pages existed - it opens straight to its content
         // page rather than requiring an extra click into the tree. No pattern context
         // exists for an auto-pick (it did not come from drilling a tree node), so the
-        // breadcrumb simply omits that segment. A history entry is pushed here too -
-        // entering a content page always pushes exactly one, whether by a tree click
-        // or an auto-pick, so leaving is always exactly one `back()` either way.
+        // breadcrumb simply omits that segment. The auto-pick enters the content page
+        // through enterAutoPickedContent, which pushes exactly one browse-base -> content
+        // entry the first time but replaces in place on a remount (tab switch) or a
+        // reload that restored a content entry - so leaving is always exactly one
+        // `back()` and history never accumulates.
         const pickedSummary = loaded.find((summary) => summary.id === pickedId)
         setBrowseContext({ domain: pickedSummary?.domain ?? '', pattern: null })
         setView('content')
-        pushContentEntry('practice', pickedId)
+        enterAutoPickedContent('practice', pickedId)
       })
       .catch((error: unknown) => {
         if (!cancelled) setCatalogError(error instanceof Error ? error.message : String(error))
@@ -926,7 +929,13 @@ function Practice({
         />
       </div>
 
-      {view === 'content' && (
+      {/* The content page is always mounted, only hidden while browsing (issue carrying
+          Direction A's page pattern into Direction C - AGENTS.md) - never conditionally
+          rendered, exactly like the tree pane above. Unmounting it would remount the
+          uncontrolled Monaco editor on every return, resetting the visible code to the
+          stub while codeRef still held the typed code, so Submit would send code the
+          solver could no longer see. Keeping it mounted keeps editor and codeRef in sync. */}
+      <div style={view === 'browse' ? { display: 'none' } : undefined}>
       <ContentPage crumbs={crumbs}>
       {loadError && <p className="status down">Could not load the exercise: {loadError}</p>}
       {!exercise && !loadError && <p className="status loading">Loading exercise...</p>}
@@ -1113,7 +1122,7 @@ function Practice({
         </div>
       )}
       </ContentPage>
-      )}
+      </div>
 
       <History attempts={history} />
     </>
