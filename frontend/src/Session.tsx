@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { apiFetch, errorMessage } from './api'
 import { APP_NAME } from './appName'
 import BrandMark from './BrandMark'
+import ThemeToggle from './ThemeToggle'
 import Warmup from './Warmup'
 import Practice from './Practice'
 import Lesson from './Lesson'
@@ -140,6 +141,7 @@ function Session() {
         <div className="topmeta session-header-controls">
           <RolePicker onChange={handleRoleChange} />
           <DayBadge status={status} />
+          <ThemeToggle />
         </div>
       </header>
 
