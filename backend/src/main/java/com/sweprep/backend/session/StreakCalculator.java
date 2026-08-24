@@ -2,6 +2,11 @@ package com.sweprep.backend.session;
 
 import java.time.LocalDate;
 import java.time.YearMonth;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -84,5 +89,56 @@ public final class StreakCalculator {
                 && repairsUsedThisMonth < properties.maxRepairsPerMonth();
 
         return new StreakResult(streak, repairsUsedThisMonth, remaining, repairPending);
+    }
+
+    /**
+     * A per-day projection of the same completed/challenge-solved history {@link
+     * #evaluate} reads, for the Direction C graft's day ribbon (last 30 days) and the
+     * Direction A graft's year-record grid (Readiness) - one derivation serving both,
+     * per the report's recommendation, since both are just different window lengths
+     * over {@code day_completion}.
+     *
+     * <p>Walks backward from {@code today} exactly like {@link #evaluate}, classifying
+     * every day in the window - not stopping at the first unrepaired gap the way {@link
+     * #evaluate} does, since a picture of the record must show every day, broken streak
+     * or not. {@code bridged} uses the identical local rule {@link #evaluate} uses (the
+     * day right after a miss was both completed and a solved-challenge day), but applies
+     * the monthly cap independently per calendar month the missed day actually fell in -
+     * a deliberate generalisation of {@link #evaluate}'s "only this month is capped"
+     * shortcut (safe there because past months are already-spent history it never
+     * revisits), so a past month never shows more bridged gaps in the picture than its
+     * own budget ever allowed.
+     *
+     * @param windowDays how many trailing days to return, including today
+     */
+    public static List<DayHistory> history(
+            Set<LocalDate> completedDays,
+            Set<LocalDate> challengeSolvedDays,
+            LocalDate today,
+            int windowDays,
+            StreakProperties properties) {
+        List<DayHistory> out = new ArrayList<>();
+        Map<YearMonth, Integer> repairsUsedByMonth = new HashMap<>();
+        LocalDate start = today.minusDays(windowDays - 1L);
+
+        for (LocalDate cursor = today; !cursor.isBefore(start); cursor = cursor.minusDays(1)) {
+            boolean completed = completedDays.contains(cursor);
+            boolean doubleSession = completed && challengeSolvedDays.contains(cursor);
+            boolean bridged = false;
+            if (!completed) {
+                LocalDate repairDay = cursor.plusDays(1);
+                boolean doubleSessionOnRepairDay =
+                        completedDays.contains(repairDay) && challengeSolvedDays.contains(repairDay);
+                YearMonth month = YearMonth.from(cursor);
+                int used = repairsUsedByMonth.getOrDefault(month, 0);
+                if (doubleSessionOnRepairDay && used < properties.maxRepairsPerMonth()) {
+                    bridged = true;
+                    repairsUsedByMonth.merge(month, 1, Integer::sum);
+                }
+            }
+            out.add(new DayHistory(cursor, completed, doubleSession, bridged));
+        }
+        Collections.reverse(out); // oldest first, the order a ribbon/grid renders left-to-right
+        return out;
     }
 }

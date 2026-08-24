@@ -61,7 +61,14 @@ class LessonControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(1))
                 .andExpect(jsonPath("$[0].id").value("lesson-indexes"))
-                .andExpect(jsonPath("$[0].promptCount").value(2));
+                .andExpect(jsonPath("$[0].promptCount").value(2))
+                // The TreeBrowser's concept tier groups by topic (issue #90) without a
+                // second fetch, so the summary must carry it.
+                .andExpect(jsonPath("$[0].topics").value(org.hamcrest.Matchers.contains("databases")))
+                // The family filter group (issue #90) reads the same tag Role Families
+                // already uses.
+                .andExpect(jsonPath("$[0].family")
+                        .value(org.hamcrest.Matchers.containsInAnyOrder("BACKEND", "DATA")));
     }
 
     @Test

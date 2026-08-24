@@ -76,7 +76,14 @@ class ExerciseControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(4))
                 .andExpect(jsonPath("$[?(@.id=='pair-in-any-order')].form").value("CHALLENGE"))
-                .andExpect(jsonPath("$[?(@.id=='concept-demo')].form").value("REP"));
+                .andExpect(jsonPath("$[?(@.id=='concept-demo')].form").value("REP"))
+                // The TreeBrowser's pattern tier groups by topic (issue #90) without a
+                // second fetch, so the summary must carry it.
+                .andExpect(jsonPath("$[?(@.id=='pair-in-any-order')].topics[0]").value("demo"))
+                // The family filter group (issue #90) reads the same tag Role Families
+                // already uses; untagged fixture content reports an empty list, not null.
+                .andExpect(jsonPath("$[?(@.id=='pair-in-any-order')].family")
+                        .value(Matchers.contains(Matchers.empty())));
     }
 
     @Test
