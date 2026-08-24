@@ -1,6 +1,15 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { apiFetch, errorMessage } from './api'
 import TreeBrowser, { type FilterGroup } from './TreeBrowser'
+import { defaultDomainLabel, topicLabel } from './treeLabels'
+import ContentPage, { type Crumb } from './ContentPage'
+import {
+  enterAutoPickedContent,
+  leaveContentEntry,
+  pushContentEntry,
+  useBrowseContentScroll,
+  useContentPopState,
+} from './contentNav'
 import { familyLabel } from './familyLabels'
 import { APP_NAME } from './appName'
 import LessonBody, { type LessonBlockData } from './LessonBody'
@@ -63,10 +72,22 @@ function Lesson() {
   )
   const [familyFilter, setFamilyFilter] = useState<Set<string>>(() => new Set())
   const familyFilterSeeded = useRef(false)
-  // Scrolled into view on every TreeBrowser selection (issue #90) - the concept grid
-  // above it can be long, so without this a freshly picked lesson could land far
-  // below the fold, behind the very grid it was picked from.
-  const lessonSectionRef = useRef<HTMLDivElement | null>(null)
+
+  // The dedicated-content-page toggle (carrying Direction A's page pattern into
+  // Direction C - AGENTS.md): 'browse' shows the tree/grid, 'content' shows the
+  // breadcrumb + lesson. TreeBrowser is always rendered - only hidden with CSS in
+  // 'content' - so its scroll, expanded nodes and filters need no restore at all.
+  const [view, setView] = useState<'browse' | 'content'>('browse')
+  const [browseContext, setBrowseContext] = useState<{ domain: string; pattern: string | null }>(
+    { domain: '', pattern: null },
+  )
+  useBrowseContentScroll(view)
+  const handleContentPopEnter = useCallback((id: string) => {
+    setSelectedId(id)
+    setView('content')
+  }, [])
+  const handleContentPopLeave = useCallback(() => setView('browse'), [])
+  useContentPopState('learn', handleContentPopEnter, handleContentPopLeave)
 
   // Load the list of lessons once, and select the first.
   useEffect(() => {
@@ -85,7 +106,17 @@ function Lesson() {
           loaded.forEach((summary) => summary.family?.forEach((f) => seen.add(f)))
           setFamilyFilter(seen)
         }
-        if (loaded.length > 0) setSelectedId(loaded[0].id)
+        if (loaded.length > 0) {
+          // Same "arrives ready" behavior lessons had before content pages existed -
+          // the first lesson opens straight to its content page. enterAutoPickedContent
+          // pushes exactly one browse-base -> content entry the first time but replaces
+          // in place on a remount (tab switch) or a reload that restored a content entry,
+          // so leaving is always exactly one `back()` and history never accumulates.
+          setSelectedId(loaded[0].id)
+          setBrowseContext({ domain: loaded[0].domain, pattern: null })
+          setView('content')
+          enterAutoPickedContent('learn', loaded[0].id)
+        }
       })
       .catch((error: unknown) => {
         if (!cancelled) setCatalogError(error instanceof Error ? error.message : String(error))
@@ -190,6 +221,21 @@ function Lesson() {
     )
   }
 
+  // Learn > <area> > <pattern> > <concept> (issue carrying Direction A's page pattern
+  // into Direction C - AGENTS.md). See Practice.tsx's own crumbs comment for why every
+  // non-leaf segment does the identical thing, and why a missing area/pattern is
+  // omitted rather than shown blank.
+  const crumbs: Crumb[] = [
+    { label: 'Learn', onClick: leaveContentEntry },
+    ...(browseContext.domain
+      ? [{ label: defaultDomainLabel(browseContext.domain), onClick: leaveContentEntry }]
+      : []),
+    ...(browseContext.pattern
+      ? [{ label: topicLabel(browseContext.pattern), onClick: leaveContentEntry }]
+      : []),
+    { label: lesson?.title ?? catalog.find((s) => s.id === selectedId)?.title ?? '…' },
+  ]
+
   return (
     <>
       <div className="browsehead">
@@ -202,31 +248,44 @@ function Lesson() {
         </div>
       </div>
 
-      <TreeBrowser
-        items={catalog.map((summary) => ({
-          id: summary.id,
-          title: summary.title,
-          domain: summary.domain,
-          difficulty: summary.difficulty,
-          topics: summary.topics ?? [],
-          family: summary.family ?? [],
-        }))}
-        filterGroups={filterGroups}
-        activeFilters={activeFilters}
-        onToggleFilter={onToggleFilter}
-        selectedId={selectedId}
-        onSelect={(item) => {
-          setSelectedId(item.id)
-          lessonSectionRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' })
-        }}
-        findLabel="Find a concept"
-        findPlaceholder="attention, indexing, CORS…"
-        emptyMessage="No lessons available."
-        sectionLabel="Learn"
-        itemNoun="concept"
-      />
+      {/* Always rendered, only hidden while a content page is open (issue carrying
+          Direction A's page pattern into Direction C - AGENTS.md) - never unmounted,
+          so scroll position, expanded nodes and filters need no restore at all. */}
+      <div style={view === 'content' ? { display: 'none' } : undefined}>
+        <TreeBrowser
+          items={catalog.map((summary) => ({
+            id: summary.id,
+            title: summary.title,
+            domain: summary.domain,
+            difficulty: summary.difficulty,
+            topics: summary.topics ?? [],
+            family: summary.family ?? [],
+          }))}
+          filterGroups={filterGroups}
+          activeFilters={activeFilters}
+          onToggleFilter={onToggleFilter}
+          selectedId={selectedId}
+          onSelect={(item, context) => {
+            setSelectedId(item.id)
+            setBrowseContext(context)
+            setView('content')
+            pushContentEntry('learn', item.id)
+          }}
+          findLabel="Find a concept"
+          findPlaceholder="attention, indexing, CORS…"
+          emptyMessage="No lessons available."
+          sectionLabel="Learn"
+          itemNoun="concept"
+        />
+      </div>
 
-      <div ref={lessonSectionRef}>
+      {/* Always mounted, only hidden while browsing (issue carrying Direction A's page
+          pattern into Direction C - AGENTS.md) - never conditionally rendered, exactly
+          like the tree pane above and Practice's own content page. The lesson body is
+          stateless today, but keeping it mounted avoids the same conditional-unmount
+          class of bug the moment it ever becomes stateful. */}
+      <div style={view === 'browse' ? { display: 'none' } : undefined}>
+      <ContentPage crumbs={crumbs}>
       {loadError && <p className="status down">Could not load the lesson: {loadError}</p>}
       {!lesson && !loadError && <p className="status loading">Loading lesson...</p>}
 
@@ -254,6 +313,7 @@ function Lesson() {
           )}
         </div>
       )}
+      </ContentPage>
       </div>
     </>
   )

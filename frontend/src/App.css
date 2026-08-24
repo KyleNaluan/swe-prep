@@ -1119,6 +1119,49 @@ fieldset.filtergroup {
   margin: 0 0 16px;
 }
 
+/* ---------- dedicated content page (carrying Direction A's "drill in, breadcrumb
+   above" pattern into these Direction C tokens - see AGENTS.md's visual-redesign
+   section) ---------- */
+.content-page {
+  animation: rise 0.32s cubic-bezier(0.2, 0.9, 0.3, 1) both;
+}
+.content-breadcrumb {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--faint);
+  margin-bottom: 16px;
+}
+.crumb-segment {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.crumb-link {
+  border: 0;
+  background: none;
+  padding: 2px 4px;
+  margin: -2px -4px;
+  font: inherit;
+  color: var(--muted);
+  cursor: pointer;
+  border-radius: 6px;
+  transition: color 0.13s, background 0.13s;
+}
+.crumb-link:hover {
+  color: var(--primary-ink);
+  background: var(--primary-soft);
+}
+.crumb-current {
+  color: var(--ink);
+  font-weight: 600;
+}
+.crumb-sep {
+  color: var(--faint);
+}
+
 /* ---------- exercise view ---------- */
 .exgrid {
   display: grid;
