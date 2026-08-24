@@ -52,6 +52,41 @@ class LessonControllerTest {
     }
 
     @Test
+    void readsAStructuredLessonBodyWithEveryBlockKind() throws Exception {
+        when(catalog.contentById("lesson-hash-maps"))
+                .thenReturn(Optional.of(Fixtures.lessonWithStructuredBody()));
+
+        mockMvc.perform(get("/api/lessons/lesson-hash-maps"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.body.length()").value(7))
+                .andExpect(jsonPath("$.body[0].kind").value("heading"))
+                .andExpect(jsonPath("$.body[0].level").value(2))
+                .andExpect(jsonPath("$.body[1].kind").value("paragraph"))
+                .andExpect(jsonPath("$.body[2].kind").value("example"))
+                .andExpect(jsonPath("$.body[2].language").value("java"))
+                .andExpect(jsonPath("$.body[2].output").value("3"))
+                .andExpect(jsonPath("$.body[3].kind").value("callout"))
+                .andExpect(jsonPath("$.body[3].style").value("WARNING"))
+                .andExpect(jsonPath("$.body[4].kind").value("heading"))
+                .andExpect(jsonPath("$.body[5].kind").value("list"))
+                .andExpect(jsonPath("$.body[5].ordered").value(false))
+                .andExpect(jsonPath("$.body[5].items.length()").value(2));
+    }
+
+    @Test
+    void aLegacyLessonWithNoStructuredBodySendsAnEmptyBodyArray() throws Exception {
+        // lessonWithPrompts() carries no body blocks - every real lesson today. The frontend's
+        // legacy fallback (rendering `statement` as a single paragraph) relies on this being an
+        // empty array, never a missing field, so it never has to distinguish the two.
+        when(catalog.contentById("lesson-indexes"))
+                .thenReturn(Optional.of(Fixtures.lessonWithPrompts()));
+
+        mockMvc.perform(get("/api/lessons/lesson-indexes"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.body.length()").value(0));
+    }
+
+    @Test
     void listsOnlyLessons() throws Exception {
         // The wide content view also holds exercises; the lesson list must show only lessons.
         when(catalog.allContent())

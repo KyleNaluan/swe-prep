@@ -33,6 +33,40 @@ function mockFetch() {
   })
 }
 
+const STRUCTURED_DETAIL = {
+  id: 'lesson-hash-maps',
+  title: 'Hash maps: average O(1) lookup',
+  statement: 'A hash map trades memory for speed.',
+  domain: 'fundamentals',
+  difficulty: 'EASY',
+  body: [
+    { kind: 'heading', level: 2, text: 'How a lookup works' },
+    { kind: 'paragraph', text: 'Calling `map.get(key)` is average O(1).' },
+    {
+      kind: 'example',
+      language: 'java',
+      code: 'counts.get("apple");',
+      caption: 'Average-case O(1) lookup',
+      output: '3',
+    },
+    { kind: 'callout', style: 'WARNING', text: 'A poor hash function can degrade to O(n).' },
+    {
+      kind: 'list',
+      ordered: false,
+      items: ['Each entry stores the key, the value, and a link.', 'The bucket array is resized.'],
+    },
+    {
+      kind: 'table',
+      headers: ['Operation', 'Average'],
+      rows: [
+        ['get', 'O(1)'],
+        ['put', 'O(1) amortized'],
+      ],
+    },
+  ],
+  prompts: [],
+}
+
 describe('Lesson renderer (issue #41/#46)', () => {
   beforeEach(() => vi.stubGlobal('fetch', vi.fn()))
   afterEach(() => {
@@ -54,6 +88,46 @@ describe('Lesson renderer (issue #41/#46)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Reveal the answer' }))
 
     expect(await screen.findByText(/stores raw values/)).toBeInTheDocument()
+  })
+
+  it('renders a structured lesson body (issue #90 follow-on) instead of the legacy single paragraph', async () => {
+    const lessons = [
+      {
+        id: 'lesson-hash-maps',
+        title: 'Hash maps: average O(1) lookup',
+        domain: 'fundamentals',
+        difficulty: 'EASY',
+        promptCount: 0,
+      },
+    ]
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL | Request) => {
+        const href = String(url)
+        if (href.endsWith('/api/lessons/lesson-hash-maps/read'))
+          return { ok: true, json: async () => ({}) } as Response
+        if (href.endsWith('/api/lessons')) return { ok: true, json: async () => lessons } as Response
+        if (href.endsWith('/api/lessons/lesson-hash-maps'))
+          return { ok: true, json: async () => STRUCTURED_DETAIL } as Response
+        throw new Error(`unexpected fetch to ${href}`)
+      }),
+    )
+    render(<Lesson />)
+
+    expect(await screen.findByRole('heading', { name: 'How a lookup works' })).toBeInTheDocument()
+    // The legacy single-paragraph fallback must not also render alongside the structured body.
+    expect(screen.queryByText('A hash map trades memory for speed.')).not.toBeInTheDocument()
+    // Inline `code` spans render as <code>, not literal backticks.
+    expect(screen.getByText('map.get(key)').tagName).toBe('CODE')
+    // The example stands out with its caption and output.
+    expect(screen.getByText('Average-case O(1) lookup')).toBeInTheDocument()
+    expect(screen.getByText('3')).toBeInTheDocument()
+    // The callout is labeled by its style.
+    expect(screen.getByText('Warning')).toBeInTheDocument()
+    expect(screen.getByText('A poor hash function can degrade to O(n).')).toBeInTheDocument()
+    // The list and table render as real list/table elements.
+    expect(screen.getByText('The bucket array is resized.').closest('ul')).not.toBeNull()
+    expect(screen.getByText('O(1) amortized').closest('table')).not.toBeNull()
   })
 
   it('records the read so the lesson seeds its checks into the warm-up (issue #40)', async () => {

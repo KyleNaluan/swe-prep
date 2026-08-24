@@ -3,6 +3,7 @@ import { apiFetch, errorMessage } from './api'
 import TreeBrowser, { type FilterGroup } from './TreeBrowser'
 import { familyLabel } from './familyLabels'
 import { APP_NAME } from './appName'
+import LessonBody, { type LessonBlockData } from './LessonBody'
 
 // The lesson reading surface (issue #46/#41). A lesson is read, never attempted: there is no
 // Run, no verdict, no attempt recorded. What turns reading from the lowest-utility study
@@ -43,6 +44,7 @@ type LessonDetail = {
   statement: string
   domain: string
   difficulty: string
+  body: LessonBlockData[]
   prompts: Prompt[]
 }
 
@@ -106,7 +108,11 @@ function Lesson() {
       })
       .then((loaded) => {
         if (cancelled) return
-        setLesson({ ...loaded, prompts: loaded.prompts ?? [] })
+        // A legacy lesson (no `body` blocks authored yet - every real lesson today) sends
+        // `body` as an empty array; guard with `?? []` anyway so an older cached response
+        // (or a hand-rolled fixture) with no `body` field at all still renders instead of
+        // throwing on `.length`.
+        setLesson({ ...loaded, body: loaded.body ?? [], prompts: loaded.prompts ?? [] })
         // Reading a lesson seeds its checks into the warm-up (issue #40): an inactive-family
         // lesson pulls that one concept's checks into review, one concept at a time. This is a
         // best-effort side effect of opening the lesson - a failure here must never break reading.
@@ -225,12 +231,18 @@ function Lesson() {
       {!lesson && !loadError && <p className="status loading">Loading lesson...</p>}
 
       {lesson && (
-        <div className="card exl">
+        <div className="card exl lesson-card">
           <header>
             <h1>{lesson.title}</h1>
             <span className="language-tag chipx">{lesson.domain}</span>
           </header>
-          <p className="statement qtext">{lesson.statement}</p>
+          {lesson.body.length > 0 ? (
+            <LessonBody blocks={lesson.body} />
+          ) : (
+            // Legacy fallback: a lesson still authored only as plain-text `statement`
+            // (every real lesson today) - unstructured, but never a hard break.
+            <p className="lesson-statement">{lesson.statement}</p>
+          )}
 
           {lesson.prompts.length > 0 && (
             <section className="prompts">
