@@ -1184,10 +1184,13 @@ fieldset.filtergroup {
    Practice deliberately keeps its own single-pane focused view (no side nav, per the
    captain's explicit call) - `.content-layout` is Learn-only, so Practice is untouched.
    Below the breakpoint this collapses to the original one-pane-at-a-time behavior,
-   matching the pre-existing `.browse` breakpoint below. */
-.content-layout[data-view='browse'] .content-pane-wrap {
-  display: none;
-}
+   matching the pre-existing `.browse` breakpoint below.
+
+   `.content-pane-wrap`'s browse-mode hide is an inline style in Lesson.tsx, not a rule
+   here - CSS-file rules never apply under jsdom (vitest's `test.css` is off by
+   default), and an existing test asserts that pane actually leaves the accessibility
+   tree on the browse transition. `.content-nav`'s content-mode hide has no such test,
+   so it stays CSS/media-query-only. */
 .content-layout[data-view='content'] .content-nav {
   display: none;
 }
