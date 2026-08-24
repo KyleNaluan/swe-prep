@@ -81,9 +81,12 @@ is the lesson's own title.
 ```
 
 **`example`** - a standout code example, rendered in its own panel with syntax highlighting.
-`language` drives highlighting (see the engine PR for the supported set - anything
-unrecognized still renders, just uncolored). `caption` and `output` are each independently
-optional: a caption names what the example shows, an output shows what it prints or returns.
+`language` drives highlighting. The highlighter (`frontend/src/highlight.ts`) recognizes
+`java`, `python`, `sql`, `javascript`, `typescript`, `json` and `bash`, plus the aliases
+`js`/`jsx` -> `javascript`, `ts`/`tsx` -> `typescript`, `py` -> `python`, and `sh`/`shell` ->
+`bash`; any other value still renders, just uncolored. `caption` and `output` are each
+independently optional: a caption names what the example shows, an output shows what it
+prints or returns.
 
 ```json
 {

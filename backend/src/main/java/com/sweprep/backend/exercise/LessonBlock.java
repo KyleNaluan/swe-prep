@@ -68,8 +68,8 @@ public sealed interface LessonBlock
      * A standout code example - the block the visual redesign asked to make examples
      * "stand out" (requirement 3): rendered with its own background/border accent,
      * never blended into surrounding prose. {@code language} drives syntax
-     * highlighting (see {@code CodeHighlighter} on the frontend); {@code caption} and
-     * {@code output} are both optional - a caption names what the example shows, an
+     * highlighting (see {@code highlightCode} in {@code highlight.ts} on the frontend);
+     * {@code caption} and {@code output} are both optional - a caption names what the example shows, an
      * output shows what it prints/returns, and either, both or neither may be present.
      */
     record Example(String language, String code, String caption, String output) implements LessonBlock {
