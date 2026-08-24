@@ -6,6 +6,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -69,9 +70,7 @@ public class SessionService {
         UUID user = currentUser.id();
         LocalDate today = today();
         Set<LocalDate> completed = new HashSet<>(days.completedDates(user));
-        Set<LocalDate> challengeSolved = attempts.challengeSolvedInstants(user).stream()
-                .map(instant -> LocalDate.ofInstant(instant, clock.getZone()))
-                .collect(Collectors.toSet());
+        Set<LocalDate> challengeSolved = challengeSolvedDates(user);
 
         boolean dayComplete = completed.contains(today);
         Instant completedAt = dayComplete
@@ -87,7 +86,31 @@ public class SessionService {
                 streak.repairPending());
     }
 
+    /**
+     * The day ribbon's and year-record grid's shared source (issue #90's Direction A/C
+     * graft): {@link StreakCalculator#history} projected over the last {@link
+     * #HISTORY_WINDOW_DAYS} days, oldest first. One endpoint, two views - the ribbon
+     * slices the trailing 30, the year grid renders the whole window.
+     */
+    public List<DayHistory> history() {
+        UUID user = currentUser.id();
+        LocalDate today = today();
+        Set<LocalDate> completed = new HashSet<>(days.completedDates(user));
+        Set<LocalDate> challengeSolved = challengeSolvedDates(user);
+        return StreakCalculator.history(completed, challengeSolved, today, HISTORY_WINDOW_DAYS, streakProperties);
+    }
+
+    private Set<LocalDate> challengeSolvedDates(UUID user) {
+        return attempts.challengeSolvedInstants(user).stream()
+                .map(instant -> LocalDate.ofInstant(instant, clock.getZone()))
+                .collect(Collectors.toSet());
+    }
+
     private LocalDate today() {
         return LocalDate.now(clock);
     }
+
+    // Long enough to cover Direction A's year-record grid (182 days); the ribbon is
+    // just this same response's trailing 30 days, sliced client-side.
+    private static final int HISTORY_WINDOW_DAYS = 182;
 }

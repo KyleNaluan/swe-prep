@@ -132,7 +132,7 @@ public final class ComplexityClassifier {
                             + "complexity class - the fitted trend either sits between two "
                             + "classes or scatters too much to tell them apart");
         }
-        return new MeasurementOutcome.Conclusive(bucket, fit.slope());
+        return new MeasurementOutcome.Conclusive(bucket, fit.slope(), halfWidth, reliable);
     }
 
     /**

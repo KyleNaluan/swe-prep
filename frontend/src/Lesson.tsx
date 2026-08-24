@@ -1,5 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { apiFetch, errorMessage } from './api'
+import TreeBrowser, { type FilterGroup } from './TreeBrowser'
+import { familyLabel } from './familyLabels'
+import { APP_NAME } from './appName'
 
 // The lesson reading surface (issue #46/#41). A lesson is read, never attempted: there is no
 // Run, no verdict, no attempt recorded. What turns reading from the lowest-utility study
@@ -14,7 +17,23 @@ type LessonSummary = {
   domain: string
   difficulty: string
   promptCount: number
+  topics?: string[]
+  family?: string[]
 }
+
+// The captain's binding refinement: "make sure the learn has the difficulty filters
+// too", in its own labeled group, separate from family - the same faceted shape
+// Practice uses (issue #90).
+const DIFFICULTY_FILTER_GROUP: FilterGroup = {
+  key: 'difficulty',
+  label: 'Difficulty',
+  options: [
+    { value: 'EASY', label: 'Easy' },
+    { value: 'MEDIUM', label: 'Medium' },
+    { value: 'HARD', label: 'Hard' },
+  ],
+}
+const ALL_DIFFICULTIES = new Set(DIFFICULTY_FILTER_GROUP.options.map((o) => o.value))
 
 type Prompt = { prompt: string; modelAnswer: string }
 
@@ -34,6 +53,19 @@ function Lesson() {
   const [lesson, setLesson] = useState<LessonDetail | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
 
+  // Same two labeled filter groups as Practice (issue #90/captain's refinement):
+  // difficulty and family, each on by default, neither ever resetting which tree node
+  // is open - that state lives inside TreeBrowser itself, untouched by these toggles.
+  const [difficultyFilter, setDifficultyFilter] = useState<Set<string>>(
+    () => new Set(ALL_DIFFICULTIES),
+  )
+  const [familyFilter, setFamilyFilter] = useState<Set<string>>(() => new Set())
+  const familyFilterSeeded = useRef(false)
+  // Scrolled into view on every TreeBrowser selection (issue #90) - the concept grid
+  // above it can be long, so without this a freshly picked lesson could land far
+  // below the fold, behind the very grid it was picked from.
+  const lessonSectionRef = useRef<HTMLDivElement | null>(null)
+
   // Load the list of lessons once, and select the first.
   useEffect(() => {
     let cancelled = false
@@ -45,6 +77,12 @@ function Lesson() {
       .then((loaded) => {
         if (cancelled) return
         setCatalog(loaded)
+        if (!familyFilterSeeded.current) {
+          familyFilterSeeded.current = true
+          const seen = new Set<string>()
+          loaded.forEach((summary) => summary.family?.forEach((f) => seen.add(f)))
+          setFamilyFilter(seen)
+        }
         if (loaded.length > 0) setSelectedId(loaded[0].id)
       })
       .catch((error: unknown) => {
@@ -82,11 +120,57 @@ function Lesson() {
     }
   }, [selectedId])
 
+  // The family filter group is built from whatever family tags the loaded catalog
+  // actually carries - an untagged content set simply shows no family group, rather
+  // than a row of always-inactive chips.
+  const familyOptions = useMemo(() => {
+    const seen = new Set<string>()
+    catalog?.forEach((summary) => summary.family?.forEach((f) => seen.add(f)))
+    return [...seen].sort()
+  }, [catalog])
+
+  const filterGroups: FilterGroup[] = useMemo(() => {
+    const groups = [DIFFICULTY_FILTER_GROUP]
+    if (familyOptions.length > 0) {
+      groups.push({
+        key: 'family',
+        label: 'Family',
+        options: familyOptions.map((f) => ({ value: f, label: familyLabel(f) })),
+      })
+    }
+    return groups
+  }, [familyOptions])
+
+  const activeFilters = useMemo(
+    () => ({ difficulty: difficultyFilter, family: familyFilter }),
+    [difficultyFilter, familyFilter],
+  )
+
+  const onToggleFilter = (groupKey: string, value: string) => {
+    const setter = groupKey === 'family' ? setFamilyFilter : setDifficultyFilter
+    setter((prev) => {
+      const next = new Set(prev)
+      if (next.has(value)) next.delete(value)
+      else next.add(value)
+      return next
+    })
+  }
+
   if (catalogError) {
-    return <p className="status down">Could not load lessons: {catalogError}</p>
+    return (
+      <>
+        <h1>{APP_NAME}</h1>
+        <p className="status down">Could not load lessons: {catalogError}</p>
+      </>
+    )
   }
   if (!catalog) {
-    return <p className="status loading">Loading lessons...</p>
+    return (
+      <>
+        <h1>{APP_NAME}</h1>
+        <p className="status loading">Loading lessons...</p>
+      </>
+    )
   }
   if (catalog.length === 0) {
     return (
@@ -102,36 +186,51 @@ function Lesson() {
 
   return (
     <>
-      <p className="continuation-note">
-        Reading, made generative: each lesson asks you to explain or predict in your own words
-        before revealing the answer. Nothing here is graded.
-      </p>
-
-      <div className="picker">
-        <label htmlFor="lesson-select">Lesson</label>
-        <select
-          id="lesson-select"
-          value={selectedId ?? ''}
-          onChange={(event) => setSelectedId(event.target.value)}
-        >
-          {catalog.map((summary) => (
-            <option key={summary.id} value={summary.id}>
-              {summary.title} · {summary.domain} · {summary.difficulty}
-            </option>
-          ))}
-        </select>
+      <div className="browsehead">
+        <div>
+          <h1>Learn</h1>
+          <p>
+            Reading, made generative: each lesson asks you to explain or predict in your own
+            words before revealing the answer. Nothing here is graded.
+          </p>
+        </div>
       </div>
 
+      <TreeBrowser
+        items={catalog.map((summary) => ({
+          id: summary.id,
+          title: summary.title,
+          domain: summary.domain,
+          difficulty: summary.difficulty,
+          topics: summary.topics ?? [],
+          family: summary.family ?? [],
+        }))}
+        filterGroups={filterGroups}
+        activeFilters={activeFilters}
+        onToggleFilter={onToggleFilter}
+        selectedId={selectedId}
+        onSelect={(item) => {
+          setSelectedId(item.id)
+          lessonSectionRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' })
+        }}
+        findLabel="Find a concept"
+        findPlaceholder="attention, indexing, CORS…"
+        emptyMessage="No lessons available."
+        sectionLabel="Learn"
+        itemNoun="concept"
+      />
+
+      <div ref={lessonSectionRef}>
       {loadError && <p className="status down">Could not load the lesson: {loadError}</p>}
       {!lesson && !loadError && <p className="status loading">Loading lesson...</p>}
 
       {lesson && (
-        <>
+        <div className="card exl">
           <header>
             <h1>{lesson.title}</h1>
-            <span className="language-tag">{lesson.domain}</span>
+            <span className="language-tag chipx">{lesson.domain}</span>
           </header>
-          <p className="statement">{lesson.statement}</p>
+          <p className="statement qtext">{lesson.statement}</p>
 
           {lesson.prompts.length > 0 && (
             <section className="prompts">
@@ -141,8 +240,9 @@ function Lesson() {
               ))}
             </section>
           )}
-        </>
+        </div>
       )}
+      </div>
     </>
   )
 }

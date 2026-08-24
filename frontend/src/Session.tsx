@@ -1,10 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
 import { apiFetch, errorMessage } from './api'
+import { APP_NAME } from './appName'
+import BrandMark from './BrandMark'
 import Warmup from './Warmup'
 import Practice from './Practice'
 import Lesson from './Lesson'
 import RolePicker from './RolePicker'
 import Readiness from './Readiness'
+import DayRibbon from './DayRibbon'
+import Confetti from './Confetti'
 
 // The daily session loop (issue #19) - the product the rest of the machinery serves.
 //
@@ -125,19 +129,25 @@ function Session() {
   }, [warmupEmpty, status?.dayComplete, recordDayComplete])
 
   return (
-    <main className="workspace">
-      <header className="session-header">
-        <h1 className="wordmark">swe-prep</h1>
-        <div className="session-header-controls">
+    <div className="app">
+      <header className="topbar session-header">
+        <div className="brand">
+          <span className="mark">
+            <BrandMark />
+          </span>
+          <b className="wordmark">{APP_NAME}</b>
+        </div>
+        <div className="topmeta session-header-controls">
           <RolePicker onChange={handleRoleChange} />
           <DayBadge status={status} />
         </div>
       </header>
 
-      <nav className="mode-tabs" aria-label="Sections">
+      <nav className="tabs mode-tabs" aria-label="Sections">
         <button
           type="button"
           className={mode === 'today' ? 'active' : ''}
+          aria-selected={mode === 'today'}
           aria-pressed={mode === 'today'}
           onClick={() => setMode('today')}
         >
@@ -146,6 +156,7 @@ function Session() {
         <button
           type="button"
           className={mode === 'readiness' ? 'active' : ''}
+          aria-selected={mode === 'readiness'}
           aria-pressed={mode === 'readiness'}
           onClick={() => setMode('readiness')}
         >
@@ -154,6 +165,7 @@ function Session() {
         <button
           type="button"
           className={mode === 'practice' ? 'active' : ''}
+          aria-selected={mode === 'practice'}
           aria-pressed={mode === 'practice'}
           onClick={() => setMode('practice')}
         >
@@ -162,6 +174,7 @@ function Session() {
         <button
           type="button"
           className={mode === 'learn' ? 'active' : ''}
+          aria-selected={mode === 'learn'}
           aria-pressed={mode === 'learn'}
           onClick={() => setMode('learn')}
         >
@@ -169,28 +182,33 @@ function Session() {
         </button>
       </nav>
 
-      {mode === 'today' ? (
-        tier === 'warmup' ? (
-          <Warmup
-            key={roleVersion}
-            onComplete={handleWarmupComplete}
-            onEmpty={handleWarmupEmpty}
-          />
+      <main className="workspace">
+        {mode === 'today' ? (
+          <div className="today">
+            {tier === 'warmup' ? (
+              <Warmup
+                key={roleVersion}
+                onComplete={handleWarmupComplete}
+                onEmpty={handleWarmupEmpty}
+              />
+            ) : (
+              <Landing
+                status={status}
+                onStartMain={() => setMode('practice')}
+                onViewReadiness={() => setMode('readiness')}
+              />
+            )}
+            <DayRibbon dayComplete={status?.dayComplete ?? false} />
+          </div>
+        ) : mode === 'readiness' ? (
+          <Readiness streak={status?.streak} />
+        ) : mode === 'practice' ? (
+          <Practice dayComplete={status?.dayComplete ?? false} onSolved={handleMainSolved} />
         ) : (
-          <Landing
-            status={status}
-            onStartMain={() => setMode('practice')}
-            onViewReadiness={() => setMode('readiness')}
-          />
-        )
-      ) : mode === 'readiness' ? (
-        <Readiness streak={status?.streak} />
-      ) : mode === 'practice' ? (
-        <Practice dayComplete={status?.dayComplete ?? false} onSolved={handleMainSolved} />
-      ) : (
-        <Lesson />
-      )}
-    </main>
+          <Lesson />
+        )}
+      </main>
+    </div>
   )
 }
 
@@ -261,15 +279,20 @@ function Landing({
   }
 
   return (
-    <section className="day-complete">
+    <section className="card finish day-complete">
+      <svg className="checkmark" viewBox="0 0 78 78" aria-hidden="true">
+        <circle cx="39" cy="39" r="35" />
+        <path d="M24 40.5 L34.5 51 L55 28" />
+      </svg>
       <h1>Day complete</h1>
-      <p className="status up">
+      <p className="status up lede">
         Your warm-up is done - that is today done.{streak > 0 ? ` ${streak}-day streak.` : ''}
       </p>
       <p className="hints-note">
         Finishing the warm-up is the whole daily goal. Everything below is a bonus; skipping
         it keeps your day complete and your streak intact.
       </p>
+      <Confetti />
 
       <section className="main-offer">
         <h2>Optional: a main exercise</h2>

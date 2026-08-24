@@ -359,7 +359,14 @@ class AttemptControllerTest {
                 com.sweprep.backend.exercise.Complexity.LINEAR,
                 com.sweprep.backend.exercise.Complexity.CONSTANT,
                 new com.sweprep.backend.complexity.MeasurementOutcome.Conclusive(
-                        com.sweprep.backend.complexity.ComplexityBucket.LINEAR, 1.02)));
+                        com.sweprep.backend.complexity.ComplexityBucket.LINEAR,
+                        1.02,
+                        0.06,
+                        java.util.List.of(
+                                new com.sweprep.backend.complexity.ComplexityClassifier.SizeTiming(
+                                        1000, 140_000),
+                                new com.sweprep.backend.complexity.ComplexityClassifier.SizeTiming(
+                                        32000, 4_380_000)))));
 
         mockMvc.perform(post("/api/attempts/" + id + "/complexity")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -374,7 +381,14 @@ class AttemptControllerTest {
                 // honest vocabulary; the editor's own copy layers the "consistent with
                 // your claim" wording on top of this.
                 .andExpect(jsonPath("$.detail").doesNotExist())
-                .andExpect(jsonPath("$.attempt.complexityClaimCorrect").value(true));
+                .andExpect(jsonPath("$.attempt.complexityClaimCorrect").value(true))
+                // The Direction A graft's log-log plot (issue #90) draws from these
+                // rather than re-measuring or re-deriving anything client-side.
+                .andExpect(jsonPath("$.exponent").value(1.02))
+                .andExpect(jsonPath("$.confidenceHalfWidth").value(0.06))
+                .andExpect(jsonPath("$.points.length()").value(2))
+                .andExpect(jsonPath("$.points[0].size").value(1000))
+                .andExpect(jsonPath("$.points[0].millis").value(0.14));
     }
 
     @Test
@@ -388,7 +402,14 @@ class AttemptControllerTest {
                 com.sweprep.backend.exercise.Complexity.LINEAR,
                 com.sweprep.backend.exercise.Complexity.CONSTANT,
                 new com.sweprep.backend.complexity.MeasurementOutcome.Conclusive(
-                        com.sweprep.backend.complexity.ComplexityBucket.QUADRATIC, 2.01)));
+                        com.sweprep.backend.complexity.ComplexityBucket.QUADRATIC,
+                        2.01,
+                        0.08,
+                        java.util.List.of(
+                                new com.sweprep.backend.complexity.ComplexityClassifier.SizeTiming(
+                                        1000, 140_000),
+                                new com.sweprep.backend.complexity.ComplexityClassifier.SizeTiming(
+                                        32000, 4_380_000)))));
 
         mockMvc.perform(post("/api/attempts/" + id + "/complexity")
                         .contentType(MediaType.APPLICATION_JSON)

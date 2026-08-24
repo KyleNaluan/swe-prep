@@ -1,6 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Editor from '@monaco-editor/react'
 import { apiFetch, errorMessage } from './api'
+import TreeBrowser, { type FilterGroup } from './TreeBrowser'
+import { familyLabel } from './familyLabels'
+import { APP_NAME } from './appName'
+import { usePrefersDark } from './usePrefersDark'
 
 // The practice surface: the optional main exercise and the open continuation that follow
 // the warm-up (issue #19, tiers 2 and 3). It is one uncapped browse-and-solve editor -
@@ -21,7 +25,22 @@ type Summary = {
   domain: string
   difficulty: string
   form: string
+  // Both optional on the wire type since older fixtures/tests predate them; TreeBrowser
+  // treats an absent value as "untagged" rather than throwing.
+  topics?: string[]
+  family?: string[]
 }
+
+const DIFFICULTY_FILTER_GROUP: FilterGroup = {
+  key: 'difficulty',
+  label: 'Difficulty',
+  options: [
+    { value: 'EASY', label: 'Easy' },
+    { value: 'MEDIUM', label: 'Medium' },
+    { value: 'HARD', label: 'Hard' },
+  ],
+}
+const ALL_DIFFICULTIES = new Set(DIFFICULTY_FILTER_GROUP.options.map((o) => o.value))
 
 type ResponseSpec =
   | { kind: 'code'; language: string; stub: string }
@@ -95,6 +114,10 @@ const COMPLEXITY_LABELS: Record<Complexity, string> = {
 // measurement status. Per the honesty constraint (issue #17), "CONSISTENT" is worded
 // by the editor as "measured scaling is consistent with your claim", never "correct";
 // "INCONCLUSIVE" is its own first-class outcome, never silently treated as a pass.
+// One measured point on the Direction A graft's log-log plot: an input size and its
+// runtime in milliseconds.
+type MeasurementPoint = { size: number; millis: number }
+
 type ComplexityResponse = {
   targetTime: Complexity
   targetSpace: Complexity
@@ -105,6 +128,13 @@ type ComplexityResponse = {
   // "missing API key means the feature is absent, not broken": there is simply no
   // button to show, never a button that fails when pressed.
   modelOpinionAvailable: boolean
+  // Present only alongside a measured status (CONSISTENT/CONTRADICTED) - the fitted
+  // log-log slope, its confidence half-width, and the (size, ms) points it was drawn
+  // from (issue #90's graft from Direction A). Absent for SKIPPED/INCONCLUSIVE, since
+  // there is either no measurement or not enough of one to draw a fit from.
+  exponent?: number
+  confidenceHalfWidth?: number
+  points?: MeasurementPoint[]
 }
 
 // The response from POST .../complexity/model-opinion (issue #83): the model's own
@@ -238,9 +268,23 @@ function Practice({
   dayComplete?: boolean
   onSolved?: () => void
 }) {
+  // Monaco has its own theme, separate from the page's CSS (issue #90) - see
+  // usePrefersDark's own doc for why this can't just be a stylesheet rule.
+  const prefersDark = usePrefersDark()
   const [catalog, setCatalog] = useState<Summary[] | null>(null)
   const [catalogError, setCatalogError] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+
+  // The TreeBrowser's difficulty and family filters (issue #90), each its own labeled
+  // group per the captain's refinement. Both default to "everything active" - nothing
+  // is suppressed before a choice is made - and toggling either is a prop change into
+  // TreeBrowser, never a reset of which tree node is open (the captain's other,
+  // binding refinement: a filter re-filters in place).
+  const [difficultyFilter, setDifficultyFilter] = useState<Set<string>>(
+    () => new Set(ALL_DIFFICULTIES),
+  )
+  const [familyFilter, setFamilyFilter] = useState<Set<string>>(() => new Set())
+  const familyFilterSeeded = useRef(false)
 
   // The language a code exercise is solved in (issue #26). Java is the default,
   // matching the backend's own default when none is sent; a SQL/choice/free-text
@@ -309,6 +353,10 @@ function Practice({
   // The active sitting for the selected exercise. Held in a ref so the selection
   // effect's cleanup can abandon it on switch-away without re-subscribing.
   const attemptRef = useRef<{ id: string; solved: boolean } | null>(null)
+  // Scrolled into view on every TreeBrowser selection (issue #90) - the grid above it
+  // can run to hundreds of cards, so without this a freshly picked exercise could
+  // land far below the fold.
+  const exerciseSectionRef = useRef<HTMLDivElement | null>(null)
 
   const refreshHistory = useCallback(() => {
     apiFetch(`/api/attempts`)
@@ -346,6 +394,12 @@ function Practice({
       .then(async (loaded) => {
         if (cancelled) return
         setCatalog(loaded)
+        if (!familyFilterSeeded.current) {
+          familyFilterSeeded.current = true
+          const seen = new Set<string>()
+          loaded.forEach((summary) => summary.family?.forEach((f) => seen.add(f)))
+          setFamilyFilter(seen)
+        }
         if (loaded.length === 0) return
         setSelectedId(await pickMain(loaded))
       })
@@ -706,10 +760,54 @@ function Practice({
     refreshHistory()
   }
 
+  // The family filter group is built from whatever family tags the loaded catalog
+  // actually carries - no fixed enum baked into the client, so an untagged content set
+  // simply shows no family group at all rather than a row of always-inactive chips.
+  const familyOptions = useMemo(() => {
+    const seen = new Set<string>()
+    catalog?.forEach((summary) => summary.family?.forEach((f) => seen.add(f)))
+    return [...seen].sort()
+  }, [catalog])
+
+  const filterGroups: FilterGroup[] = useMemo(() => {
+    const groups = [DIFFICULTY_FILTER_GROUP]
+    if (familyOptions.length > 0) {
+      groups.push({
+        key: 'family',
+        label: 'Family',
+        options: familyOptions.map((f) => ({ value: f, label: familyLabel(f) })),
+      })
+    }
+    return groups
+  }, [familyOptions])
+
+  const activeFilters = useMemo(
+    () => ({ difficulty: difficultyFilter, family: familyFilter }),
+    [difficultyFilter, familyFilter],
+  )
+
+  const onToggleFilter = useCallback((groupKey: string, value: string) => {
+    const setter = groupKey === 'family' ? setFamilyFilter : setDifficultyFilter
+    setter((prev) => {
+      const next = new Set(prev)
+      if (next.has(value)) next.delete(value)
+      else next.add(value)
+      return next
+    })
+  }, [])
+
+  // Real per-exercise completion from this user's own attempt history - never a
+  // fabricated per-item signal (issue #7). Practice already loads this for the
+  // history table below, so the tree's completion bars are free.
+  const solvedIds = useMemo(
+    () => new Set(history.filter((a) => a.outcome === 'SOLVED').map((a) => a.exerciseId)),
+    [history],
+  )
+
   if (catalogError) {
     return (
       <>
-        <h1>swe-prep</h1>
+        <h1>{APP_NAME}</h1>
         <p className="status down">Could not load exercises: {catalogError}</p>
       </>
     )
@@ -718,7 +816,7 @@ function Practice({
   if (!catalog) {
     return (
       <>
-        <h1>swe-prep</h1>
+        <h1>{APP_NAME}</h1>
         <p className="status loading">Loading exercises...</p>
       </>
     )
@@ -726,32 +824,53 @@ function Practice({
 
   return (
     <>
-      <p className="continuation-note">
-        {dayComplete ? 'Your day is already complete - ' : ''}Take on a main exercise, then keep
-        going as long as you like. There is no cap here.
-      </p>
-
-      <div className="picker">
-        <label htmlFor="exercise-select">Exercise</label>
-        <select
-          id="exercise-select"
-          value={selectedId ?? ''}
-          disabled={run.phase === 'running'}
-          onChange={(event) => setSelectedId(event.target.value)}
-        >
-          {catalog.map((summary) => (
-            <option key={summary.id} value={summary.id}>
-              {summary.title} · {summary.domain} · {summary.difficulty}
-            </option>
-          ))}
-        </select>
+      <div className="browsehead">
+        <div>
+          <h1>Practice</h1>
+          <p>
+            {dayComplete ? 'Your day is already complete - ' : ''}Take on a main exercise, then
+            keep going as long as you like. There is no cap here.
+          </p>
+        </div>
       </div>
 
+      <TreeBrowser
+        items={catalog.map((summary) => ({
+          id: summary.id,
+          title: summary.title,
+          domain: summary.domain,
+          difficulty: summary.difficulty,
+          topics: summary.topics ?? [],
+          family: summary.family ?? [],
+        }))}
+        filterGroups={filterGroups}
+        activeFilters={activeFilters}
+        onToggleFilter={onToggleFilter}
+        selectedId={selectedId}
+        onSelect={(item) => {
+          setSelectedId(item.id)
+          // The grid above can run to hundreds of cards (issue #90 kept Practice's
+          // existing unfiltered catalog scope - only the navigation changed), so
+          // without this a selection could land far below the fold, behind the very
+          // grid the solver just picked from. The old flat `<select>` never had this
+          // problem: it was only ever a few lines tall.
+          exerciseSectionRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' })
+        }}
+        findLabel="Find a problem"
+        findPlaceholder="two sum, koko, window…"
+        emptyMessage="No exercises available."
+        sectionLabel="Practice"
+        itemNoun="problem"
+        solvedIds={solvedIds}
+      />
+
+      <div ref={exerciseSectionRef}>
       {loadError && <p className="status down">Could not load the exercise: {loadError}</p>}
       {!exercise && !loadError && <p className="status loading">Loading exercise...</p>}
 
       {exercise && (
-        <>
+        <div className="exgrid">
+        <div className="card exl">
           <header>
             <h1>{exercise.title}</h1>
             {exercise.response.kind === 'code' ? (
@@ -790,6 +909,7 @@ function Practice({
                     // mount, so the editor must remount to actually show the new one.
                     key={`${exercise.id}:${exercise.response.language}`}
                     height="360px"
+                    theme={prefersDark ? 'vs-dark' : 'light'}
                     defaultLanguage={exercise.response.language}
                     defaultValue={exercise.response.stub}
                     onChange={(value) => {
@@ -926,8 +1046,10 @@ function Practice({
               />
             </>
           )}
-        </>
+        </div>
+        </div>
       )}
+      </div>
 
       <History attempts={history} />
     </>
@@ -1283,6 +1405,120 @@ function RevealPanel({
 // result are revealed. Articulating complexity before seeing the answer is the
 // interview skill this trains, so the claim is a real gate, not a formality: the
 // target simply is not in this page's hands until the claim is submitted.
+// The Direction A graft (issue #90): "the app measures scaling empirically and
+// currently reports it as the word CONSISTENT. Drawing the curve is the most
+// interesting screen in the product and it is free: ScalingMeasurer already has the
+// per-size medians." Renders straight from the measurement data the backend now
+// returns - no re-measuring, no re-deriving anything client-side. Log-log axes, so a
+// true power-law relationship (time ~ size^p) plots as a straight line of slope p.
+function ComplexityPlot({
+  points,
+  exponent,
+  confidenceHalfWidth,
+}: {
+  points: MeasurementPoint[]
+  exponent?: number
+  confidenceHalfWidth?: number
+}) {
+  const sizes = points.map((p) => p.size)
+  const millis = points.map((p) => Math.max(p.millis, 0.001)) // guard log(0)
+  const minSize = Math.min(...sizes)
+  const maxSize = Math.max(...sizes)
+  const minMs = Math.min(...millis)
+  const maxMs = Math.max(...millis)
+  // Pad the axes a little past the data so the outermost points are never drawn on
+  // the plot's own border.
+  const logMinX = Math.log(minSize) - 0.2
+  const logMaxX = Math.log(maxSize) + 0.2
+  const logMinY = Math.log(minMs) - 0.3
+  const logMaxY = Math.log(maxMs) + 0.3
+  const width = 524
+  const height = 216
+  const left = 52
+  const right = 504
+  const top = 20
+  const bottom = 186
+  const x = (size: number) => left + ((Math.log(size) - logMinX) / (logMaxX - logMinX)) * (right - left)
+  const y = (ms: number) => bottom - ((Math.log(ms) - logMinY) / (logMaxY - logMinY)) * (bottom - top)
+
+  const sorted = [...points].sort((a, b) => a.size - b.size)
+  const first = sorted[0]
+  const last = sorted[sorted.length - 1]
+
+  return (
+    <div className="plot">
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        role="img"
+        aria-label={`Log-log plot of runtime against input size${
+          exponent !== undefined ? `, slope ${exponent.toFixed(2)}` : ''
+        }`}
+      >
+        {[0, 1, 2, 3, 4].map((i) => (
+          <line
+            key={i}
+            x1={left}
+            y1={top + i * ((bottom - top) / 4)}
+            x2={right}
+            y2={top + i * ((bottom - top) / 4)}
+            stroke="var(--line2)"
+            strokeWidth="1"
+            opacity="0.55"
+          />
+        ))}
+        <line x1={left} y1={bottom} x2={right} y2={bottom} stroke="var(--line2)" strokeWidth="1.4" />
+        <line x1={left} y1={top} x2={left} y2={bottom} stroke="var(--line2)" strokeWidth="1.4" />
+        {exponent !== undefined && (
+          <line
+            x1={x(first.size)}
+            y1={y(Math.max(first.millis, 0.001))}
+            x2={x(last.size)}
+            y2={y(
+              Math.max(
+                Math.exp(Math.log(Math.max(first.millis, 0.001)) + exponent * (Math.log(last.size) - Math.log(first.size))),
+                0.001,
+              ),
+            )}
+            stroke="var(--emerald)"
+            strokeWidth="2"
+          />
+        )}
+        {points.map((p, i) => (
+          <circle key={i} cx={x(p.size)} cy={y(Math.max(p.millis, 0.001))} r="4" fill="var(--primary)" />
+        ))}
+        {sorted.map((p) => (
+          <text
+            key={p.size}
+            x={x(p.size)}
+            y={bottom + 17}
+            textAnchor="middle"
+            fontSize="10"
+            fill="var(--faint)"
+            fontFamily="var(--mono)"
+          >
+            {p.size >= 1000 ? `${p.size / 1000}k` : p.size}
+          </text>
+        ))}
+        <text x={left} y={13} fontSize="10" fill="var(--faint)" fontFamily="var(--mono)">
+          runtime, ms (log scale) vs input size (log scale)
+        </text>
+        {exponent !== undefined && (
+          <text x={left + 66} y={y(maxMs) + 22} fontSize="11.5" fill="var(--emerald)" fontFamily="var(--mono)" fontWeight="700">
+            slope {exponent.toFixed(2)}
+            {confidenceHalfWidth !== undefined ? ` ± ${confidenceHalfWidth.toFixed(2)}` : ''}
+          </text>
+        )}
+      </svg>
+      <p className="note">
+        {points.length} input sizes measured, fitted on log-log axes.
+        {exponent !== undefined && confidenceHalfWidth !== undefined
+          ? ` A slope of ${exponent.toFixed(2)} with a confidence interval of ±${confidenceHalfWidth.toFixed(2)} sits inside one growth-rate band, so the measurement is consistent with the reported bucket. It could never separate O(n) from O(n log n), and it does not pretend to.`
+          : ''}
+      </p>
+    </div>
+  )
+}
+
 function ComplexityPanel({
   timeClaim,
   spaceClaim,
@@ -1338,6 +1574,13 @@ function ComplexityPanel({
         )}
         {result.status === 'SKIPPED' && (
           <p className="hints-note">This exercise has no automated scaling check for your claim.</p>
+        )}
+        {result.points && result.points.length >= 2 && (
+          <ComplexityPlot
+            points={result.points}
+            exponent={result.exponent}
+            confidenceHalfWidth={result.confidenceHalfWidth}
+          />
         )}
         {result.modelOpinionAvailable && (
           <ModelOpinionSection

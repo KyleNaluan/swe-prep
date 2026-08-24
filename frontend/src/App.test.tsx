@@ -59,7 +59,17 @@ const CHOICE_EXERCISE = {
 // tab first.
 async function gotoPractice() {
   fireEvent.click(screen.getByRole('button', { name: 'Practice' }))
-  await screen.findByLabelText('Exercise')
+  await screen.findByLabelText('Find a problem')
+}
+
+// Selects an exercise through the TreeBrowser (issue #90's replacement for the old flat
+// `<select id="exercise-select">`): search narrows the tree to a cross-domain match, then
+// the matching item card is clicked. The two-item CATALOG below spans two domains, so
+// this is the only reliable way to reach the second exercise without first knowing -
+// and clicking into - the domain it happens to live under.
+function selectExercise(title: string) {
+  fireEvent.change(screen.getByLabelText('Find a problem'), { target: { value: title } })
+  fireEvent.click(screen.getByRole('button', { name: new RegExp(title) }))
 }
 
 function mockFetch(run: unknown, runOk = true) {
@@ -161,7 +171,7 @@ describe('App', () => {
     await gotoPractice()
     await screen.findByRole('heading', { name: 'Two Sum' })
 
-    fireEvent.change(screen.getByLabelText('Exercise'), { target: { value: 'hashmap-lookup' } })
+    selectExercise('Hash Map Lookup')
 
     expect(await screen.findByRole('heading', { name: 'Hash Map Lookup' })).toBeInTheDocument()
     // A choice exercise shows options, not the code editor.
@@ -418,7 +428,7 @@ describe('App', () => {
     render(<App />)
     await gotoPractice()
     await screen.findByRole('heading', { name: 'Two Sum' })
-    fireEvent.change(screen.getByLabelText('Exercise'), { target: { value: 'hashmap-lookup' } })
+    selectExercise('Hash Map Lookup')
     await screen.findByRole('heading', { name: 'Hash Map Lookup' })
 
     fireEvent.click(screen.getByLabelText('O(n)'))
@@ -466,7 +476,7 @@ describe('App', () => {
     render(<App />)
     await gotoPractice()
     await screen.findByRole('heading', { name: 'Two Sum' })
-    fireEvent.change(screen.getByLabelText('Exercise'), { target: { value: 'hashmap-lookup' } })
+    selectExercise('Hash Map Lookup')
     await screen.findByRole('heading', { name: 'Hash Map Lookup' })
 
     fireEvent.click(screen.getByLabelText('O(1)'))

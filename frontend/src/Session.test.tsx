@@ -142,6 +142,14 @@ function mockFetch(
   })
 }
 
+// Selects an exercise through the TreeBrowser (issue #90's replacement for the old flat
+// `<select id="exercise-select">`): search narrows the tree to a cross-domain match, then
+// the matching item card is clicked.
+function selectExercise(title: string) {
+  fireEvent.change(screen.getByLabelText('Find a problem'), { target: { value: title } })
+  fireEvent.click(screen.getByRole('button', { name: new RegExp(title) }))
+}
+
 // Answers the one warm-up rep correctly and finishes the set, landing on day-complete.
 async function finishWarmup() {
   fireEvent.click(await screen.findByLabelText('A'))
@@ -208,7 +216,7 @@ describe('Session (daily loop, issue #19)', () => {
     expect(screen.getByText(/keep going as long as you like/i)).toBeInTheDocument()
 
     // Continuation is uncapped: another exercise can always be picked next.
-    fireEvent.change(screen.getByLabelText('Exercise'), { target: { value: 'code-main' } })
+    selectExercise('Code Main')
     expect(await screen.findByRole('heading', { name: 'Code Main' })).toBeInTheDocument()
   })
 
