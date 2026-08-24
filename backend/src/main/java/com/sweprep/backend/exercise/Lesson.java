@@ -32,6 +32,13 @@ import java.util.List;
  * @param prompts    ungraded self-explanation prompts embedded in the lesson (issue #41);
  *                   each is read, thought about, then its model answer revealed - part of
  *                   active reading, never an attempt. Empty when the lesson has none.
+ * @param body       the lesson body as structured {@link LessonBlock}s (issue #90
+ *                   follow-on visual redesign) - headings, prose, standout examples,
+ *                   callouts, lists and tables, in reading order. Empty for a legacy
+ *                   lesson still authored only as {@code statement}; the renderer falls
+ *                   back to {@code statement} in that case. Never derived from {@code
+ *                   statement} by this type or its parser - restructuring existing prose
+ *                   into blocks is a content-authoring act, not a mechanical one.
  * @param family     the role families this content serves (design revision t3)
  * @param stability  how durable the subject matter is; {@link Stability#STABLE}
  *                   unless it rots
@@ -47,6 +54,7 @@ public record Lesson(
         Difficulty difficulty,
         List<String> checks,
         List<SelfExplainPrompt> prompts,
+        List<LessonBlock> body,
         List<Family> family,
         Stability stability,
         LocalDate reviewed) implements Content {
@@ -55,15 +63,17 @@ public record Lesson(
         topics = List.copyOf(topics);
         checks = List.copyOf(checks);
         prompts = List.copyOf(prompts);
+        body = List.copyOf(body);
         family = List.copyOf(family);
         stability = stability == null ? Stability.STABLE : stability;
     }
 
     /**
-     * Convenience constructor for a lesson with no self-explanation prompts and no
-     * content-level family or stability tags: an empty family, {@link Stability#STABLE},
-     * and no review date. These are additive metadata (design revision t3, issue #41); an
-     * untagged lesson is a stable one with no family and no prompts.
+     * Convenience constructor for a lesson with no self-explanation prompts, no
+     * structured body blocks and no content-level family or stability tags: an empty
+     * body and family, {@link Stability#STABLE}, and no review date. These are additive
+     * metadata (design revision t3, issue #41, issue #90 follow-on); an untagged lesson
+     * is a stable one authored only as plain-text {@code statement}, with no prompts.
      */
     public Lesson(
             String id,
@@ -74,6 +84,6 @@ public record Lesson(
             Difficulty difficulty,
             List<String> checks) {
         this(id, title, statement, domain, topics, difficulty, checks, List.of(), List.of(),
-                Stability.STABLE, null);
+                List.of(), Stability.STABLE, null);
     }
 }
