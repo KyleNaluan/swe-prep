@@ -1260,12 +1260,17 @@ fieldset.filtergroup {
    (verdict, hints, and every reveal). Fixed proportions, not a draggable splitter -
    noted in the PR as the deliberate, cheaper choice. Both `.ex-desc` and `.ex-results`
    scroll independently (the same sticky+max-height convention `.tree` already uses)
-   so neither a long statement nor a long results panel ever pushes the editor away. */
+   so neither a long statement nor a long results panel ever pushes the editor away.
+   `.ex-desc`'s height is deliberately NOT viewport-derived (that was the pre-fix bug:
+   it sized to its own content, so its bottom edge didn't line up with `.ex-work`'s
+   combined editor+results height). `.exgrid` drops `align-items: start` so the grid's
+   default stretch makes `.ex-desc` fill the row - which the single, taller `.ex-work`
+   column defines - and `.ex-desc` swaps its `max-height` for `height: 100%`, so it
+   matches that combined height exactly and scrolls internally past it. */
 .exgrid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 20px;
-  align-items: start;
 }
 .exl {
   padding: 24px 26px 26px;
@@ -1273,7 +1278,7 @@ fieldset.filtergroup {
 .ex-desc {
   position: sticky;
   top: 16px;
-  max-height: calc(100vh - 32px);
+  height: 100%;
   overflow-y: auto;
 }
 .ex-work {
@@ -1301,6 +1306,7 @@ fieldset.filtergroup {
   }
   .ex-desc {
     position: static;
+    height: auto;
     max-height: none;
   }
   .ex-results {
