@@ -433,6 +433,42 @@ describe('Session (daily loop, issue #19)', () => {
     expect(screen.getByLabelText('Find a problem')).toBeInTheDocument()
   })
 
+  // Regression test for the captain-reported bug: opening a content page then switching
+  // to Today or Readiness left the URL hash pointing at a page nothing renders anymore,
+  // only correcting itself on a later exercise/lesson navigation or a return to browse.
+  it('clears the content-page URL hash when switching to Today or Readiness, and Practice recovers cleanly afterward', async () => {
+    vi.stubGlobal('fetch', mockFetch({ completeWarmup: 0, abandons: [] }))
+    render(<Session />)
+    await screen.findByRole('heading', { name: 'Rep One' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Practice' }))
+    await screen.findByRole('heading', { name: 'Concept Main' })
+    expect(window.location.hash).toBe('#/practice/concept-main')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Today' }))
+
+    // The Today tab renders, and - the actual bug - the hash no longer claims a
+    // content page nothing on screen corresponds to.
+    expect(await screen.findByRole('heading', { name: 'Rep One' })).toBeInTheDocument()
+    expect(window.location.hash).toBe('')
+
+    // Same story for Readiness.
+    fireEvent.click(screen.getByRole('button', { name: 'Practice' }))
+    await screen.findByRole('heading', { name: 'Concept Main' })
+    expect(window.location.hash).toBe('#/practice/concept-main')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Readiness' }))
+
+    expect(await screen.findByRole('heading', { name: 'Readiness' })).toBeInTheDocument()
+    expect(window.location.hash).toBe('')
+
+    // Switching back to Practice still works: the mount-time auto-pick re-enters a
+    // content page normally, proving the fix does not strand Practice in a broken state.
+    fireEvent.click(screen.getByRole('button', { name: 'Practice' }))
+    expect(await screen.findByRole('heading', { name: 'Concept Main' })).toBeInTheDocument()
+    expect(window.location.hash).toBe('#/practice/concept-main')
+  })
+
   it('shows the repair nudge in the header badge when a repair is available (issue #22)', async () => {
     vi.stubGlobal('fetch', mockFetch({ completeWarmup: 0, abandons: [] }, { repairPending: true }))
     render(<Session />)

@@ -52,6 +52,31 @@ export function leaveContentEntry() {
   window.history.back()
 }
 
+// Session.tsx's top-level tab switch (Today/Readiness/Practice/Learn) is not itself a
+// history-tracked action - only entering/leaving a dedicated content page is. But a
+// content page's own hash is the *current* history entry while it's open, and switching
+// away from Practice/Learn unmounts it (Session renders exactly one surface per mode)
+// without ever popping that entry, so the address bar is left pointing at a content page
+// nothing renders anymore. Session.tsx calls this before switching to Today or Readiness
+// (never between Practice and Learn - see switchMode's own comment there for why): if a
+// content entry is currently open, it clears the hash in place (`replaceState`,
+// deliberately not `leaveContentEntry`'s `back()`) - the address bar catches up with no
+// back-navigation
+// and no history-depth change, so the back/forward stack is exactly the size it was,
+// just with a plain entry instead of a content one on top; a `back()` here would instead
+// consume a step of "back" and strand a now-orphaned "forward" entry pointing at a
+// content page that would render into whatever tab is current by the time it's reached,
+// which is worse, not safer. A later re-entry into that section's content view (a tree
+// click, or the mount-time auto-pick on switching back) pushes or replaces a fresh entry
+// from there exactly as it always has - this never runs while a section is mounted, so
+// it can never race `useContentPopState`'s own popstate handling.
+export function clearContentHashIfOpen() {
+  const state = window.history.state as ContentNavState | null
+  if (state?.view === 'content') {
+    window.history.replaceState(null, '', window.location.pathname + window.location.search)
+  }
+}
+
 // Subscribes to popstate for one section: `onEnter(id)` fires when back/forward lands
 // on that section's own content state, `onLeave()` fires for anything else - including
 // the page-load entry underneath every entry this module ever pushes, and a state
