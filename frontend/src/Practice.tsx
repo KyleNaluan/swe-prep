@@ -941,112 +941,136 @@ function Practice({
       {!exercise && !loadError && <p className="status loading">Loading exercise...</p>}
 
       {exercise && (
+        // LeetCode-style solo layout (captain direction, issue #90 follow-on): the
+        // description is its own scrollable left pane; the right column splits into a
+        // top pane (the response input - editor/free-text/choices - plus its language
+        // control and the Run/Submit actions) and a bottom pane (everything the
+        // response reports back: the verdict, the hint ladder, the failing-case/
+        // solution/complexity reveals, and the explanation). Fixed halves, not a
+        // draggable splitter - a resize handle's drag-state/persistence is a
+        // disproportionate amount of machinery for what this task needs, and fixed
+        // proportions already satisfy "reasonable... roughly half/half is fine".
+        // `.ex-desc`/`.ex-results` scroll independently (same sticky+max-height
+        // convention `.tree` already uses) so a long description or a long results
+        // panel never pushes the editor pane out of view.
         <div className="exgrid">
-        <div className="card exl">
+        <div className="card exl ex-desc">
           <header>
             <h1>{exercise.title}</h1>
-            {exercise.response.kind === 'code' ? (
-              <LanguagePicker
-                language={language}
-                languages={languages}
-                disabled={run.phase === 'running'}
-                onChange={setLanguage}
-              />
-            ) : (
-              <span className="language-tag">
-                {exercise.response.kind === 'query' ? exercise.response.language : exercise.domain}
-              </span>
-            )}
+            <span className="language-tag">{exercise.domain}</span>
           </header>
           <p className="statement">{exercise.statement}</p>
+        </div>
 
-          {exercise.response.kind === 'selfCheck' ? (
-            <SelfCheckView
-              text={text}
-              reveal={reveal}
-              rating={selfRating}
-              busy={selfCheckBusy}
-              error={selfCheckError}
-              onType={setText}
-              onReveal={handleRevealModelAnswer}
-              onRate={handleSelfRate}
-            />
-          ) : (
-            <>
-              {exercise.response.kind === 'code' || exercise.response.kind === 'query' ? (
-                <div className="editor">
-                  <Editor
-                    // Keyed on language too (issue #26): switching languages regenerates
-                    // the stub, and Monaco only applies defaultValue/defaultLanguage on
-                    // mount, so the editor must remount to actually show the new one.
-                    key={`${exercise.id}:${exercise.response.language}`}
-                    height="360px"
-                    theme={prefersDark ? 'vs-dark' : 'light'}
-                    defaultLanguage={exercise.response.language}
-                    defaultValue={exercise.response.stub}
-                    onChange={(value) => {
-                      codeRef.current = value ?? ''
-                    }}
-                    options={{ minimap: { enabled: false }, fontSize: 14 }}
+        <div className="ex-work">
+          <div className="card ex-editor">
+            {(exercise.response.kind === 'code' || exercise.response.kind === 'query') && (
+              <div className="ex-editor-bar">
+                {exercise.response.kind === 'code' ? (
+                  <LanguagePicker
+                    language={language}
+                    languages={languages}
+                    disabled={run.phase === 'running'}
+                    onChange={setLanguage}
                   />
-                </div>
-              ) : exercise.response.kind === 'freeText' ? (
-                <div className="freetext">
-                  <label htmlFor="free-answer">Type your answer</label>
-                  <input
-                    id="free-answer"
-                    type="text"
-                    className="hypothesis"
-                    value={text}
-                    disabled={solved}
-                    onChange={(event) => setText(event.target.value)}
-                  />
-                </div>
-              ) : (
-                <fieldset className="choices">
-                  <legend>Choose one</legend>
-                  {exercise.response.options.map((option) => (
-                    <label key={option} className="choice">
-                      <input
-                        type="radio"
-                        name="answer"
-                        value={option}
-                        checked={choice === option}
-                        onChange={() => setChoice(option)}
-                      />
-                      <span>{option}</span>
-                    </label>
-                  ))}
-                </fieldset>
-              )}
-
-              <div className="actions">
-                <button
-                  type="button"
-                  onClick={handleSubmit}
-                  disabled={
-                    run.phase === 'running' ||
-                    solved ||
-                    (exercise.response.kind === 'choice' && choice === null) ||
-                    (exercise.response.kind === 'freeText' && text.trim() === '')
-                  }
-                >
-                  {run.phase === 'running'
-                    ? 'Checking...'
-                    : exercise.response.kind === 'code' || exercise.response.kind === 'query'
-                      ? 'Run'
-                      : 'Submit'}
-                </button>
-                <button
-                  type="button"
-                  className="secondary"
-                  onClick={handleGiveUp}
-                  disabled={run.phase === 'running' || solved || attemptRef.current === null}
-                >
-                  Give up
-                </button>
+                ) : (
+                  <span className="language-tag">{exercise.response.language}</span>
+                )}
               </div>
+            )}
 
+            {exercise.response.kind === 'selfCheck' ? (
+              <SelfCheckView
+                text={text}
+                reveal={reveal}
+                rating={selfRating}
+                busy={selfCheckBusy}
+                error={selfCheckError}
+                onType={setText}
+                onReveal={handleRevealModelAnswer}
+                onRate={handleSelfRate}
+              />
+            ) : (
+              <>
+                {exercise.response.kind === 'code' || exercise.response.kind === 'query' ? (
+                  <div className="editor">
+                    <Editor
+                      // Keyed on language too (issue #26): switching languages regenerates
+                      // the stub, and Monaco only applies defaultValue/defaultLanguage on
+                      // mount, so the editor must remount to actually show the new one.
+                      key={`${exercise.id}:${exercise.response.language}`}
+                      height="360px"
+                      theme={prefersDark ? 'vs-dark' : 'light'}
+                      defaultLanguage={exercise.response.language}
+                      defaultValue={exercise.response.stub}
+                      onChange={(value) => {
+                        codeRef.current = value ?? ''
+                      }}
+                      options={{ minimap: { enabled: false }, fontSize: 14 }}
+                    />
+                  </div>
+                ) : exercise.response.kind === 'freeText' ? (
+                  <div className="freetext">
+                    <label htmlFor="free-answer">Type your answer</label>
+                    <input
+                      id="free-answer"
+                      type="text"
+                      className="hypothesis"
+                      value={text}
+                      disabled={solved}
+                      onChange={(event) => setText(event.target.value)}
+                    />
+                  </div>
+                ) : (
+                  <fieldset className="choices">
+                    <legend>Choose one</legend>
+                    {exercise.response.options.map((option) => (
+                      <label key={option} className="choice">
+                        <input
+                          type="radio"
+                          name="answer"
+                          value={option}
+                          checked={choice === option}
+                          onChange={() => setChoice(option)}
+                        />
+                        <span>{option}</span>
+                      </label>
+                    ))}
+                  </fieldset>
+                )}
+
+                <div className="actions">
+                  <button
+                    type="button"
+                    onClick={handleSubmit}
+                    disabled={
+                      run.phase === 'running' ||
+                      solved ||
+                      (exercise.response.kind === 'choice' && choice === null) ||
+                      (exercise.response.kind === 'freeText' && text.trim() === '')
+                    }
+                  >
+                    {run.phase === 'running'
+                      ? 'Checking...'
+                      : exercise.response.kind === 'code' || exercise.response.kind === 'query'
+                        ? 'Run'
+                        : 'Submit'}
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={handleGiveUp}
+                    disabled={run.phase === 'running' || solved || attemptRef.current === null}
+                  >
+                    Give up
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+
+          {exercise.response.kind !== 'selfCheck' && (
+            <div className="card ex-results">
               <VerdictView
                 run={run}
                 scored={exercise.response.kind !== 'code' && exercise.response.kind !== 'query'}
@@ -1116,7 +1140,7 @@ function Practice({
                 busy={explanationBusy}
                 onRequest={handleRequestExplanation}
               />
-            </>
+            </div>
           )}
         </div>
         </div>

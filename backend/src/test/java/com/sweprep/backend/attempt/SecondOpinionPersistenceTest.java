@@ -62,18 +62,26 @@ class SecondOpinionPersistenceTest {
     private ComplexityAdvisor advisor;
 
     private Exercise complexity;
+    private Exercise complexityNoGenerator;
     private Exercise concept;
 
     @BeforeEach
     void setUp() {
         complexity = Fixtures.complexityChallenge();
+        complexityNoGenerator = Fixtures.complexityChallengeWithNoGenerator();
         concept = Fixtures.concept();
         when(catalog.byId("complexity-demo")).thenReturn(Optional.of(complexity));
+        when(catalog.byId("complexity-demo-no-generator"))
+                .thenReturn(Optional.of(complexityNoGenerator));
         when(catalog.byId("concept-demo")).thenReturn(Optional.of(concept));
     }
 
     private UUID solveAndClaim(Complexity claimedTime) {
-        Attempt started = service.start("complexity-demo");
+        return solveAndClaim("complexity-demo", claimedTime);
+    }
+
+    private UUID solveAndClaim(String exerciseId, Complexity claimedTime) {
+        Attempt started = service.start(exerciseId);
         service.submit(started.id(), Fixtures.COMPLEXITY_LINEAR_SOLUTION);
         service.claimComplexity(started.id(), new ComplexityClaim(claimedTime, claimedTime));
         return started.id();
@@ -98,7 +106,13 @@ class SecondOpinionPersistenceTest {
                 .thenReturn(new ModelComplexityReading(Complexity.LINEAR, "It's a single linear scan."));
         assertThat(service.modelOpinionAvailable()).isTrue();
 
-        UUID attemptId = solveAndClaim(Complexity.LINEAR);
+        // Use the no-generator variant so the empirical measurement is deterministically
+        // skipped (an absent voice), leaving only the claim and the model, both LINEAR.
+        // The alternative - the generator-backed exercise - relies on a real timing
+        // measurement landing on LINEAR, which a loaded box can drift into a wrong
+        // conclusive bucket and spuriously read as a disagreement; this test asserts the
+        // agreement (unsafe) direction, so it must not depend on that measurement.
+        UUID attemptId = solveAndClaim("complexity-demo-no-generator", Complexity.LINEAR);
 
         ModelOpinionResult result = service.secondOpinion(attemptId);
 
