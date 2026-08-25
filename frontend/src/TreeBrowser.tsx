@@ -70,6 +70,18 @@ export type TreeBrowserProps = {
   // screen). Omitted entirely rather than faked - no per-node bar or badge renders
   // without it, since an invented progress signal is worse than none (issue #7).
   solvedIds?: Set<string>
+  // Renders a compact list of item buttons directly under a pattern node once it is
+  // expanded, in addition to the existing `.pane` item grid (issue #90 follow-on,
+  // captain decision "learn-nav-item-select"). Lesson.tsx's single, always-mounted
+  // TreeBrowser instance passes this - it is the SAME instance browse mode renders,
+  // so the compact list exists in the DOM in both modes, but `.nav-item-list` is
+  // `display: none` by default in App.css and only shown inside `.content-nav` at the
+  // nav-rail breakpoint, where `.pane` (the item grid, the only other place a
+  // lesson-select button rendered) is itself hidden - without this, the wide-viewport
+  // persistent nav rail could drill Area/Pattern but never actually open a different
+  // lesson. Left `undefined`/`false` (the default) for Practice and every existing
+  // caller, so nothing here changes their rendered item buttons.
+  compactNavList?: boolean
 }
 
 function passesFilters(
@@ -138,6 +150,7 @@ function TreeBrowser({
   sectionLabel,
   itemNoun,
   solvedIds,
+  compactNavList,
 }: TreeBrowserProps) {
   const [find, setFind] = useState('')
   const [openDomain, setOpenDomain] = useState<string | null>(null)
@@ -262,25 +275,47 @@ function TreeBrowser({
                 {open &&
                   groupByPattern(group.items).map((pattern) => {
                     const ppct = completion(pattern.items, solvedIds)
+                    const patternOpen = openPattern === pattern.topic
                     return (
-                      <button
-                        type="button"
-                        key={pattern.topic}
-                        className="node l2"
-                        aria-current={openPattern === pattern.topic}
-                        onClick={() => {
-                          initialDomainPinned.current = true
-                          setOpenPattern(openPattern === pattern.topic ? null : pattern.topic)
-                        }}
-                      >
-                        <span className="nm">{topicLabel(pattern.topic)}</span>
-                        {ppct !== null && (
-                          <span className="prog">
-                            <i style={{ width: `${(ppct * 100).toFixed(0)}%` }} />
-                          </span>
+                      <div key={pattern.topic}>
+                        <button
+                          type="button"
+                          className="node l2"
+                          aria-current={patternOpen}
+                          onClick={() => {
+                            initialDomainPinned.current = true
+                            setOpenPattern(patternOpen ? null : pattern.topic)
+                          }}
+                        >
+                          <span className="nm">{topicLabel(pattern.topic)}</span>
+                          {ppct !== null && (
+                            <span className="prog">
+                              <i style={{ width: `${(ppct * 100).toFixed(0)}%` }} />
+                            </span>
+                          )}
+                          <span className="ct">{pattern.items.length}</span>
+                        </button>
+                        {/* The nav-rail's own selectable list (see `compactNavList`'s
+                            doc above) - scoped to this one expanded pattern's items
+                            only, matching `.pane`'s own activePattern.items scoping. */}
+                        {compactNavList && patternOpen && (
+                          <div className="nav-item-list">
+                            {pattern.items.map((item) => (
+                              <button
+                                type="button"
+                                key={item.id}
+                                className="nav-item"
+                                aria-current={selectedId === item.id}
+                                onClick={() =>
+                                  onSelect(item, { domain: item.domain, pattern: pattern.topic })
+                                }
+                              >
+                                {item.title}
+                              </button>
+                            ))}
+                          </div>
                         )}
-                        <span className="ct">{pattern.items.length}</span>
-                      </button>
+                      </div>
                     )
                   })}
               </div>

@@ -290,6 +290,11 @@ function Lesson() {
           emptyMessage="No lessons available."
           sectionLabel="Learn"
           itemNoun="concept"
+          // The wide-viewport persistent nav rail hides `.pane` (see App.css), which
+          // would otherwise be the only place a lesson-select button rendered -
+          // without this, drilling into a pattern in the rail could never actually
+          // open a different lesson (captain decision "learn-nav-item-select").
+          compactNavList
         />
       </div>
 
