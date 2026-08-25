@@ -10,6 +10,7 @@ import RolePicker from './RolePicker'
 import Readiness from './Readiness'
 import DayRibbon from './DayRibbon'
 import Confetti from './Confetti'
+import { clearContentHashIfOpen } from './contentNav'
 
 // The daily session loop (issue #19) - the product the rest of the machinery serves.
 //
@@ -50,6 +51,22 @@ type Tier = 'warmup' | 'landing'
 function Session() {
   const [mode, setMode] = useState<Mode>('today')
   const [tier, setTier] = useState<Tier>('warmup')
+  // Every top-level tab switch goes through this rather than setMode directly. Switching
+  // to Today or Readiness unmounts whichever of Practice/Learn is currently mounted
+  // without either ever popping its own content entry, so a content page left open would
+  // otherwise strand the URL hash pointing at a page nothing renders anymore (see
+  // contentNav.ts's clearContentHashIfOpen) - a no-op when no content page is open, so
+  // every such call site can route through it with no conditional of its own. Switching
+  // *between* Practice and Learn must NOT clear first: each mounts with its own
+  // mount-time auto-pick (enterAutoPickedContent), which already replaces a still-open
+  // content entry in place rather than pushing a second one - clearing here first would
+  // erase the "already on a content entry" signal that replace-in-place depends on and
+  // silently turn every Practice<->Learn switch back into an accumulating push (see
+  // Session.test.tsx's "keeps history depth constant across Practice<->Learn switches").
+  const switchMode = useCallback((next: Mode) => {
+    if (next === 'today' || next === 'readiness') clearContentHashIfOpen()
+    setMode(next)
+  }, [])
   const [status, setStatus] = useState<SessionStatus | null>(null)
   // Whether today's warm-up set came back empty. When it does there are no reps to finish
   // the day, so completing a single Practice exercise becomes the fallback that banks it -
@@ -151,7 +168,7 @@ function Session() {
           className={mode === 'today' ? 'active' : ''}
           aria-selected={mode === 'today'}
           aria-pressed={mode === 'today'}
-          onClick={() => setMode('today')}
+          onClick={() => switchMode('today')}
         >
           Today
         </button>
@@ -160,7 +177,7 @@ function Session() {
           className={mode === 'readiness' ? 'active' : ''}
           aria-selected={mode === 'readiness'}
           aria-pressed={mode === 'readiness'}
-          onClick={() => setMode('readiness')}
+          onClick={() => switchMode('readiness')}
         >
           Readiness
         </button>
@@ -169,7 +186,7 @@ function Session() {
           className={mode === 'practice' ? 'active' : ''}
           aria-selected={mode === 'practice'}
           aria-pressed={mode === 'practice'}
-          onClick={() => setMode('practice')}
+          onClick={() => switchMode('practice')}
         >
           Practice
         </button>
@@ -178,7 +195,7 @@ function Session() {
           className={mode === 'learn' ? 'active' : ''}
           aria-selected={mode === 'learn'}
           aria-pressed={mode === 'learn'}
-          onClick={() => setMode('learn')}
+          onClick={() => switchMode('learn')}
         >
           Learn
         </button>
@@ -196,8 +213,8 @@ function Session() {
             ) : (
               <Landing
                 status={status}
-                onStartMain={() => setMode('practice')}
-                onViewReadiness={() => setMode('readiness')}
+                onStartMain={() => switchMode('practice')}
+                onViewReadiness={() => switchMode('readiness')}
               />
             )}
             <DayRibbon dayComplete={status?.dayComplete ?? false} />

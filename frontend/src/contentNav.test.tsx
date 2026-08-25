@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
+  clearContentHashIfOpen,
   leaveContentEntry,
   pushContentEntry,
   useBrowseContentScroll,
@@ -102,5 +103,34 @@ describe('contentNav (dedicated content pages)', () => {
     )
 
     expect(await screen.findByText('view: browse')).toBeInTheDocument()
+  })
+
+  // Regression coverage for the "URL hash keeps pointing at a content page after
+  // switching to Today/Readiness" bug: Session.tsx's tab switch unmounts Practice/Learn
+  // without either ever popping its own content entry, so clearContentHashIfOpen is what
+  // the tab switch calls instead - a direct, non-React-harness test of the mechanism
+  // itself, the same shape the other tests here give pushContentEntry/leaveContentEntry.
+  describe('clearContentHashIfOpen', () => {
+    it('clears the hash and state in place, with no history-depth change, when a content page is open', () => {
+      pushContentEntry('practice', 'two-sum')
+      expect(window.location.hash).toBe('#/practice/two-sum')
+      const before = window.history.length
+
+      clearContentHashIfOpen()
+
+      expect(window.location.hash).toBe('')
+      expect(window.history.state).toBeNull()
+      expect(window.history.length).toBe(before)
+    })
+
+    it('is a no-op when no content page is open', () => {
+      window.history.replaceState(null, '', '/some/browse/path')
+      const before = window.history.length
+
+      clearContentHashIfOpen()
+
+      expect(window.location.pathname).toBe('/some/browse/path')
+      expect(window.history.length).toBe(before)
+    })
   })
 })
