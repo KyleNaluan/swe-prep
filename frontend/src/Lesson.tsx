@@ -248,10 +248,24 @@ function Lesson() {
         </div>
       </div>
 
-      {/* Always rendered, only hidden while a content page is open (issue carrying
-          Direction A's page pattern into Direction C - AGENTS.md) - never unmounted,
-          so scroll position, expanded nodes and filters need no restore at all. */}
-      <div style={view === 'content' ? { display: 'none' } : undefined}>
+      {/* Captain direction (issue #90 follow-on): Learn shows the tree as a persistent,
+          LIVE left nav column beside an open lesson on a wide viewport, rather than
+          hiding it entirely - the wide-card "half empty" symptom the centering
+          approach was rejected for. `.content-layout`'s CSS (App.css) does the actual
+          layout switch off `data-view`; below its breakpoint this collapses back to
+          the plain one-pane-at-a-time behavior (nav reachable via the breadcrumb).
+          Practice deliberately keeps its own single-pane focused view instead (see
+          Practice.tsx) - this wrapper is Learn-only.
+
+          Both `.content-nav` and `.content-pane-wrap` stay mounted at all times, same
+          as before this change - only which one is hidden (by CSS now, not an inline
+          style) depends on `view`. TreeBrowser is the exact same mounted instance browse
+          mode uses; nothing here remounts it, so its scroll/expanded-node/filter state
+          (kept as TreeBrowser's own internal state, never a prop) survives the switch
+          untouched, and a selection here is a genuine navigation (`pushContentEntry`),
+          not a bypass of PR #93's contentNav history model. */}
+      <div className="content-layout" data-view={view}>
+      <div className="content-nav">
         <TreeBrowser
           items={catalog.map((summary) => ({
             id: summary.id,
@@ -276,15 +290,21 @@ function Lesson() {
           emptyMessage="No lessons available."
           sectionLabel="Learn"
           itemNoun="concept"
+          // The wide-viewport persistent nav rail hides `.pane` (see App.css), which
+          // would otherwise be the only place a lesson-select button rendered -
+          // without this, drilling into a pattern in the rail could never actually
+          // open a different lesson (captain decision "learn-nav-item-select").
+          compactNavList
         />
       </div>
 
-      {/* Always mounted, only hidden while browsing (issue carrying Direction A's page
-          pattern into Direction C - AGENTS.md) - never conditionally rendered, exactly
-          like the tree pane above and Practice's own content page. The lesson body is
-          stateless today, but keeping it mounted avoids the same conditional-unmount
-          class of bug the moment it ever becomes stateful. */}
-      <div style={view === 'browse' ? { display: 'none' } : undefined}>
+      {/* Hidden by an inline style, not CSS, while browsing: CSS-file rules never apply
+          under jsdom (vitest's `test.css` is off by default), and the existing tests
+          assert this pane actually leaves the accessibility tree on that transition -
+          the same reason the pre-existing browse/content toggle always used inline
+          style rather than a class. The nav's own content-view visibility (below) can
+          safely stay CSS/media-query-only since nothing tests it directly. */}
+      <div className="content-pane-wrap" style={view === 'browse' ? { display: 'none' } : undefined}>
       <ContentPage crumbs={crumbs}>
       {loadError && <p className="status down">Could not load the lesson: {loadError}</p>}
       {!lesson && !loadError && <p className="status loading">Loading lesson...</p>}
@@ -314,6 +334,7 @@ function Lesson() {
         </div>
       )}
       </ContentPage>
+      </div>
       </div>
     </>
   )

@@ -380,12 +380,22 @@ button.secondary:hover:not(:disabled) {
   color: var(--faint);
   line-height: 1.55;
 }
-.statement,
 .qtext {
   font-size: 16px;
   line-height: 1.65;
   color: var(--ink);
   max-width: 68ch;
+  margin: 12px 0 20px;
+}
+/* The exercise/problem statement on Practice's dedicated content page (issue #90
+   follow-on) deliberately carries no measure cap, on the captain's explicit
+   instruction: Practice keeps its focused full-page view with no side nav (unlike
+   Learn, see .lesson-nav-layout below), so the statement stretches across the whole
+   card instead. */
+.statement {
+  font-size: 16px;
+  line-height: 1.65;
+  color: var(--ink);
   margin: 12px 0 20px;
 }
 
@@ -1162,15 +1172,140 @@ fieldset.filtergroup {
   color: var(--faint);
 }
 
-/* ---------- exercise view ---------- */
+/* ---------- Learn: persistent left nav beside content (captain direction change,
+   issue #90 follow-on) ----------
+   Simply centering the measure-capped lesson body (the first pass at this fix) still
+   left a wide card looking mostly empty. Learn now shows the tree browser as a live,
+   persistent left column next to an open lesson instead - the SAME mounted
+   TreeBrowser instance browse mode uses (Lesson.tsx never remounts it), so its
+   scroll/expanded-node/filter state carries over untouched. Only the item-grid `.pane`
+   half is hidden in this mode, leaving the find/filter/tree list as the rail; `.browse`'s
+   own two-column grid is overridden to a single column since only one child remains.
+   Practice deliberately keeps its own single-pane focused view (no side nav, per the
+   captain's explicit call) - `.content-layout` is Learn-only, so Practice is untouched.
+   Below the breakpoint this collapses to the original one-pane-at-a-time behavior,
+   matching the pre-existing `.browse` breakpoint below.
+
+   `.content-pane-wrap`'s browse-mode hide is an inline style in Lesson.tsx, not a rule
+   here - CSS-file rules never apply under jsdom (vitest's `test.css` is off by
+   default), and an existing test asserts that pane actually leaves the accessibility
+   tree on the browse transition. `.content-nav`'s content-mode hide has no such test,
+   so it stays CSS/media-query-only.
+
+   Hiding `.pane` here also hides the only place a lesson-select button rendered - a
+   rail that could drill Area/Pattern but never actually open a different lesson
+   (captain decision "learn-nav-item-select"). `.nav-item-list` (TreeBrowser's own
+   `compactNavList` prop, Lesson.tsx-only) is the fix: a compact per-pattern list of
+   plain select buttons, present in the DOM whenever `compactNavList` is set - so it
+   exists in browse mode too, since it's the same mounted TreeBrowser instance - but
+   `display: none` there by default and shown only here, in the one context `.pane`
+   is itself hidden. */
+.nav-item-list {
+  display: none;
+}
+.content-layout[data-view='content'] .content-nav {
+  display: none;
+}
+@media (min-width: 1021px) {
+  .content-layout[data-view='content'] {
+    display: grid;
+    grid-template-columns: 300px minmax(0, 1fr);
+    gap: 20px;
+    align-items: start;
+  }
+  .content-layout[data-view='content'] .content-nav {
+    display: block;
+  }
+  .content-layout[data-view='content'] .content-nav .browse {
+    display: block;
+  }
+  .content-layout[data-view='content'] .content-nav .pane {
+    display: none;
+  }
+  .content-layout[data-view='content'] .content-nav .nav-item-list {
+    display: flex;
+    flex-direction: column;
+    margin: 2px 0 6px 23px;
+  }
+}
+.nav-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: none;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 0.13s, color 0.13s;
+}
+.nav-item:hover {
+  background: var(--surface2);
+  color: var(--ink);
+}
+.nav-item[aria-current='true'] {
+  background: var(--primary-soft);
+  color: var(--primary-ink);
+  font-weight: 600;
+}
+
+/* ---------- exercise view: LeetCode-style solo layout (captain direction, issue #90
+   follow-on) ----------
+   Practice keeps its own single-pane focused page (no side nav, unlike Learn above),
+   laid out as fixed, roughly-even halves: the description is its own scrollable left
+   pane, and the right column stacks a top "response" pane (editor/free-text/choices,
+   its language control, and the Run/Submit actions) over a bottom "results" pane
+   (verdict, hints, and every reveal). Fixed proportions, not a draggable splitter -
+   noted in the PR as the deliberate, cheaper choice. Both `.ex-desc` and `.ex-results`
+   scroll independently (the same sticky+max-height convention `.tree` already uses)
+   so neither a long statement nor a long results panel ever pushes the editor away. */
 .exgrid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 20px;
   align-items: start;
 }
 .exl {
   padding: 24px 26px 26px;
+}
+.ex-desc {
+  position: sticky;
+  top: 16px;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+}
+.ex-work {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}
+.ex-editor,
+.ex-results {
+  padding: 20px 22px 22px;
+}
+.ex-editor-bar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+.ex-results {
+  max-height: 60vh;
+  overflow-y: auto;
+}
+@media (max-width: 1020px) {
+  .exgrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .ex-desc {
+    position: static;
+    max-height: none;
+  }
+  .ex-results {
+    max-height: none;
+  }
 }
 .editor {
   border-radius: 12px;
@@ -1192,7 +1327,18 @@ fieldset.filtergroup {
    own `.statement` is untouched, out of this task's scope), while an example/table is
    not prose and is free to use much more of the card's width (`max-width: 900px`,
    matching `.plot` below) so it reads as a standout block rather than being squeezed
-   into the same narrow column as the surrounding text. */
+   into the same narrow column as the surrounding text.
+
+   Issue #90 follow-on: on a wide viewport the card itself spans the full page width, so a
+   left-pinned measure (margin: ... 0 ...) left roughly the right half of the card empty -
+   the captain's "only takes up one column" complaint again, this time from the card being
+   wider than the text rather than the text being too narrow. Every measure-capped block
+   below is centered instead (`margin-left/right: auto`), including the heading (given its
+   own matching max-width so it doesn't disagree with the paragraph beneath it) - since
+   every one of them centers independently on the same parent width, they all land on one
+   shared center axis with no extra wrapper needed. The wider example/table blocks center
+   the same way, so a 900px example and a 72ch paragraph still share that axis even though
+   their widths differ. */
 .lesson-card {
   padding: 28px 32px 32px;
 }
@@ -1201,7 +1347,7 @@ fieldset.filtergroup {
   line-height: 1.7;
   color: var(--ink);
   max-width: 72ch;
-  margin: 14px 0 8px;
+  margin: 14px auto 8px;
 }
 .lesson-body {
   display: flex;
@@ -1209,8 +1355,26 @@ fieldset.filtergroup {
   gap: 2px;
   margin: 10px 0 8px;
 }
+/* Explicit `width: 100%` on every centered block below is load-bearing, not decoration:
+   as a flex item (`.lesson-body`'s children) with an auto cross-margin, a `width: auto`
+   box is sized by shrink-to-fit rather than stretched to the container - fine for a
+   paragraph, whose wrapped lines already reach its max-width, but it left a short
+   heading shrink-wrapped to its own text and reading as a centered title floating
+   above a left-aligned paragraph column, rather than lining up with it. `width: 100%`
+   (still capped by each block's own max-width) forces the same fill-then-clamp sizing
+   a plain block gets outside a flex container, so every block's left edge - not just
+   its center - agrees with the others. */
+.lesson-heading,
+.lesson-p,
+.lesson-list,
+.callout,
+.example,
+.lesson-table-wrap {
+  width: 100%;
+}
 .lesson-heading {
-  margin: 22px 0 2px;
+  max-width: 72ch;
+  margin: 22px auto 2px;
   font-size: 19px;
   line-height: 1.3;
   color: var(--ink);
@@ -1229,7 +1393,7 @@ h3.lesson-heading {
   line-height: 1.7;
   color: var(--ink);
   max-width: 72ch;
-  margin: 0 0 4px;
+  margin: 0 auto 4px;
 }
 .lesson-p code,
 .lesson-list code,
@@ -1249,7 +1413,7 @@ h3.lesson-heading {
    highlighted example reads consistently with every other code panel in the app in
    both light and dark mode, rather than introducing a second convention. */
 .example {
-  margin: 10px 0 16px;
+  margin: 10px auto 16px;
   border-radius: 12px;
   border: 1px solid var(--line2);
   background: var(--surface2);
@@ -1332,7 +1496,7 @@ h3.lesson-heading {
 /* callouts: note/tip/warning, each with its own accent - fully themed off the app's own
    tokens, so they hold up in both light and dark mode with no separate override block. */
 .callout {
-  margin: 10px 0 16px;
+  margin: 10px auto 16px;
   padding: 13px 16px;
   border-radius: 12px;
   border-left: 3px solid var(--line2);
@@ -1374,7 +1538,7 @@ h3.lesson-heading {
 }
 
 .lesson-list {
-  margin: 4px 0 16px;
+  margin: 4px auto 16px;
   padding-left: 22px;
   max-width: 72ch;
   color: var(--ink);
@@ -1385,7 +1549,7 @@ h3.lesson-heading {
   margin-bottom: 4px;
 }
 .lesson-table-wrap {
-  margin: 10px 0 16px;
+  margin: 10px auto 16px;
   overflow-x: auto;
   max-width: 900px;
   border: 1px solid var(--line);
