@@ -1190,7 +1190,19 @@ fieldset.filtergroup {
    here - CSS-file rules never apply under jsdom (vitest's `test.css` is off by
    default), and an existing test asserts that pane actually leaves the accessibility
    tree on the browse transition. `.content-nav`'s content-mode hide has no such test,
-   so it stays CSS/media-query-only. */
+   so it stays CSS/media-query-only.
+
+   Hiding `.pane` here also hides the only place a lesson-select button rendered - a
+   rail that could drill Area/Pattern but never actually open a different lesson
+   (captain decision "learn-nav-item-select"). `.nav-item-list` (TreeBrowser's own
+   `compactNavList` prop, Lesson.tsx-only) is the fix: a compact per-pattern list of
+   plain select buttons, present in the DOM whenever `compactNavList` is set - so it
+   exists in browse mode too, since it's the same mounted TreeBrowser instance - but
+   `display: none` there by default and shown only here, in the one context `.pane`
+   is itself hidden. */
+.nav-item-list {
+  display: none;
+}
 .content-layout[data-view='content'] .content-nav {
   display: none;
 }
@@ -1210,6 +1222,33 @@ fieldset.filtergroup {
   .content-layout[data-view='content'] .content-nav .pane {
     display: none;
   }
+  .content-layout[data-view='content'] .content-nav .nav-item-list {
+    display: flex;
+    flex-direction: column;
+    margin: 2px 0 6px 23px;
+  }
+}
+.nav-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: none;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 0.13s, color 0.13s;
+}
+.nav-item:hover {
+  background: var(--surface2);
+  color: var(--ink);
+}
+.nav-item[aria-current='true'] {
+  background: var(--primary-soft);
+  color: var(--primary-ink);
+  font-weight: 600;
 }
 
 /* ---------- exercise view: LeetCode-style solo layout (captain direction, issue #90
