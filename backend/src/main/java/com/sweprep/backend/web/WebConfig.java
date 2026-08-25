@@ -14,8 +14,12 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  * <p>In local dev this is not actually load-bearing for the app's own calls: the Vite
  * dev server proxies {@code /api} to the backend (see {@code frontend/vite.config.ts}),
  * so the browser's calls are same-origin whether the page was opened as localhost or a
- * tailnet address, and never hit this check at all. It still matters for anything that
- * talks to the backend directly - a non-proxied client, or a future production build.
+ * tailnet address, and never hit this check at all. That holds for POSTs too only because
+ * the proxy strips the browser's {@code Origin} header before forwarding
+ * ({@code dropOriginHeader} in {@code vite.config.ts}) - a same-origin POST still carries
+ * one, and without the strip Spring would see a foreign origin and 403 it. It still
+ * matters for anything that talks to the backend directly - a non-proxied client, or a
+ * future production build.
  */
 @Configuration
 public class WebConfig implements WebMvcConfigurer {
