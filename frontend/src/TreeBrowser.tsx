@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { defaultDomainLabel, topicLabel } from './treeLabels'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { defaultDomainLabel, difficultyTone, topicLabel } from './treeLabels'
 
 // The tiered navigation Practice and Learn share (issue #90/#7's map: "tiered/under
 // categories" - the flat 583-item dropdowns this replaces lived in Practice.tsx's
@@ -82,6 +82,15 @@ export type TreeBrowserProps = {
   // lesson. Left `undefined`/`false` (the default) for Practice and every existing
   // caller, so nothing here changes their rendered item buttons.
   compactNavList?: boolean
+  // The third display mode (captain-approved full-screen redesign, issue:
+  // swe-practice-fs-build): a single condensed column - no `.pane` item grid at all -
+  // for Practice's "Problem List" overlay sidebar, which has no room for the desktop
+  // two-pane layout. Distinct from `compactNavList` (Learn's plain-title nav rail,
+  // shown *alongside* `.pane` at a wide breakpoint): sidebarMode replaces `.pane`
+  // entirely, at every viewport size, and its item rows carry the same difficulty chip
+  // and solved checkmark the grid cards do, since a slide-over panel is the only place
+  // those items render at all. Default `false`/`undefined` for every existing caller.
+  sidebarMode?: boolean
 }
 
 function passesFilters(
@@ -151,6 +160,7 @@ function TreeBrowser({
   itemNoun,
   solvedIds,
   compactNavList,
+  sidebarMode,
 }: TreeBrowserProps) {
   const [find, setFind] = useState('')
   const [openDomain, setOpenDomain] = useState<string | null>(null)
@@ -209,119 +219,196 @@ function TreeBrowser({
 
   const paneItems = searching ? searchResults : (activePattern?.items ?? current?.items ?? [])
 
+  const findAndFilters = (
+    <>
+      <label className="find">
+        <span className="lbl">Find</span>
+        <input
+          type="search"
+          aria-label={findLabel}
+          placeholder={findPlaceholder}
+          value={find}
+          onChange={(event) => setFind(event.target.value)}
+        />
+      </label>
+
+      {filterGroups.map((group) => (
+        <fieldset className="filtergroup" key={group.key}>
+          <legend className="lbl">{group.label}</legend>
+          <div className="filterrow">
+            {group.options.map((option) => {
+              const active = activeFilters[group.key]?.has(option.value) ?? true
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  className="fchip"
+                  aria-pressed={active}
+                  onClick={() => onToggleFilter(group.key, option.value)}
+                >
+                  {option.label}
+                </button>
+              )
+            })}
+          </div>
+        </fieldset>
+      ))}
+    </>
+  )
+
+  // Shared by both display modes: the Area -> Pattern tree walk itself never differs -
+  // only what nests under an expanded pattern does (nothing, `compactNavList`'s plain
+  // nav-rail titles, or sidebarMode's rich rows), via `patternExtra`, and (sidebarMode
+  // only) what renders directly under an open domain with no pattern picked yet, via
+  // the optional `domainExtra` - mirroring `.pane`'s own `activePattern?.items ??
+  // current?.items` fallback, so an untagged item (no topics, so it never appears
+  // under any pattern node) stays reachable in the sidebar exactly as it is in the
+  // grid, rather than becoming unreachable once `.pane` itself is gone.
+  function renderDomainTree(
+    patternExtra: (pattern: PatternGroup, patternOpen: boolean) => ReactNode,
+    domainExtra?: (group: DomainGroup) => ReactNode,
+  ) {
+    return (
+      <div className="treelist" role="tree">
+        {domains.map((group) => {
+          const open = group.domain === openDomain
+          const pct = completion(group.items, solvedIds)
+          return (
+            <div className="treegroup" key={group.domain}>
+              <button
+                type="button"
+                className={`node${open ? ' open' : ''}`}
+                aria-current={open && !openPattern}
+                onClick={() => {
+                  initialDomainPinned.current = true
+                  setOpenDomain(open ? null : group.domain)
+                  setOpenPattern(null)
+                }}
+              >
+                <span className="tw" aria-hidden="true">
+                  ▶
+                </span>
+                <span className="nm">{domainLabel(group.domain)}</span>
+                {pct !== null && (
+                  <span className="prog">
+                    <i style={{ width: `${(pct * 100).toFixed(0)}%` }} />
+                  </span>
+                )}
+                <span className="ct">{group.items.length}</span>
+              </button>
+              {open &&
+                groupByPattern(group.items).map((pattern) => {
+                  const ppct = completion(pattern.items, solvedIds)
+                  const patternOpen = openPattern === pattern.topic
+                  return (
+                    <div key={pattern.topic}>
+                      <button
+                        type="button"
+                        className="node l2"
+                        aria-current={patternOpen}
+                        onClick={() => {
+                          initialDomainPinned.current = true
+                          setOpenPattern(patternOpen ? null : pattern.topic)
+                        }}
+                      >
+                        <span className="nm">{topicLabel(pattern.topic)}</span>
+                        {ppct !== null && (
+                          <span className="prog">
+                            <i style={{ width: `${(ppct * 100).toFixed(0)}%` }} />
+                          </span>
+                        )}
+                        <span className="ct">{pattern.items.length}</span>
+                      </button>
+                      {patternExtra(pattern, patternOpen)}
+                    </div>
+                  )
+                })}
+              {open && domainExtra?.(group)}
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
+
+  // The rich row sidebarMode uses in place of both the plain-title `.nav-item`
+  // (compactNavList) and the `.pane` card - the only place these items render at all
+  // in this mode, so unlike compactNavList it always shows both the difficulty chip
+  // and the solved checkmark, matching the grid card's own information.
+  function richRow(item: TreeItem, pattern: string | null) {
+    const solved = solvedIds?.has(item.id) ?? false
+    return (
+      <button
+        type="button"
+        key={item.id}
+        className="fs-prow"
+        aria-current={selectedId === item.id}
+        onClick={() => onSelect(item, { domain: item.domain, pattern })}
+      >
+        <span className={`solved-check ${solved ? 'done' : 'pending'}`} aria-hidden="true">
+          {solved ? '✓' : ''}
+        </span>
+        <span className="nm">{item.title}</span>
+        <span className={`chipx ${difficultyTone(item.difficulty)}`}>
+          {defaultDomainLabel(item.difficulty.toLowerCase())}
+        </span>
+      </button>
+    )
+  }
+
+  if (sidebarMode) {
+    return (
+      <div>
+        {findAndFilters}
+        {searching ? (
+          <div className="fs-item-list search-results">
+            {searchResults.length === 0 && <p className="note">Nothing matches those filters.</p>}
+            {searchResults.map((item) => richRow(item, null))}
+          </div>
+        ) : (
+          renderDomainTree(
+            (pattern, patternOpen) =>
+              patternOpen ? (
+                <div className="fs-item-list">
+                  {pattern.items.map((item) => richRow(item, pattern.topic))}
+                </div>
+              ) : null,
+            (group) =>
+              openPattern === null ? (
+                <div className="fs-item-list">
+                  {group.items.map((item) => richRow(item, null))}
+                </div>
+              ) : null,
+          )
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className="browse">
       <div className="card tree">
-        <label className="find">
-          <span className="lbl">Find</span>
-          <input
-            type="search"
-            aria-label={findLabel}
-            placeholder={findPlaceholder}
-            value={find}
-            onChange={(event) => setFind(event.target.value)}
-          />
-        </label>
-
-        {filterGroups.map((group) => (
-          <fieldset className="filtergroup" key={group.key}>
-            <legend className="lbl">{group.label}</legend>
-            <div className="filterrow">
-              {group.options.map((option) => {
-                const active = activeFilters[group.key]?.has(option.value) ?? true
-                return (
-                  <button
-                    key={option.value}
-                    type="button"
-                    className="fchip"
-                    aria-pressed={active}
-                    onClick={() => onToggleFilter(group.key, option.value)}
-                  >
-                    {option.label}
-                  </button>
-                )
-              })}
-            </div>
-          </fieldset>
-        ))}
-
-        <div className="treelist" role="tree">
-          {domains.map((group) => {
-            const open = group.domain === openDomain
-            const pct = completion(group.items, solvedIds)
-            return (
-              <div className="treegroup" key={group.domain}>
+        {findAndFilters}
+        {/* The nav-rail's own selectable list (see `compactNavList`'s doc above) -
+            scoped to this one expanded pattern's items only, matching `.pane`'s own
+            activePattern.items scoping. */}
+        {renderDomainTree((pattern, patternOpen) =>
+          compactNavList && patternOpen ? (
+            <div className="nav-item-list">
+              {pattern.items.map((item) => (
                 <button
                   type="button"
-                  className={`node${open ? ' open' : ''}`}
-                  aria-current={open && !openPattern}
-                  onClick={() => {
-                    initialDomainPinned.current = true
-                    setOpenDomain(open ? null : group.domain)
-                    setOpenPattern(null)
-                  }}
+                  key={item.id}
+                  className="nav-item"
+                  aria-current={selectedId === item.id}
+                  onClick={() => onSelect(item, { domain: item.domain, pattern: pattern.topic })}
                 >
-                  <span className="tw" aria-hidden="true">
-                    ▶
-                  </span>
-                  <span className="nm">{domainLabel(group.domain)}</span>
-                  {pct !== null && (
-                    <span className="prog">
-                      <i style={{ width: `${(pct * 100).toFixed(0)}%` }} />
-                    </span>
-                  )}
-                  <span className="ct">{group.items.length}</span>
+                  {item.title}
                 </button>
-                {open &&
-                  groupByPattern(group.items).map((pattern) => {
-                    const ppct = completion(pattern.items, solvedIds)
-                    const patternOpen = openPattern === pattern.topic
-                    return (
-                      <div key={pattern.topic}>
-                        <button
-                          type="button"
-                          className="node l2"
-                          aria-current={patternOpen}
-                          onClick={() => {
-                            initialDomainPinned.current = true
-                            setOpenPattern(patternOpen ? null : pattern.topic)
-                          }}
-                        >
-                          <span className="nm">{topicLabel(pattern.topic)}</span>
-                          {ppct !== null && (
-                            <span className="prog">
-                              <i style={{ width: `${(ppct * 100).toFixed(0)}%` }} />
-                            </span>
-                          )}
-                          <span className="ct">{pattern.items.length}</span>
-                        </button>
-                        {/* The nav-rail's own selectable list (see `compactNavList`'s
-                            doc above) - scoped to this one expanded pattern's items
-                            only, matching `.pane`'s own activePattern.items scoping. */}
-                        {compactNavList && patternOpen && (
-                          <div className="nav-item-list">
-                            {pattern.items.map((item) => (
-                              <button
-                                type="button"
-                                key={item.id}
-                                className="nav-item"
-                                aria-current={selectedId === item.id}
-                                onClick={() =>
-                                  onSelect(item, { domain: item.domain, pattern: pattern.topic })
-                                }
-                              >
-                                {item.title}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })}
-              </div>
-            )
-          })}
-        </div>
+              ))}
+            </div>
+          ) : null,
+        )}
       </div>
 
       <div className="pane">
@@ -375,13 +462,6 @@ function TreeBrowser({
       </div>
     </div>
   )
-}
-
-function difficultyTone(difficulty: string): string {
-  const upper = difficulty.toUpperCase()
-  if (upper === 'EASY') return 'g'
-  if (upper === 'HARD') return 'r'
-  return 'a'
 }
 
 export default TreeBrowser
