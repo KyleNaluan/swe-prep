@@ -1502,6 +1502,14 @@ body.fs-body {
   display: block;
   overflow-y: auto;
 }
+/* Own scrollbar by default (a freeText/choice response is ordinary flowing content
+   with no internal scroller of its own, and a short pane genuinely can clip a choice
+   list's last option otherwise - proven visually, not assumed). The `:has(.editor)`
+   exception is the one case that must NOT scroll here: a code/query response mounts
+   Monaco, which owns its own internal scrollbar, so the pane's own would just be a
+   second, redundant one around it - the double-scrollbar the captain reported.
+   `overflow: hidden` plus the editor's `min-height: 0` (below) are what let Monaco
+   absorb the overflow instead. */
 .fs-editor-pane {
   min-height: 0;
   display: flex;
@@ -1511,6 +1519,9 @@ body.fs-body {
   border-bottom: 1px solid var(--line);
   overflow-y: auto;
 }
+.fs-editor-pane:has(.editor) {
+  overflow: hidden;
+}
 .fs-editor-pane-full {
   height: auto;
   border-bottom: 0;
@@ -1518,7 +1529,7 @@ body.fs-body {
 }
 .fs-editor-pane .editor {
   flex: 1;
-  min-height: 320px;
+  min-height: 0;
   margin: 0;
 }
 .fs-results-pane {
