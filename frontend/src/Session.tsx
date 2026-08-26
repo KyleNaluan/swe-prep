@@ -56,13 +56,14 @@ function Session() {
   // without either ever popping its own content entry, so a content page left open would
   // otherwise strand the URL hash pointing at a page nothing renders anymore (see
   // contentNav.ts's clearContentHashIfOpen) - a no-op when no content page is open, so
-  // every such call site can route through it with no conditional of its own. Switching
-  // *between* Practice and Learn must NOT clear first: each mounts with its own
-  // mount-time auto-pick (enterAutoPickedContent), which already replaces a still-open
-  // content entry in place rather than pushing a second one - clearing here first would
-  // erase the "already on a content entry" signal that replace-in-place depends on and
-  // silently turn every Practice<->Learn switch back into an accumulating push (see
-  // Session.test.tsx's "keeps history depth constant across Practice<->Learn switches").
+  // every such call site can route through it with no conditional of its own. Only Learn
+  // touches browser history now: it mounts with its own auto-pick (enterAutoPickedContent),
+  // which replaces a still-open content entry in place rather than pushing a second one, so
+  // switching *to* Learn must NOT clear first - clearing would erase the "already on a
+  // content entry" signal that replace-in-place depends on and silently turn a re-entry into
+  // an accumulating push. Practice contributes no history entries at all (its breadcrumb and
+  // contentNav usage were retired in the full-screen redesign), so switching to or from it
+  // never needs its own clear.
   const switchMode = useCallback((next: Mode) => {
     if (next === 'today' || next === 'readiness') clearContentHashIfOpen()
     setMode(next)
