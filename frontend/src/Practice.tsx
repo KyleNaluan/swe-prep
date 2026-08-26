@@ -1450,11 +1450,17 @@ function ExamplesSection({ examples }: { examples: Example[] }) {
         {examples.map((example, index) => (
           <div className="example-block" key={index}>
             <p className="example-block-label">Example {index + 1}:</p>
-            <pre className="example-block-io">
+            {/* A <div>, not a <pre>: App.css's generic `pre { background: #161226; ... }`
+                rule (the fixed-dark convention shared by the failing-case/error panels)
+                would otherwise win over this block's own theme-aware color, leaving dark
+                ink text unreadable against that dark background - see issue:
+                swe-examples-feedback. white-space: pre-wrap keeps the Input/Output line
+                break without opting into that rule. */}
+            <div className="example-block-io">
               <span className="example-block-field">Input:</span> {example.input}
               {'\n'}
               <span className="example-block-field">Output:</span> {example.output}
-            </pre>
+            </div>
             {example.explanation && (
               <p className="example-block-explanation">
                 <span className="example-block-field">Explanation:</span> {example.explanation}
