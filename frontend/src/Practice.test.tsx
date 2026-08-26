@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import Practice from './Practice'
 
@@ -472,5 +472,106 @@ describe('Practice SQL query response (issue #25)', () => {
     expect(
       screen.getByText('ERROR: cannot execute DROP TABLE in a read-only transaction'),
     ).toBeInTheDocument()
+  })
+})
+
+// The full-screen workspace's own chrome (captain-approved redesign, issue:
+// swe-practice-fs-build): the inline browse tree and dedicated-content-page
+// breadcrumb are retired on Practice - the brand icon returns to Today and a
+// "Problem List" button opens the same TreeBrowser as an overlay sidebar instead,
+// never a split layout.
+describe('Practice full-screen workspace navigation (issue: swe-practice-fs-build)', () => {
+  const NAV_CATALOG = [
+    { id: 'two-sum', title: 'Two Sum', domain: 'algorithms', difficulty: 'EASY', form: 'CHALLENGE' },
+    { id: 'reverse-list', title: 'Reverse List', domain: 'algorithms', difficulty: 'MEDIUM', form: 'CHALLENGE' },
+  ]
+  const TWO_SUM = {
+    id: 'two-sum',
+    title: 'Two Sum',
+    statement: 'Return the indices that add up to target.',
+    domain: 'algorithms',
+    difficulty: 'EASY',
+    response: { kind: 'code', language: 'java', stub: 'class Solution {}' },
+    hints: [],
+    hasExplanation: false,
+  }
+  const REVERSE_LIST = {
+    ...TWO_SUM,
+    id: 'reverse-list',
+    title: 'Reverse List',
+    statement: 'Reverse the linked list.',
+  }
+
+  beforeEach(() => vi.stubGlobal('fetch', vi.fn()))
+  afterEach(() => {
+    cleanup()
+    vi.unstubAllGlobals()
+  })
+
+  function mockNavFetch() {
+    return vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const href = String(url)
+      const method = init?.method ?? 'GET'
+      if (href.endsWith('/api/exercises')) return { ok: true, json: async () => NAV_CATALOG } as Response
+      if (href.includes('/api/exercises/two-sum'))
+        return { ok: true, json: async () => TWO_SUM } as Response
+      if (href.includes('/api/exercises/reverse-list'))
+        return { ok: true, json: async () => REVERSE_LIST } as Response
+      if (href.endsWith('/api/attempts') && method === 'POST')
+        return { ok: true, json: async () => ({ id: 'att-1' }) } as Response
+      if (href.endsWith('/api/attempts')) return { ok: true, json: async () => [] } as Response
+      throw new Error(`unexpected fetch to ${method} ${href}`)
+    })
+  }
+
+  it('arrives straight in the workspace with the sidebar closed, and no breadcrumb anywhere', async () => {
+    vi.stubGlobal('fetch', mockNavFetch())
+    render(<Practice />)
+    await screen.findByRole('heading', { name: 'Two Sum' })
+
+    expect(screen.queryByRole('navigation', { name: 'Breadcrumb' })).not.toBeInTheDocument()
+    expect(document.getElementById('practice-sidebar')).toHaveAttribute('aria-hidden', 'true')
+  })
+
+  it('opens the "Problem List" sidebar, selects a different exercise, and closes automatically', async () => {
+    vi.stubGlobal('fetch', mockNavFetch())
+    render(<Practice />)
+    await screen.findByRole('heading', { name: 'Two Sum' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Problem List' }))
+    const sidebar = await screen.findByRole('dialog', { name: 'Problem list' })
+    expect(document.getElementById('practice-sidebar')).toHaveAttribute('aria-hidden', 'false')
+
+    fireEvent.click(within(sidebar).getByRole('button', { name: /Reverse List/ }))
+
+    expect(await screen.findByRole('heading', { name: 'Reverse List' })).toBeInTheDocument()
+    expect(document.getElementById('practice-sidebar')).toHaveAttribute('aria-hidden', 'true')
+  })
+
+  it('closes the sidebar on Escape and on a scrim click', async () => {
+    vi.stubGlobal('fetch', mockNavFetch())
+    const { container } = render(<Practice />)
+    await screen.findByRole('heading', { name: 'Two Sum' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Problem List' }))
+    await screen.findByRole('dialog', { name: 'Problem list' })
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(document.getElementById('practice-sidebar')).toHaveAttribute('aria-hidden', 'true')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Problem List' }))
+    await screen.findByRole('dialog', { name: 'Problem list' })
+    fireEvent.click(container.querySelector('.fs-scrim')!)
+    expect(document.getElementById('practice-sidebar')).toHaveAttribute('aria-hidden', 'true')
+  })
+
+  it('the brand icon calls onExit rather than navigating internally', async () => {
+    vi.stubGlobal('fetch', mockNavFetch())
+    const onExit = vi.fn()
+    render(<Practice onExit={onExit} />)
+    await screen.findByRole('heading', { name: 'Two Sum' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back to Today' }))
+
+    expect(onExit).toHaveBeenCalledTimes(1)
   })
 })

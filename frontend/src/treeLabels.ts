@@ -15,3 +15,14 @@ export function defaultDomainLabel(domain: string): string {
 export function topicLabel(topic: string): string {
   return defaultDomainLabel(topic.replace(/-/g, ' '))
 }
+
+// The `.chipx` color tone for a difficulty value - shared by TreeBrowser's own grid
+// cards/rich sidebar rows and Practice.tsx's top-bar difficulty chip (captain-approved
+// full-screen redesign, issue: swe-practice-fs-build), so the same difficulty always
+// reads the same color wherever it renders.
+export function difficultyTone(difficulty: string): string {
+  const upper = difficulty.toUpperCase()
+  if (upper === 'EASY') return 'g'
+  if (upper === 'HARD') return 'r'
+  return 'a'
+}

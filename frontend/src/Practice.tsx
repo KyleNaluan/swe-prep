@@ -2,18 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Editor from '@monaco-editor/react'
 import { apiFetch, errorMessage } from './api'
 import TreeBrowser, { type FilterGroup } from './TreeBrowser'
-import { defaultDomainLabel, topicLabel } from './treeLabels'
-import ContentPage, { type Crumb } from './ContentPage'
-import {
-  enterAutoPickedContent,
-  leaveContentEntry,
-  pushContentEntry,
-  useBrowseContentScroll,
-  useContentPopState,
-} from './contentNav'
+import { defaultDomainLabel, difficultyTone } from './treeLabels'
 import { familyLabel } from './familyLabels'
 import { APP_NAME } from './appName'
 import { useEffectiveDark } from './useEffectiveTheme'
+import ThemeToggle from './ThemeToggle'
+import BrandMark from './BrandMark'
 
 // The practice surface: the optional main exercise and the open continuation that follow
 // the warm-up (issue #19, tiers 2 and 3). It is one uncapped browse-and-solve editor -
@@ -27,6 +21,19 @@ import { useEffectiveDark } from './useEffectiveTheme'
 // abandoned, not lost), and the hint ladder, failing-case reveal and explanation all work
 // exactly as they do everywhere else. It assumes nothing about the domain - a code problem
 // and a multiple-choice concept render through the same flow.
+//
+// Full-screen workspace (captain-approved redesign, issue: swe-practice-fs-build): this
+// component now renders its own edge-to-edge shell - a slim icon-only top bar over a
+// two-pane workspace - rather than sitting inside Session's `.app`/tabs chrome. Session.tsx
+// renders `<Practice>` directly, with nothing wrapping it, whenever its mode is 'practice'.
+// The old inline browse tree + dedicated-content-page breadcrumb (AGENTS.md's "Dedicated
+// content pages") is retired on this surface: the brand icon (top-left) returns to Today
+// via `onExit`, and a "Problem List" button opens the same TreeBrowser as an overlay
+// slide-over sidebar, never a split layout - see mockup-workspace.html/mockup-sidebar.html.
+// Learn is unaffected; it still uses the dedicated-content-page mechanism (contentNav.ts).
+// The attempt-history table has moved to the Readiness tab (below "By family", bounded and
+// internally scrollable) - Practice still fetches history, since the tree's solved
+// checkmarks/progress bars are derived from it, but no longer renders the table itself.
 
 type Summary = {
   id: string
@@ -200,8 +207,10 @@ type RevealResponse = {
   failingCase?: FailingCase
 }
 
-// An attempt as the history list reads it (the backend's AttemptView).
-type AttemptView = {
+// An attempt as the history list reads it (the backend's AttemptView) - exported so
+// Readiness.tsx, the history table's new home, can share this shape rather than
+// re-declaring it.
+export type AttemptView = {
   id: string
   exerciseId: string
   exerciseTitle: string
@@ -270,13 +279,9 @@ async function pickMain(loaded: Summary[]): Promise<string> {
 // `onSolved` fires whenever an exercise here is solved. The session uses it only as the
 // fallback that completes the day when the warm-up set was empty (issue #19); normally
 // the warm-up completes the day and the main exercise stays optional, so this is a no-op.
-function Practice({
-  dayComplete = false,
-  onSolved,
-}: {
-  dayComplete?: boolean
-  onSolved?: () => void
-}) {
+// `onExit` is the full-screen shell's brand icon - it returns to Today; Session.tsx wires
+// it to its own tab switch.
+function Practice({ onSolved, onExit }: { onSolved?: () => void; onExit?: () => void }) {
   // Monaco has its own theme, separate from the page's CSS (issue #90) - see
   // usePrefersDark's own doc for why this can't just be a stylesheet rule. Reads the
   // manual theme toggle too (useEffectiveTheme), not just the OS preference, so a
@@ -286,28 +291,31 @@ function Practice({
   const [catalogError, setCatalogError] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
-  // The dedicated-content-page toggle (carrying Direction A's page pattern into
-  // Direction C - AGENTS.md): 'browse' shows the tree/grid, 'content' shows the
-  // breadcrumb + exercise. TreeBrowser is always rendered - only hidden with CSS in
-  // 'content' - so its scroll, expanded nodes and filters need no restore at all.
-  // `browseContext` is the domain/pattern the tree had open at the moment of the
-  // click, for the breadcrumb; it is left untouched by view changes, so it is still
-  // correct if the browser's own forward button re-enters a content page.
-  const [view, setView] = useState<'browse' | 'content'>('browse')
-  const [browseContext, setBrowseContext] = useState<{ domain: string; pattern: string | null }>(
-    { domain: '', pattern: null },
-  )
-  useBrowseContentScroll(view)
-  // Browser back/forward (issue carrying Direction A's page pattern into Direction C -
-  // AGENTS.md): re-entering a content page (forward) just needs `view`/`selectedId`
-  // set - `browseContext` was already set by whatever click first opened that content
-  // page and view changes never touch it, so it is still correct here.
-  const handleContentPopEnter = useCallback((id: string) => {
-    setSelectedId(id)
-    setView('content')
+  // The "Problem List" overlay sidebar (captain-approved full-screen redesign): a
+  // slide-over, never a split layout - retiring the old inline browse tree and its
+  // dedicated-content-page breadcrumb for this surface (Learn is unaffected). The
+  // TreeBrowser instance inside it is always mounted, only hidden by CSS transform/
+  // scrim opacity while closed, so its scroll position, expanded nodes and filters
+  // need no explicit save/restore - exactly the same "never unmount the tree"
+  // invariant the old browse/content toggle relied on.
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  useEffect(() => {
+    if (!sidebarOpen) return
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') setSidebarOpen(false)
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [sidebarOpen])
+
+  // The full-screen shell owns page scrolling itself (its two panes scroll
+  // independently) - `body.fs-body` turns off the page's own scrollbar while this
+  // surface is mounted, restored the moment it unmounts (switching back to Today,
+  // Readiness or Learn).
+  useEffect(() => {
+    document.body.classList.add('fs-body')
+    return () => document.body.classList.remove('fs-body')
   }, [])
-  const handleContentPopLeave = useCallback(() => setView('browse'), [])
-  useContentPopState('practice', handleContentPopEnter, handleContentPopLeave)
 
   // The TreeBrowser's difficulty and family filters (issue #90), each its own labeled
   // group per the captain's refinement. Both default to "everything active" - nothing
@@ -369,6 +377,9 @@ function Practice({
   const [modelOpinionBusy, setModelOpinionBusy] = useState(false)
   const [modelOpinionError, setModelOpinionError] = useState<string | null>(null)
 
+  // Fetched for the sidebar tree's solved checkmarks/progress bars (the history table
+  // itself moved to Readiness - AGENTS.md's honest-gaps note: relocating the table does
+  // not remove this need).
   const [history, setHistory] = useState<AttemptView[]>([])
 
   const codeRef = useRef<string>('')
@@ -396,7 +407,8 @@ function Practice({
       })
       .then(setHistory)
       .catch(() => {
-        // History is a secondary panel; a failure here should not blank the editor.
+        // History is a secondary signal (the tree's solved checkmarks); a failure
+        // here should not blank the editor.
       })
   }, [])
 
@@ -433,20 +445,9 @@ function Practice({
         if (loaded.length === 0) return
         const pickedId = await pickMain(loaded)
         if (cancelled) return
+        // The scheduler's pick (or the static fallback) opens straight into the
+        // workspace - no browse step first, exactly as before the sidebar existed.
         setSelectedId(pickedId)
-        // The scheduler's pick (or the static fallback) arrives ready to solve, exactly
-        // as it did before content pages existed - it opens straight to its content
-        // page rather than requiring an extra click into the tree. No pattern context
-        // exists for an auto-pick (it did not come from drilling a tree node), so the
-        // breadcrumb simply omits that segment. The auto-pick enters the content page
-        // through enterAutoPickedContent, which pushes exactly one browse-base -> content
-        // entry the first time but replaces in place on a remount (tab switch) or a
-        // reload that restored a content entry - so leaving is always exactly one
-        // `back()` and history never accumulates.
-        const pickedSummary = loaded.find((summary) => summary.id === pickedId)
-        setBrowseContext({ domain: pickedSummary?.domain ?? '', pattern: null })
-        setView('content')
-        enterAutoPickedContent('practice', pickedId)
       })
       .catch((error: unknown) => {
         if (!cancelled) setCatalogError(error instanceof Error ? error.message : String(error))
@@ -842,8 +843,8 @@ function Practice({
   }, [])
 
   // Real per-exercise completion from this user's own attempt history - never a
-  // fabricated per-item signal (issue #7). Practice already loads this for the
-  // history table below, so the tree's completion bars are free.
+  // fabricated per-item signal (issue #7). The sidebar tree's completion bars and
+  // solved checkmarks are free from the same history the (now-relocated) table read.
   const solvedIds = useMemo(
     () => new Set(history.filter((a) => a.outcome === 'SOLVED').map((a) => a.exerciseId)),
     [history],
@@ -851,233 +852,134 @@ function Practice({
 
   if (catalogError) {
     return (
-      <>
+      <div className="app">
         <h1>{APP_NAME}</h1>
         <p className="status down">Could not load exercises: {catalogError}</p>
-      </>
+      </div>
     )
   }
 
   if (!catalog) {
     return (
-      <>
+      <div className="app">
         <h1>{APP_NAME}</h1>
         <p className="status loading">Loading exercises...</p>
-      </>
+      </div>
     )
   }
 
-  // Practice > <area> > <pattern> > <item> (issue carrying Direction A's page pattern
-  // into Direction C - AGENTS.md). Area/pattern segments are omitted, not left blank,
-  // when there is no real one to show (an auto-picked main exercise has no pattern -
-  // it was never drilled to - and a still-loading selection has no domain yet); every
-  // non-leaf segment does the identical thing (return to browse), which is correct
-  // because the tree's own live state already reflects exactly the drill path shown.
-  const crumbs: Crumb[] = [
-    { label: 'Practice', onClick: leaveContentEntry },
-    ...(browseContext.domain
-      ? [{ label: defaultDomainLabel(browseContext.domain), onClick: leaveContentEntry }]
-      : []),
-    ...(browseContext.pattern
-      ? [{ label: topicLabel(browseContext.pattern), onClick: leaveContentEntry }]
-      : []),
-    { label: exercise?.title ?? catalog.find((s) => s.id === selectedId)?.title ?? '…' },
-  ]
+  const selectedSummary = catalog.find((s) => s.id === selectedId)
+  const title = exercise?.title ?? selectedSummary?.title ?? 'Loading...'
+  const domain = exercise?.domain ?? selectedSummary?.domain
+  const difficulty = exercise?.difficulty ?? selectedSummary?.difficulty
+  // Whether this sitting has reached a terminal, "nothing more to help with" state -
+  // `solved` for every machine-graded kind, a placed self-rating for the ungraded
+  // self-check flow (which never sets `solved` at all, since it has no verdict).
+  const exerciseDone =
+    exercise?.response.kind === 'selfCheck' ? selfRating !== null : solved
 
   return (
-    <>
-      <div className="browsehead">
-        <div>
-          <h1>Practice</h1>
-          <p>
-            {dayComplete ? 'Your day is already complete - ' : ''}Take on a main exercise, then
-            keep going as long as you like. There is no cap here.
-          </p>
-        </div>
-      </div>
+    <div className="fs-shell">
+      {/* ============================= TOP BAR ============================= */}
+      <header className="fs-topbar">
+        <button
+          type="button"
+          className="fs-brandbtn"
+          onClick={onExit}
+          title="Back to Today"
+          aria-label="Back to Today"
+        >
+          <BrandMark size={19} />
+        </button>
 
-      {/* The tree/grid pane is always rendered, only hidden while a content page is
-          open (issue carrying Direction A's page pattern into Direction C -
-          AGENTS.md) - never unmounted, so its scroll position, expanded nodes and
-          filters are exactly as the solver left them when they return. */}
-      <div style={view === 'content' ? { display: 'none' } : undefined}>
-        <TreeBrowser
-          items={catalog.map((summary) => ({
-            id: summary.id,
-            title: summary.title,
-            domain: summary.domain,
-            difficulty: summary.difficulty,
-            topics: summary.topics ?? [],
-            family: summary.family ?? [],
-          }))}
-          filterGroups={filterGroups}
-          activeFilters={activeFilters}
-          onToggleFilter={onToggleFilter}
-          selectedId={selectedId}
-          onSelect={(item, context) => {
-            setSelectedId(item.id)
-            setBrowseContext(context)
-            setView('content')
-            pushContentEntry('practice', item.id)
-          }}
-          findLabel="Find a problem"
-          findPlaceholder="two sum, koko, window…"
-          emptyMessage="No exercises available."
-          sectionLabel="Practice"
-          itemNoun="problem"
-          solvedIds={solvedIds}
-        />
-      </div>
+        <div className="fs-divider" />
 
-      {/* The content page is always mounted, only hidden while browsing (issue carrying
-          Direction A's page pattern into Direction C - AGENTS.md) - never conditionally
-          rendered, exactly like the tree pane above. Unmounting it would remount the
-          uncontrolled Monaco editor on every return, resetting the visible code to the
-          stub while codeRef still held the typed code, so Submit would send code the
-          solver could no longer see. Keeping it mounted keeps editor and codeRef in sync. */}
-      <div style={view === 'browse' ? { display: 'none' } : undefined}>
-      <ContentPage crumbs={crumbs}>
-      {loadError && <p className="status down">Could not load the exercise: {loadError}</p>}
-      {!exercise && !loadError && <p className="status loading">Loading exercise...</p>}
+        <button
+          type="button"
+          className="fs-listbtn"
+          aria-haspopup="dialog"
+          aria-expanded={sidebarOpen}
+          aria-controls="practice-sidebar"
+          onClick={() => setSidebarOpen((open) => !open)}
+        >
+          <svg width="15" height="15" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <path
+              d="M3 5.5h14M3 10h14M3 14.5h14"
+              stroke="currentColor"
+              strokeWidth="1.7"
+              strokeLinecap="round"
+            />
+          </svg>
+          Problem List
+        </button>
 
-      {exercise && (
-        // LeetCode-style solo layout (captain direction, issue #90 follow-on): the
-        // description is its own scrollable left pane; the right column splits into a
-        // top pane (the response input - editor/free-text/choices - plus its language
-        // control and the Run/Submit actions) and a bottom pane (everything the
-        // response reports back: the verdict, the hint ladder, the failing-case/
-        // solution/complexity reveals, and the explanation). Fixed halves, not a
-        // draggable splitter - a resize handle's drag-state/persistence is a
-        // disproportionate amount of machinery for what this task needs, and fixed
-        // proportions already satisfy "reasonable... roughly half/half is fine".
-        // `.ex-desc`/`.ex-results` scroll independently (same sticky+max-height
-        // convention `.tree` already uses) so a long description or a long results
-        // panel never pushes the editor pane out of view.
-        <div className="exgrid">
-        <div className="card exl ex-desc">
-          <header>
-            <h1>{exercise.title}</h1>
-            <span className="language-tag">{exercise.domain}</span>
-          </header>
-          <p className="statement">{exercise.statement}</p>
+        <div className="fs-title-wrap">
+          <span className="fs-title">{title}</span>
+          {difficulty && (
+            <span className={`chipx ${difficultyTone(difficulty)}`}>
+              {defaultDomainLabel(difficulty.toLowerCase())}
+            </span>
+          )}
+          {domain && <span className="fs-title-domain">{defaultDomainLabel(domain)}</span>}
         </div>
 
-        <div className="ex-work">
-          <div className="card ex-editor">
-            {(exercise.response.kind === 'code' || exercise.response.kind === 'query') && (
-              <div className="ex-editor-bar">
-                {exercise.response.kind === 'code' ? (
-                  <LanguagePicker
-                    language={language}
-                    languages={languages}
-                    disabled={run.phase === 'running'}
-                    onChange={setLanguage}
-                  />
-                ) : (
-                  <span className="language-tag">{exercise.response.language}</span>
-                )}
-              </div>
-            )}
+        <div className="fs-topbar-right">
+          {exercise && exercise.response.kind !== 'selfCheck' && (
+            <>
+              {exercise.response.kind === 'code' ? (
+                <LanguagePicker
+                  language={language}
+                  languages={languages}
+                  disabled={run.phase === 'running'}
+                  onChange={setLanguage}
+                />
+              ) : exercise.response.kind === 'query' ? (
+                <span className="language-tag">{exercise.response.language}</span>
+              ) : null}
+              <button
+                type="button"
+                className="fs-give-up"
+                onClick={handleGiveUp}
+                disabled={run.phase === 'running' || solved || attemptRef.current === null}
+              >
+                Give up
+              </button>
+              <button
+                type="button"
+                className="fs-run"
+                onClick={handleSubmit}
+                disabled={
+                  run.phase === 'running' ||
+                  solved ||
+                  (exercise.response.kind === 'choice' && choice === null) ||
+                  (exercise.response.kind === 'freeText' && text.trim() === '')
+                }
+              >
+                {run.phase === 'running'
+                  ? 'Checking...'
+                  : exercise.response.kind === 'code' || exercise.response.kind === 'query'
+                    ? 'Run'
+                    : 'Submit'}
+              </button>
+              <div className="fs-divider" />
+            </>
+          )}
+          <ThemeToggle />
+        </div>
+      </header>
 
-            {exercise.response.kind === 'selfCheck' ? (
-              <SelfCheckView
-                text={text}
-                reveal={reveal}
-                rating={selfRating}
-                busy={selfCheckBusy}
-                error={selfCheckError}
-                onType={setText}
-                onReveal={handleRevealModelAnswer}
-                onRate={handleSelfRate}
-              />
-            ) : (
-              <>
-                {exercise.response.kind === 'code' || exercise.response.kind === 'query' ? (
-                  <div className="editor">
-                    <Editor
-                      // Keyed on language too (issue #26): switching languages regenerates
-                      // the stub, and Monaco only applies defaultValue/defaultLanguage on
-                      // mount, so the editor must remount to actually show the new one.
-                      key={`${exercise.id}:${exercise.response.language}`}
-                      height="360px"
-                      theme={prefersDark ? 'vs-dark' : 'light'}
-                      defaultLanguage={exercise.response.language}
-                      defaultValue={exercise.response.stub}
-                      onChange={(value) => {
-                        codeRef.current = value ?? ''
-                      }}
-                      options={{ minimap: { enabled: false }, fontSize: 14 }}
-                    />
-                  </div>
-                ) : exercise.response.kind === 'freeText' ? (
-                  <div className="freetext">
-                    <label htmlFor="free-answer">Type your answer</label>
-                    <input
-                      id="free-answer"
-                      type="text"
-                      className="hypothesis"
-                      value={text}
-                      disabled={solved}
-                      onChange={(event) => setText(event.target.value)}
-                    />
-                  </div>
-                ) : (
-                  <fieldset className="choices">
-                    <legend>Choose one</legend>
-                    {exercise.response.options.map((option) => (
-                      <label key={option} className="choice">
-                        <input
-                          type="radio"
-                          name="answer"
-                          value={option}
-                          checked={choice === option}
-                          onChange={() => setChoice(option)}
-                        />
-                        <span>{option}</span>
-                      </label>
-                    ))}
-                  </fieldset>
-                )}
+      {/* ============================ WORKSPACE ============================ */}
+      <div className="fs-grid">
+        <section className="fs-desc" aria-label="Problem description">
+          {loadError && <p className="status down">Could not load the exercise: {loadError}</p>}
+          {!exercise && !loadError && <p className="status loading">Loading exercise...</p>}
 
-                <div className="actions">
-                  <button
-                    type="button"
-                    onClick={handleSubmit}
-                    disabled={
-                      run.phase === 'running' ||
-                      solved ||
-                      (exercise.response.kind === 'choice' && choice === null) ||
-                      (exercise.response.kind === 'freeText' && text.trim() === '')
-                    }
-                  >
-                    {run.phase === 'running'
-                      ? 'Checking...'
-                      : exercise.response.kind === 'code' || exercise.response.kind === 'query'
-                        ? 'Run'
-                        : 'Submit'}
-                  </button>
-                  <button
-                    type="button"
-                    className="secondary"
-                    onClick={handleGiveUp}
-                    disabled={run.phase === 'running' || solved || attemptRef.current === null}
-                  >
-                    Give up
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
+          {exercise && (
+            <>
+              <h1 className="fs-desc-title">{exercise.title}</h1>
+              <p className="statement">{exercise.statement}</p>
 
-          {exercise.response.kind !== 'selfCheck' && (
-            <div className="card ex-results">
-              <VerdictView
-                run={run}
-                scored={exercise.response.kind !== 'code' && exercise.response.kind !== 'query'}
-                unit={exercise.response.kind === 'query' ? 'rows' : 'tests'}
-              />
-
-              {!solved && (
+              {!exerciseDone && (
                 <HintLadder
                   rungNames={exercise.hints}
                   revealed={revealedHints}
@@ -1090,22 +992,6 @@ function Practice({
                 />
               )}
 
-              {exercise.response.kind === 'code' &&
-                !solved &&
-                run.phase === 'done' &&
-                run.verdict.outcome === 'FAILED' && (
-                  <RevealPanel
-                    prompting={revealPrompting}
-                    busy={revealBusy}
-                    hypothesis={hypothesis}
-                    failingCase={failingCase}
-                    onHypothesisChange={setHypothesis}
-                    onStart={() => setRevealPrompting(true)}
-                    onConfirm={handleReveal}
-                    onCancel={() => setRevealPrompting(false)}
-                  />
-                )}
-
               {exercise.response.kind === 'code' && (
                 <SolutionPanel
                   solution={solution}
@@ -1115,41 +1001,206 @@ function Practice({
                   onReveal={handleRevealSolution}
                 />
               )}
+            </>
+          )}
+        </section>
 
-              {exercise.response.kind === 'code' && exercise.hasComplexityCheck && solved && (
-                <ComplexityPanel
-                  timeClaim={complexityTimeClaim}
-                  spaceClaim={complexitySpaceClaim}
-                  result={complexityResult}
-                  busy={complexityBusy}
-                  error={complexityError}
-                  onTimeClaimChange={setComplexityTimeClaim}
-                  onSpaceClaimChange={setComplexitySpaceClaim}
-                  onSubmit={handleClaimComplexity}
-                  modelOpinion={modelOpinionResult}
-                  modelOpinionBusy={modelOpinionBusy}
-                  modelOpinionError={modelOpinionError}
-                  onRequestModelOpinion={handleRequestModelOpinion}
-                />
-              )}
-
-              <ExplanationPanel
-                hasExplanation={exercise.hasExplanation}
-                explanation={explanation}
-                solved={solved}
-                busy={explanationBusy}
-                onRequest={handleRequestExplanation}
+        {exercise?.response.kind === 'selfCheck' ? (
+          <section className="fs-work fs-work-single" aria-label="Your explanation">
+            <div className="fs-editor-pane fs-editor-pane-full">
+              <div className="fs-section-label" style={{ marginTop: 0 }}>
+                Your explanation
+              </div>
+              <SelfCheckView
+                text={text}
+                reveal={reveal}
+                rating={selfRating}
+                busy={selfCheckBusy}
+                error={selfCheckError}
+                onType={setText}
+                onReveal={handleRevealModelAnswer}
+                onRate={handleSelfRate}
               />
             </div>
-          )}
-        </div>
-        </div>
-      )}
-      </ContentPage>
+          </section>
+        ) : (
+          <section className="fs-work" aria-label="Editor and results">
+            <div className="fs-editor-pane">
+              {exercise && (exercise.response.kind === 'code' || exercise.response.kind === 'query') ? (
+                <div className="editor">
+                  <Editor
+                    // Keyed on language too (issue #26): switching languages regenerates
+                    // the stub, and Monaco only applies defaultValue/defaultLanguage on
+                    // mount, so the editor must remount to actually show the new one.
+                    key={`${exercise.id}:${exercise.response.language}`}
+                    height="100%"
+                    theme={prefersDark ? 'vs-dark' : 'light'}
+                    defaultLanguage={exercise.response.language}
+                    defaultValue={exercise.response.stub}
+                    onChange={(value) => {
+                      codeRef.current = value ?? ''
+                    }}
+                    options={{ minimap: { enabled: false }, fontSize: 14 }}
+                  />
+                </div>
+              ) : exercise?.response.kind === 'freeText' ? (
+                <div className="freetext">
+                  <label htmlFor="free-answer">Type your answer</label>
+                  <input
+                    id="free-answer"
+                    type="text"
+                    className="hypothesis"
+                    value={text}
+                    disabled={solved}
+                    onChange={(event) => setText(event.target.value)}
+                  />
+                </div>
+              ) : exercise?.response.kind === 'choice' ? (
+                <fieldset className="choices">
+                  <legend>Choose one</legend>
+                  {exercise.response.options.map((option) => (
+                    <label key={option} className="choice">
+                      <input
+                        type="radio"
+                        name="answer"
+                        value={option}
+                        checked={choice === option}
+                        onChange={() => setChoice(option)}
+                      />
+                      <span>{option}</span>
+                    </label>
+                  ))}
+                </fieldset>
+              ) : null}
+            </div>
+
+            <div className="fs-results-pane">
+              <div className="fs-section-label" style={{ marginTop: 0 }}>
+                Test results
+              </div>
+              {run.phase === 'idle' ? (
+                <p className="fs-results-idle">Run your code to see test results here.</p>
+              ) : (
+                exercise && (
+                  <>
+                    <VerdictView
+                      run={run}
+                      scored={exercise.response.kind !== 'code' && exercise.response.kind !== 'query'}
+                      unit={exercise.response.kind === 'query' ? 'rows' : 'tests'}
+                    />
+
+                    {exercise.response.kind === 'code' &&
+                      !solved &&
+                      run.phase === 'done' &&
+                      run.verdict.outcome === 'FAILED' && (
+                        <RevealPanel
+                          prompting={revealPrompting}
+                          busy={revealBusy}
+                          hypothesis={hypothesis}
+                          failingCase={failingCase}
+                          onHypothesisChange={setHypothesis}
+                          onStart={() => setRevealPrompting(true)}
+                          onConfirm={handleReveal}
+                          onCancel={() => setRevealPrompting(false)}
+                        />
+                      )}
+
+                    {exercise.response.kind === 'code' && exercise.hasComplexityCheck && solved && (
+                      <ComplexityPanel
+                        timeClaim={complexityTimeClaim}
+                        spaceClaim={complexitySpaceClaim}
+                        result={complexityResult}
+                        busy={complexityBusy}
+                        error={complexityError}
+                        onTimeClaimChange={setComplexityTimeClaim}
+                        onSpaceClaimChange={setComplexitySpaceClaim}
+                        onSubmit={handleClaimComplexity}
+                        modelOpinion={modelOpinionResult}
+                        modelOpinionBusy={modelOpinionBusy}
+                        modelOpinionError={modelOpinionError}
+                        onRequestModelOpinion={handleRequestModelOpinion}
+                      />
+                    )}
+
+                    <ExplanationPanel
+                      hasExplanation={exercise.hasExplanation}
+                      explanation={explanation}
+                      solved={solved}
+                      busy={explanationBusy}
+                      onRequest={handleRequestExplanation}
+                    />
+                  </>
+                )
+              )}
+            </div>
+          </section>
+        )}
       </div>
 
-      <History attempts={history} />
-    </>
+      {/* ============================ SIDEBAR ============================ */}
+      <div
+        className={`fs-scrim${sidebarOpen ? ' open' : ''}`}
+        onClick={() => setSidebarOpen(false)}
+        aria-hidden="true"
+      />
+      <aside
+        id="practice-sidebar"
+        className={`fs-sidebar${sidebarOpen ? ' open' : ''}`}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Problem list"
+        aria-hidden={!sidebarOpen}
+      >
+        <div className="fs-sidebar-head">
+          <h2>Problem List</h2>
+          <span className="fs-sidebar-count">
+            {solvedIds.size} of {catalog.length} solved
+          </span>
+          <button
+            type="button"
+            className="fs-sidebar-close"
+            onClick={() => setSidebarOpen(false)}
+            aria-label="Close problem list"
+          >
+            <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+              <path
+                d="M5 5l10 10M15 5L5 15"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+              />
+            </svg>
+          </button>
+        </div>
+        <div className="fs-sidebar-body">
+          <TreeBrowser
+            sidebarMode
+            items={catalog.map((summary) => ({
+              id: summary.id,
+              title: summary.title,
+              domain: summary.domain,
+              difficulty: summary.difficulty,
+              topics: summary.topics ?? [],
+              family: summary.family ?? [],
+            }))}
+            filterGroups={filterGroups}
+            activeFilters={activeFilters}
+            onToggleFilter={onToggleFilter}
+            selectedId={selectedId}
+            onSelect={(item) => {
+              setSelectedId(item.id)
+              setSidebarOpen(false)
+            }}
+            findLabel="Find a problem"
+            findPlaceholder="two sum, koko, window…"
+            emptyMessage="No exercises available."
+            sectionLabel="Practice"
+            itemNoun="problem"
+            solvedIds={solvedIds}
+          />
+        </div>
+      </aside>
+    </div>
   )
 }
 
@@ -1373,7 +1424,7 @@ function HintLadder({
   const allTaken = revealed.length >= rungNames.length
   return (
     <section className="hints">
-      <h2>Hints</h2>
+      <div className="fs-section-label">Hints</div>
       <p className="hints-note">
         Hints are here whenever you want them. Taking one is recorded, but it never
         affects your score.
@@ -1741,7 +1792,8 @@ function ComplexityPanel({
 // never penalised. Pre-pass and post-pass are deliberately distinct presentations - seeing
 // the solution before this attempt has ever passed marks it solution-seen (a plain,
 // honest note, not a warning), while a post-pass look is framed as the comparison it is
-// meant to encourage.
+// meant to encourage. The "Reference solution" section label always shows, whether or not
+// it has been revealed yet, matching the mockup's persistent section under Hints.
 function SolutionPanel({
   solution,
   prePass,
@@ -1755,36 +1807,38 @@ function SolutionPanel({
   error: string | null
   onReveal: () => void
 }) {
-  if (solution) {
-    return (
-      <section className="solution">
-        <h2>Reference solution</h2>
-        {prePass ? (
-          <p className="hints-note">
-            Seeing this is recorded - it never counts against you, but this attempt will not
-            count as solved cold until you pass a fresh one cleanly, and it comes back around
-            sooner.
-          </p>
-        ) : (
-          <p className="hints-note">
-            Reading a working solution against your own passing one is where style and idiom
-            learning happens.
-          </p>
-        )}
-        <pre className="solution-body">{solution}</pre>
-      </section>
-    )
-  }
   return (
     <section className="solution">
-      <button type="button" className="secondary" onClick={onReveal} disabled={busy}>
-        {busy ? 'Revealing...' : 'Show the reference solution'}
-      </button>
-      <p className="hints-note">
-        Available whenever you want it. Revealing before you pass marks this attempt
-        solution-seen and brings it back around sooner - never a penalty, just an honest note.
-      </p>
-      {error && <p className="status down">Could not reveal the solution: {error}</p>}
+      <div className="fs-section-label">Reference solution</div>
+      {solution ? (
+        <>
+          {prePass ? (
+            <p className="hints-note">
+              Seeing this is recorded - it never counts against you, but this attempt will not
+              count as solved cold until you pass a fresh one cleanly, and it comes back around
+              sooner.
+            </p>
+          ) : (
+            <p className="hints-note">
+              Reading a working solution against your own passing one is where style and idiom
+              learning happens.
+            </p>
+          )}
+          <pre className="solution-body">{solution}</pre>
+        </>
+      ) : (
+        <>
+          <button type="button" className="secondary" onClick={onReveal} disabled={busy}>
+            {busy ? 'Revealing...' : 'Show the reference solution'}
+          </button>
+          <p className="hints-note">
+            Available whenever you want it. Revealing before you pass marks this attempt
+            solution-seen and brings it back around sooner - never a penalty, just an honest
+            note.
+          </p>
+          {error && <p className="status down">Could not reveal the solution: {error}</p>}
+        </>
+      )}
     </section>
   )
 }
@@ -1879,47 +1933,6 @@ function ExplanationPanel({
     )
   }
   return null
-}
-
-// A plain list of past sittings - the visible-history half of issue #15. It is
-// deliberately minimal; the schedulers (issue #8) read the record, not this view.
-function History({ attempts }: { attempts: AttemptView[] }) {
-  if (attempts.length === 0) return null
-  return (
-    <section className="history">
-      <h2>History</h2>
-      <table>
-        <thead>
-          <tr>
-            <th>Exercise</th>
-            <th>Outcome</th>
-            <th>Submissions</th>
-            <th>Hints</th>
-            <th>Revealed</th>
-            <th>Solution seen</th>
-            <th>Started</th>
-          </tr>
-        </thead>
-        <tbody>
-          {attempts.map((attempt) => (
-            <tr key={attempt.id}>
-              <td>{attempt.exerciseTitle}</td>
-              <td>
-                <span className={`outcome ${attempt.outcome.toLowerCase()}`}>
-                  {attempt.outcome.replace('_', ' ').toLowerCase()}
-                </span>
-              </td>
-              <td>{attempt.submissionCount}</td>
-              <td>{attempt.hintsTaken > 0 ? attempt.hintsTaken : '-'}</td>
-              <td>{attempt.failingCaseRevealed ? 'yes' : '-'}</td>
-              <td>{attempt.solutionSeen ? 'yes' : '-'}</td>
-              <td>{new Date(attempt.startedAt).toLocaleString()}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </section>
-  )
 }
 
 export default Practice
