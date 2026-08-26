@@ -1,12 +1,4 @@
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-  waitForElementToBeRemoved,
-  within,
-} from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import Session from './Session'
 
@@ -150,22 +142,16 @@ function mockFetch(
   })
 }
 
-// Selects an exercise through the TreeBrowser (issue #90's replacement for the old flat
-// `<select id="exercise-select">`): search narrows the tree to a cross-domain match, then
-// the matching item card is clicked. Practice always arrives on a content page (the
-// current exercise), so this first returns to browse via the breadcrumb - the real
-// user path, since the tree is not reachable while a content page is open. Leaving is
-// a real, asynchronous history navigation (`history.back()`), so this awaits the
-// content page actually unmounting before touching the tree.
+// Selects an exercise through the TreeBrowser inside Practice's "Problem List" overlay
+// sidebar (captain-approved full-screen redesign, issue: swe-practice-fs-build - the
+// breadcrumb this helper used to drive is retired on Practice): open the sidebar,
+// search narrows it to a cross-domain match, then the matching row is clicked -
+// closing the sidebar automatically, the same as a real user's path.
 async function selectExercise(title: string) {
-  fireEvent.click(
-    within(screen.getByRole('navigation', { name: 'Breadcrumb' })).getByRole('button', {
-      name: 'Practice',
-    }),
-  )
-  await waitForElementToBeRemoved(() => screen.queryByRole('navigation', { name: 'Breadcrumb' }))
-  fireEvent.change(screen.getByLabelText('Find a problem'), { target: { value: title } })
-  fireEvent.click(screen.getByRole('button', { name: new RegExp(title) }))
+  fireEvent.click(screen.getByRole('button', { name: 'Problem List' }))
+  const sidebar = await screen.findByRole('dialog', { name: 'Problem list' })
+  fireEvent.change(within(sidebar).getByLabelText('Find a problem'), { target: { value: title } })
+  fireEvent.click(within(sidebar).getByRole('button', { name: new RegExp(title) }))
 }
 
 // Answers the one warm-up rep correctly and finishes the set, landing on day-complete.
@@ -236,7 +222,6 @@ describe('Session (daily loop, issue #19)', () => {
     // The main defaults to a CHALLENGE (the concept one is first in the catalog), proving
     // the flow never assumes an algorithm.
     expect(await screen.findByRole('heading', { name: 'Concept Main' })).toBeInTheDocument()
-    expect(screen.getByText(/keep going as long as you like/i)).toBeInTheDocument()
 
     // Continuation is uncapped: another exercise can always be picked next.
     await selectExercise('Code Main')
@@ -371,42 +356,48 @@ describe('Session (daily loop, issue #19)', () => {
     await waitFor(() => expect(calls.completeWarmup).toBe(0))
   })
 
-  // The auto-pick each surface opens with enters its content page through
-  // enterAutoPickedContent, which pushes exactly one browse-base -> content entry the
-  // first time but replaces in place on every later remount - so switching Practice <->
-  // Learn (each remounts the surface) never accumulates history depth, and a single
-  // browser Back lands back on Practice's browse view rather than needing one press per
-  // tab switch.
-  it('keeps history depth constant across Practice<->Learn switches, and one Back returns to browse', async () => {
-    const calls = { completeWarmup: 0, abandons: [] as string[] }
+  // Stubs the Learn endpoints (a single lesson, no prompts) on top of the shared
+  // session mock - used by the two history/hash tests below, which both need Learn
+  // mounted alongside Practice to prove Practice's retired breadcrumb changed nothing
+  // about Learn's own contentNav.ts mechanism (AGENTS.md's "Dedicated content pages").
+  function mockFetchWithLesson(calls: Calls) {
     const base = mockFetch(calls)
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
-        const href = String(url)
-        if (href.endsWith('/api/lessons'))
-          return {
-            ok: true,
-            json: async () => [
-              { id: 'l1', title: 'A Lesson', domain: 'fundamentals', difficulty: 'EASY', promptCount: 0 },
-            ],
-          } as Response
-        if (href.endsWith('/api/lessons/l1/read')) return { ok: true, json: async () => ({}) } as Response
-        if (href.endsWith('/api/lessons/l1'))
-          return {
-            ok: true,
-            json: async () => ({
-              id: 'l1',
-              title: 'A Lesson',
-              statement: 'Taught content.',
-              domain: 'fundamentals',
-              difficulty: 'EASY',
-              prompts: [],
-            }),
-          } as Response
-        return base(url, init)
-      }),
-    )
+    return vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const href = String(url)
+      if (href.endsWith('/api/lessons'))
+        return {
+          ok: true,
+          json: async () => [
+            { id: 'l1', title: 'A Lesson', domain: 'fundamentals', difficulty: 'EASY', promptCount: 0 },
+          ],
+        } as Response
+      if (href.endsWith('/api/lessons/l1/read')) return { ok: true, json: async () => ({}) } as Response
+      if (href.endsWith('/api/lessons/l1'))
+        return {
+          ok: true,
+          json: async () => ({
+            id: 'l1',
+            title: 'A Lesson',
+            statement: 'Taught content.',
+            domain: 'fundamentals',
+            difficulty: 'EASY',
+            prompts: [],
+          }),
+        } as Response
+      return base(url, init)
+    })
+  }
+
+  // Practice's breadcrumb (and the browser-history push/pop it drove) is retired
+  // (captain-approved full-screen redesign, issue: swe-practice-fs-build): it never
+  // touches `window.history` at all now, and its full-screen shell has no tab bar of
+  // its own - the brand icon (aria-label "Back to Today") is the only way out, so a
+  // direct Practice<->Learn tab switch (the old test's premise) is no longer a reachable
+  // UI path at all. What actually needs proving now is narrower: Practice contributes
+  // zero history churn, however it is entered, exited, or navigated within.
+  it('Practice never touches browser history now its breadcrumb is retired', async () => {
+    const calls = { completeWarmup: 0, abandons: [] as string[] }
+    vi.stubGlobal('fetch', mockFetch(calls))
     render(<Session />)
     await screen.findByRole('heading', { name: 'Rep One' })
 
@@ -418,32 +409,72 @@ describe('Session (daily loop, issue #19)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Practice' }))
     await screen.findByRole('heading', { name: 'Concept Main' })
+    expect(window.history.length).toBe(before)
+
+    // Picking a different exercise through the "Problem List" sidebar doesn't touch
+    // history either - selection is a plain state change, not a navigation.
+    await selectExercise('Code Main')
+    expect(await screen.findByRole('heading', { name: 'Code Main' })).toBeInTheDocument()
+    expect(window.history.length).toBe(before)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back to Today' }))
+    await screen.findByRole('heading', { name: 'Rep One' })
+    expect(window.history.length).toBe(before)
+  })
+
+  // A trip through Today or Readiness deliberately resets "is a content page open"
+  // (clearContentHashIfOpen, unchanged by this redesign) - so re-entering Learn after
+  // one is a fresh push, not a leak. The old "Practice<->Learn switch replaces in
+  // place" scenario `enterAutoPickedContent` was built for is no longer reachable at
+  // all in this UI (Practice's full-screen shell has no Learn button; every path
+  // between the two now transits Today, which always clears first) - this documents
+  // the real, current behavior rather than asserting a now-unreachable invariant.
+  it('a trip through Today clears any open Learn content hash, so re-entering Learn pushes a fresh entry', async () => {
+    const calls = { completeWarmup: 0, abandons: [] as string[] }
+    vi.stubGlobal('fetch', mockFetchWithLesson(calls))
+    render(<Session />)
+    await screen.findByRole('heading', { name: 'Rep One' })
+
+    window.history.pushState(null, '', '/')
+    const before = window.history.length
+
     fireEvent.click(screen.getByRole('button', { name: 'Learn' }))
     await screen.findByRole('heading', { name: 'A Lesson' })
-    fireEvent.click(screen.getByRole('button', { name: 'Practice' }))
-    await screen.findByRole('heading', { name: 'Concept Main' })
-
-    // Only one content entry was ever pushed; the rest replaced in place.
     expect(window.history.length).toBe(before + 1)
 
-    // A single real Back (popstate) returns Practice to its browse view - the content
-    // page's breadcrumb leaves the accessibility tree, and the tree is what shows.
-    window.history.back()
-    await waitForElementToBeRemoved(() => screen.queryByRole('navigation', { name: 'Breadcrumb' }))
-    expect(screen.getByLabelText('Find a problem')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Today' }))
+    await screen.findByRole('heading', { name: 'Rep One' })
+    // Cleared in place - no depth change - rather than left stranded pointing at a
+    // page nothing renders anymore (the captain-reported bug the mechanism fixes).
+    expect(window.location.hash).toBe('')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Learn' }))
+    await screen.findByRole('heading', { name: 'A Lesson' })
+    // With nothing left to replace, this is a genuine second push.
+    expect(window.history.length).toBe(before + 2)
   })
 
   // Regression test for the captain-reported bug: opening a content page then switching
   // to Today or Readiness left the URL hash pointing at a page nothing renders anymore,
   // only correcting itself on a later exercise/lesson navigation or a return to browse.
-  it('clears the content-page URL hash when switching to Today or Readiness, and Practice recovers cleanly afterward', async () => {
-    vi.stubGlobal('fetch', mockFetch({ completeWarmup: 0, abandons: [] }))
+  // Practice is no longer part of this mechanism at all (its breadcrumb is retired, so
+  // it never sets a hash the tab switch would need to clear) - Learn is where the real
+  // regression coverage now lives.
+  it('never sets a hash for Practice, and still clears a Learn content-page hash when switching to Today or Readiness', async () => {
+    const calls = { completeWarmup: 0, abandons: [] as string[] }
+    vi.stubGlobal('fetch', mockFetchWithLesson(calls))
     render(<Session />)
     await screen.findByRole('heading', { name: 'Rep One' })
 
     fireEvent.click(screen.getByRole('button', { name: 'Practice' }))
     await screen.findByRole('heading', { name: 'Concept Main' })
-    expect(window.location.hash).toBe('#/practice/concept-main')
+    expect(window.location.hash).toBe('')
+    fireEvent.click(screen.getByRole('button', { name: 'Back to Today' }))
+    await screen.findByRole('heading', { name: 'Rep One' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Learn' }))
+    await screen.findByRole('heading', { name: 'A Lesson' })
+    expect(window.location.hash).toBe('#/learn/l1')
 
     fireEvent.click(screen.getByRole('button', { name: 'Today' }))
 
@@ -453,20 +484,20 @@ describe('Session (daily loop, issue #19)', () => {
     expect(window.location.hash).toBe('')
 
     // Same story for Readiness.
-    fireEvent.click(screen.getByRole('button', { name: 'Practice' }))
-    await screen.findByRole('heading', { name: 'Concept Main' })
-    expect(window.location.hash).toBe('#/practice/concept-main')
+    fireEvent.click(screen.getByRole('button', { name: 'Learn' }))
+    await screen.findByRole('heading', { name: 'A Lesson' })
+    expect(window.location.hash).toBe('#/learn/l1')
 
     fireEvent.click(screen.getByRole('button', { name: 'Readiness' }))
 
     expect(await screen.findByRole('heading', { name: 'Readiness' })).toBeInTheDocument()
     expect(window.location.hash).toBe('')
 
-    // Switching back to Practice still works: the mount-time auto-pick re-enters a
-    // content page normally, proving the fix does not strand Practice in a broken state.
-    fireEvent.click(screen.getByRole('button', { name: 'Practice' }))
-    expect(await screen.findByRole('heading', { name: 'Concept Main' })).toBeInTheDocument()
-    expect(window.location.hash).toBe('#/practice/concept-main')
+    // Switching back to Learn still works: the mount-time auto-pick re-enters a
+    // content page normally, proving the fix does not strand Learn in a broken state.
+    fireEvent.click(screen.getByRole('button', { name: 'Learn' }))
+    expect(await screen.findByRole('heading', { name: 'A Lesson' })).toBeInTheDocument()
+    expect(window.location.hash).toBe('#/learn/l1')
   })
 
   it('shows the repair nudge in the header badge when a repair is available (issue #22)', async () => {

@@ -97,6 +97,36 @@
   box-sizing: border-box;
 }
 
+/* ---------- sleek scrollbars, app-wide (captain decision, issue: swe-practice-fs-build)
+   ----------
+   Token-driven so light/dark both fall out of the cascade with no separate override -
+   the one exception is the fixed-dark code panel (.solution-body/pre below), which pins
+   its scrollbar to the dark palette's own --line2 value for the same reason its
+   background is fixed-dark regardless of page theme. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line2) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background-color: var(--line2);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background-color: var(--faint);
+}
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 body {
   background: var(--bg);
   color: var(--ink);
@@ -1251,67 +1281,9 @@ fieldset.filtergroup {
   font-weight: 600;
 }
 
-/* ---------- exercise view: LeetCode-style solo layout (captain direction, issue #90
-   follow-on) ----------
-   Practice keeps its own single-pane focused page (no side nav, unlike Learn above),
-   laid out as fixed, roughly-even halves: the description is its own scrollable left
-   pane, and the right column stacks a top "response" pane (editor/free-text/choices,
-   its language control, and the Run/Submit actions) over a bottom "results" pane
-   (verdict, hints, and every reveal). Fixed proportions, not a draggable splitter -
-   noted in the PR as the deliberate, cheaper choice. Both `.ex-desc` and `.ex-results`
-   scroll independently (the same sticky+max-height convention `.tree` already uses)
-   so neither a long statement nor a long results panel ever pushes the editor away.
-   `.ex-desc`'s height is deliberately NOT viewport-derived (that was the pre-fix bug:
-   it sized to its own content, so its bottom edge didn't line up with `.ex-work`'s
-   combined editor+results height). `.exgrid` drops `align-items: start` so the grid's
-   default stretch makes `.ex-desc` fill the row - which the single, taller `.ex-work`
-   column defines - and `.ex-desc` swaps its `max-height` for `height: 100%`, so it
-   matches that combined height exactly and scrolls internally past it. */
-.exgrid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 20px;
-}
+/* ---------- exercise-adjacent cards shared with Lesson ---------- */
 .exl {
   padding: 24px 26px 26px;
-}
-.ex-desc {
-  position: sticky;
-  top: 16px;
-  height: 100%;
-  overflow-y: auto;
-}
-.ex-work {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  min-width: 0;
-}
-.ex-editor,
-.ex-results {
-  padding: 20px 22px 22px;
-}
-.ex-editor-bar {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 8px;
-}
-.ex-results {
-  max-height: 60vh;
-  overflow-y: auto;
-}
-@media (max-width: 1020px) {
-  .exgrid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .ex-desc {
-    position: static;
-    height: auto;
-    max-height: none;
-  }
-  .ex-results {
-    max-height: none;
-  }
 }
 .editor {
   border-radius: 12px;
@@ -1323,6 +1295,434 @@ fieldset.filtergroup {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+/* ---------- full-screen Practice workspace (captain-approved redesign, issue:
+   swe-practice-fs-build) ----------
+   Replaces the old inline-browse + card-grid `.exgrid` layout: Practice now renders as
+   its own edge-to-edge shell (a slim icon-only top bar over a two-pane workspace),
+   bypassing Session's `.app`/tabs chrome entirely while mounted (Session.tsx renders
+   `<Practice>` directly, with no wrapper, when its mode is 'practice') - matching the
+   approved mockups (mockup-workspace.html/mockup-sidebar.html/mockup-selfcheck.html)
+   pixel-for-pixel where the token system already gives an exact match. The breadcrumb
+   is retired on this surface (AGENTS.md's "Dedicated content pages" no longer applies
+   to Practice - Learn is unaffected): the brand icon returns to Today and a "Problem
+   List" button opens the browse tree as an overlay slide-over, never a split layout. */
+body.fs-body {
+  overflow: hidden;
+}
+.fs-shell {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+.fs-topbar {
+  flex: none;
+  height: 54px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 14px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+.fs-brandbtn {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  border: 0;
+  cursor: pointer;
+  background: linear-gradient(145deg, var(--primary), #8e63f0);
+  display: grid;
+  place-items: center;
+  color: #fff;
+  box-shadow: 0 4px 14px -5px var(--primary);
+  flex: none;
+  transition: transform 0.15s;
+}
+.fs-brandbtn:hover {
+  transform: scale(1.06);
+}
+.fs-divider {
+  width: 1px;
+  height: 24px;
+  background: var(--line2);
+  flex: none;
+}
+.fs-listbtn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--line2);
+  background: var(--surface);
+  border-radius: 9px;
+  padding: 7px 13px 7px 11px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  cursor: pointer;
+  box-shadow: var(--shadow-s);
+  transition: border-color 0.15s, color 0.15s;
+  flex: none;
+}
+.fs-listbtn:hover {
+  border-color: var(--primary);
+  color: var(--primary-ink);
+}
+.fs-title-wrap {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 10px;
+  padding: 0 8px;
+}
+.fs-title {
+  font-family: var(--body);
+  font-weight: 600;
+  font-size: 14.5px;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fs-title-domain {
+  font-size: 12px;
+  color: var(--faint);
+  white-space: nowrap;
+}
+.fs-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+.fs-give-up {
+  border: 1px solid var(--line2);
+  background: var(--surface);
+  color: var(--muted);
+  border-radius: 9px;
+  padding: 7px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: var(--shadow-s);
+}
+.fs-give-up:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.fs-run {
+  border: 0;
+  border-radius: 9px;
+  padding: 7px 18px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--primary);
+  box-shadow: 0 2px 6px -1px rgba(91, 75, 232, 0.42);
+  cursor: pointer;
+}
+.fs-run:hover:not(:disabled) {
+  box-shadow: 0 6px 14px -4px rgba(91, 75, 232, 0.55);
+}
+.fs-run:disabled {
+  background: var(--surface3);
+  color: var(--faint);
+  box-shadow: none;
+  cursor: default;
+}
+
+/* ---------- two-pane, edge-to-edge workspace ---------- */
+.fs-grid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(360px, 42%) minmax(420px, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+.fs-desc {
+  min-width: 0;
+  height: 100%;
+  overflow-y: auto;
+  border-right: 1px solid var(--line);
+  padding: 26px 30px 60px;
+  background: var(--surface);
+}
+.fs-desc-title {
+  font-size: 21px;
+  line-height: 1.3;
+  margin: 0 0 4px;
+}
+.fs-desc h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--faint);
+  font-family: var(--body);
+  margin: 26px 0 8px;
+}
+.fs-desc h2::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+.fs-section-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--faint);
+  margin: 26px 0 8px;
+}
+.fs-section-label::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
+.fs-work {
+  min-width: 0;
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1.1fr) minmax(0, 1fr);
+}
+.fs-work-single {
+  display: block;
+  overflow-y: auto;
+}
+.fs-editor-pane {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--line);
+  overflow-y: auto;
+}
+.fs-editor-pane-full {
+  height: auto;
+  border-bottom: 0;
+  padding: 20px 22px 34px;
+}
+.fs-editor-pane .editor {
+  flex: 1;
+  min-height: 320px;
+  margin: 0;
+}
+.fs-results-pane {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 20px 22px 34px;
+}
+.fs-results-idle {
+  color: var(--faint);
+  font-size: 13.5px;
+  padding: 18px 2px;
+}
+
+/* ---------- sidebar (Problem List overlay) ---------- */
+.fs-scrim {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 11, 28, 0.42);
+  z-index: 40;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.22s ease;
+}
+.fs-scrim.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+.fs-sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 400px;
+  max-width: 92vw;
+  z-index: 50;
+  background: var(--surface);
+  border-right: 1px solid var(--line);
+  box-shadow: var(--shadow-l);
+  transform: translateX(-100%);
+  transition: transform 0.26s cubic-bezier(0.2, 0.9, 0.3, 1);
+  display: flex;
+  flex-direction: column;
+}
+.fs-sidebar.open {
+  transform: translateX(0);
+}
+.fs-sidebar-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 18px 18px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.fs-sidebar-head h2 {
+  font-size: 17px;
+}
+.fs-sidebar-count {
+  font-size: 12.5px;
+  color: var(--faint);
+  margin-left: auto;
+}
+.fs-sidebar-close {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 0;
+  background: none;
+  color: var(--faint);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+.fs-sidebar-close:hover {
+  background: var(--surface2);
+  color: var(--ink);
+}
+.fs-sidebar-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 18px 24px;
+}
+.fs-item-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding-left: 4px;
+  margin: 2px 0 6px;
+}
+.fs-prow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px 7px 30px;
+  border-radius: 9px;
+  border: 0;
+  background: none;
+  width: 100%;
+  text-align: left;
+  font-size: 13px;
+  color: var(--ink);
+  cursor: pointer;
+  transition: background 0.13s;
+}
+.fs-prow:hover {
+  background: var(--surface2);
+}
+.fs-prow[aria-current='true'] {
+  background: var(--primary-soft);
+  color: var(--primary-ink);
+  font-weight: 600;
+}
+.fs-prow .nm {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fs-prow .chipx {
+  font-size: 9.5px;
+  padding: 3px 7px;
+  flex: none;
+}
+.fs-prow .solved-check {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  flex: none;
+  display: grid;
+  place-items: center;
+  font-size: 9px;
+  color: #fff;
+}
+.fs-prow .solved-check.done {
+  background: var(--emerald);
+}
+.fs-prow .solved-check.pending {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--line2);
+}
+/* the sidebar's own search results render as the same rich row list, flat rather
+   than nested under a pattern - matching how the default browse pane's `.grid` shows
+   search results across every domain regardless of which tree node is open. */
+.fs-item-list.search-results {
+  padding-left: 0;
+  margin-top: 4px;
+}
+
+/* ---------- narrow-screen collapse (matches App.css's existing 1020px break) ---------- */
+@media (max-width: 1020px) {
+  body.fs-body {
+    overflow: auto;
+  }
+  .fs-shell {
+    height: auto;
+    min-height: 100vh;
+  }
+  .fs-topbar {
+    flex-wrap: wrap;
+    height: auto;
+    padding: 10px 12px;
+    gap: 10px;
+  }
+  .fs-title-wrap {
+    order: 3;
+    flex-basis: 100%;
+    justify-content: flex-start;
+    padding: 2px 0 0;
+  }
+  .fs-grid {
+    display: block;
+  }
+  .fs-desc {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    height: auto;
+    max-height: 46vh;
+  }
+  .fs-work {
+    height: auto;
+    display: block;
+  }
+  .fs-work-single {
+    overflow-y: visible;
+  }
+  .fs-editor-pane {
+    border-bottom: 1px solid var(--line);
+  }
+  .fs-editor-pane .editor {
+    min-height: 320px;
+  }
+  .fs-results-pane {
+    max-height: none;
+  }
+  .fs-sidebar {
+    width: 100vw;
+  }
+}
+@media (max-width: 640px) {
+  .fs-topbar-right {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
 }
 
 /* ---------- lesson body (issue #90 follow-on visual redesign) ----------
@@ -1584,9 +1984,35 @@ h3.lesson-heading {
   border-bottom: 0;
 }
 
-/* ---------- history table ---------- */
-.history {
+/* ---------- history table: moved from Practice to Readiness (captain decision, issue:
+   swe-practice-fs-build) - "below the family breakdown... keep it at a set size and
+   make it a scrollable component", so `.history` itself is the bounded, internally
+   scrolling box (both axes: narrow viewports need horizontal scroll too), while
+   `.history-section` carries the heading/note that stay visible above it. ---------- */
+.history-section {
   margin-top: 32px;
+}
+.history-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+.history-note {
+  color: var(--muted);
+  font-size: 13.5px;
+  max-width: 68ch;
+  margin: 4px 0 16px;
+}
+.history {
+  margin-top: 8px;
+  max-height: 420px;
+  overflow: auto;
+  border-radius: var(--r);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  box-shadow: var(--shadow-m);
 }
 .history table {
   border-collapse: collapse;
@@ -1596,8 +2022,47 @@ h3.lesson-heading {
 .history th,
 .history td {
   text-align: left;
-  padding: 8px 12px;
+  padding: 10px 16px;
   border-bottom: 1px solid var(--line);
+}
+.history th {
+  position: sticky;
+  top: 0;
+  background: var(--surface2);
+  font-weight: 700;
+  color: var(--muted);
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.history tr:last-child td {
+  border-bottom: 0;
+}
+.outcome {
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 3px 9px;
+  border-radius: 999px;
+}
+.outcome.solved {
+  background: var(--emerald-soft);
+  color: var(--emerald);
+}
+.outcome.abandoned {
+  background: var(--coral-soft);
+  color: var(--coral);
+}
+.outcome.read,
+.outcome.in_progress {
+  background: var(--surface3);
+  color: var(--muted);
+}
+.outcome.explained {
+  background: var(--primary-soft);
+  color: var(--primary-ink);
 }
 
 /* ---------- hints / reveal / complexity / solution / model opinion ---------- */
@@ -1690,6 +2155,21 @@ pre {
   overflow-x: auto;
   font-family: var(--mono);
   font-size: 12.5px;
+}
+/* Fixed-dark regardless of page theme (see the comment above these rules) - the
+   scrollbar is pinned to match, never the live --line2 token, so it never goes
+   invisible-on-dark-panel while the page itself is in light mode. */
+.solution-body,
+pre {
+  scrollbar-color: #443b63 transparent;
+}
+.solution-body::-webkit-scrollbar-thumb,
+pre::-webkit-scrollbar-thumb {
+  background-color: #443b63;
+}
+.solution-body::-webkit-scrollbar-thumb:hover,
+pre::-webkit-scrollbar-thumb:hover {
+  background-color: #59517a;
 }
 
 /* the Direction A graft: the log-log complexity plot */

@@ -146,6 +146,17 @@ function Session() {
     }
   }, [warmupEmpty, status?.dayComplete, recordDayComplete])
 
+  // Practice is a full-screen workspace (captain-approved redesign, issue:
+  // swe-practice-fs-build): it renders its own edge-to-edge shell - a slim top bar in
+  // place of Session's `.app`/tabs chrome - rather than sitting inside `.workspace`
+  // like the other three modes. Its brand icon calls `switchMode('today')` directly
+  // (the same action the retired chrome's own brand icon would have taken), which is
+  // how leaving the workspace is reachable with no tabs on screen; the "Practice" tab
+  // button below (rendered only in the non-practice chrome) is still what enters it.
+  if (mode === 'practice') {
+    return <Practice onSolved={handleMainSolved} onExit={() => switchMode('today')} />
+  }
+
   return (
     <div className="app">
       <header className="topbar session-header">
@@ -181,13 +192,10 @@ function Session() {
         >
           Readiness
         </button>
-        <button
-          type="button"
-          className={mode === 'practice' ? 'active' : ''}
-          aria-selected={mode === 'practice'}
-          aria-pressed={mode === 'practice'}
-          onClick={() => switchMode('practice')}
-        >
+        {/* Never active here: this chrome only renders when mode !== 'practice' (see
+            the early return above) - Practice is a full-screen mode with no tabs of
+            its own, so entering it is the only thing this button ever does. */}
+        <button type="button" onClick={() => switchMode('practice')}>
           Practice
         </button>
         <button
@@ -221,8 +229,6 @@ function Session() {
           </div>
         ) : mode === 'readiness' ? (
           <Readiness streak={status?.streak} />
-        ) : mode === 'practice' ? (
-          <Practice dayComplete={status?.dayComplete ?? false} onSolved={handleMainSolved} />
         ) : (
           <Lesson />
         )}

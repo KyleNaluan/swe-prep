@@ -240,3 +240,114 @@ describe('TreeBrowser (issue #90)', () => {
     expect(screen.getByText('No items yet.')).toBeInTheDocument()
   })
 })
+
+// The third display mode (captain-approved full-screen redesign, issue:
+// swe-practice-fs-build): Practice's "Problem List" overlay sidebar has no room for
+// the desktop `.pane` grid, so items render as a single condensed column instead -
+// rich rows (a difficulty chip and a solved checkmark) nested under Area/Pattern.
+describe('TreeBrowser sidebarMode (issue: swe-practice-fs-build)', () => {
+  const UNTAGGED: TreeItem = {
+    id: 'u1',
+    title: 'Untagged Problem',
+    domain: 'algorithms',
+    difficulty: 'HARD',
+    topics: [],
+    family: [],
+  }
+
+  function SidebarHarness({ solvedIds }: { solvedIds?: Set<string> }) {
+    const [filters, setFilters] = useState({ difficulty: new Set(['EASY', 'MEDIUM', 'HARD']) })
+    const [selectedId, setSelectedId] = useState<string | null>(null)
+    const [lastContext, setLastContext] = useState<{ domain: string; pattern: string | null } | null>(
+      null,
+    )
+    const toggle = (key: string, value: string) => {
+      setFilters((prev) => {
+        const set = new Set(prev[key as keyof typeof prev] ?? [])
+        if (set.has(value)) set.delete(value)
+        else set.add(value)
+        return { ...prev, [key]: set }
+      })
+    }
+    return (
+      <>
+        <p>context: {lastContext ? `${lastContext.domain}/${lastContext.pattern ?? 'none'}` : 'none'}</p>
+        <TreeBrowser
+          sidebarMode
+          items={[...ITEMS, UNTAGGED]}
+          filterGroups={FILTER_GROUPS}
+          activeFilters={filters}
+          onToggleFilter={toggle}
+          selectedId={selectedId}
+          onSelect={(item, context) => {
+            setSelectedId(item.id)
+            setLastContext(context)
+          }}
+          findLabel="Find a problem"
+          emptyMessage="No items."
+          sectionLabel="Practice"
+          itemNoun="problem"
+          solvedIds={solvedIds}
+        />
+      </>
+    )
+  }
+
+  it('never renders the desktop .pane grid or crumb', () => {
+    render(<SidebarHarness />)
+    expect(document.querySelector('.pane')).toBeNull()
+    expect(document.querySelector('.crumb')).toBeNull()
+  })
+
+  it('nests rich item rows (chip + checkmark) under an expanded pattern, and reports its context', () => {
+    render(<SidebarHarness solvedIds={new Set(['a2'])} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /^Array/ }))
+    const row = screen.getByRole('button', { name: /Two Sum/ })
+    expect(row.querySelector('.chipx')).toHaveTextContent('Easy')
+    // Not solved: the checkmark is present but pending (empty), not done.
+    expect(row.querySelector('.solved-check')).toHaveClass('pending')
+
+    fireEvent.click(row)
+    expect(screen.getByText('context: algorithms/array')).toBeInTheDocument()
+  })
+
+  it('shows a done checkmark for a solved item', () => {
+    render(<SidebarHarness solvedIds={new Set(['a2'])} />)
+    fireEvent.click(screen.getByRole('button', { name: /^Dynamic programming/ }))
+    const row = screen.getByRole('button', { name: /Climbing Stairs/ })
+    expect(row.querySelector('.solved-check')).toHaveClass('done')
+  })
+
+  // An item with no topic tags never appears under any pattern node (groupByPattern's
+  // own rule) - without a domain-level fallback it would be entirely unreachable in
+  // the sidebar, since there is no `.pane` grid left to show it in either.
+  it('keeps an untagged item reachable directly under its open domain, with no pattern picked', () => {
+    render(<SidebarHarness />)
+    // Algorithms is open by default (the largest domain) and no pattern is picked yet.
+    expect(screen.getByRole('button', { name: /Untagged Problem/ })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /Untagged Problem/ }))
+    expect(screen.getByText('context: algorithms/none')).toBeInTheDocument()
+  })
+
+  it('hides the domain-level fallback list once a pattern is picked, showing only that pattern\'s items', () => {
+    render(<SidebarHarness />)
+    expect(screen.getByRole('button', { name: /Untagged Problem/ })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /^Array/ }))
+
+    expect(screen.queryByRole('button', { name: /Untagged Problem/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Two Sum/ })).toBeInTheDocument()
+  })
+
+  it('searching shows a flat rich-row list across domains, with no pattern context', () => {
+    render(<SidebarHarness />)
+    fireEvent.change(screen.getByLabelText('Find a problem'), { target: { value: 'Top Customers' } })
+
+    const row = screen.getByRole('button', { name: /Top Customers/ })
+    expect(row.querySelector('.chipx')).toHaveTextContent('Easy')
+    fireEvent.click(row)
+    expect(screen.getByText('context: databases/none')).toBeInTheDocument()
+  })
+})

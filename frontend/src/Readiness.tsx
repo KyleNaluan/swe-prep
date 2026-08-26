@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { apiFetch, errorMessage } from './api'
 import { familyLabel } from './familyLabels'
 import { fetchSessionHistory, type DayHistory } from './sessionHistory'
+import type { AttemptView } from './Practice'
 
 // The honest readiness picture (issue #45, design revision t3 section 4.4) - the primary
 // progress surface the map's "no invented currency" ruling (issue #7) replaces points,
@@ -38,6 +39,12 @@ const ALWAYS_ACTIVE = new Set(['CORE', 'PROFESSIONAL'])
 function Readiness({ streak }: { streak?: number }) {
   const [summary, setSummary] = useState<ReadinessSummary | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // The attempt-history table, relocated here from Practice (captain-approved
+  // full-screen redesign, issue: swe-practice-fs-build) so that surface could become
+  // a full-screen workspace with no page-length table competing for the fold. Fetched
+  // independently of the readiness summary above - a failure here is a secondary,
+  // best-effort signal and must never blank the readiness picture itself.
+  const [history, setHistory] = useState<AttemptView[]>([])
 
   const load = useCallback(() => {
     apiFetch('/api/readiness')
@@ -47,6 +54,18 @@ function Readiness({ streak }: { streak?: number }) {
       })
       .then(setSummary)
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
+    apiFetch('/api/attempts')
+      .then(async (response) => {
+        if (!response.ok) throw new Error(await errorMessage(response))
+        const body: unknown = await response.json()
+        if (!Array.isArray(body)) throw new Error('Malformed attempt history response')
+        return body as AttemptView[]
+      })
+      .then(setHistory)
+      .catch(() => {
+        // Best-effort, matching sessionHistory.ts's own defensiveness; the history
+        // table simply stays empty rather than blanking the rest of the page.
+      })
   }, [])
 
   useEffect(() => {
@@ -175,6 +194,63 @@ function Readiness({ streak }: { streak?: number }) {
           </table>
         </div>
       </section>
+
+      <History attempts={history} />
+    </section>
+  )
+}
+
+// A plain list of past sittings - the visible-history half of issue #15. Moved here
+// from Practice (captain-approved full-screen redesign, issue: swe-practice-fs-build):
+// placed below "By family" per the captain's final round-2 decision (variant A, "keep
+// it at a set size and make it a scrollable component") - a plain record, not one of
+// the three competence axes above, so `.history` is a bounded, internally-scrolling
+// box rather than growing the page indefinitely. It is deliberately minimal; the
+// schedulers (issue #8) read the record, not this view.
+function History({ attempts }: { attempts: AttemptView[] }) {
+  if (attempts.length === 0) return null
+  return (
+    <section className="history-section">
+      <div className="history-section-head">
+        <h2>History</h2>
+      </div>
+      <p className="history-note">
+        Every attempt you have ever started - moved here from Practice so that workspace
+        could become full-screen. This is still the plain, unranked sitting-by-sitting
+        record (issue #15); the schedulers read the underlying data, not this view.
+      </p>
+      <div className="history">
+        <table>
+          <thead>
+            <tr>
+              <th>Exercise</th>
+              <th>Outcome</th>
+              <th>Submissions</th>
+              <th>Hints</th>
+              <th>Revealed</th>
+              <th>Solution seen</th>
+              <th>Started</th>
+            </tr>
+          </thead>
+          <tbody>
+            {attempts.map((attempt) => (
+              <tr key={attempt.id}>
+                <td>{attempt.exerciseTitle}</td>
+                <td>
+                  <span className={`outcome ${attempt.outcome.toLowerCase()}`}>
+                    {attempt.outcome.replace('_', ' ').toLowerCase()}
+                  </span>
+                </td>
+                <td>{attempt.submissionCount}</td>
+                <td>{attempt.hintsTaken > 0 ? attempt.hintsTaken : '-'}</td>
+                <td>{attempt.failingCaseRevealed ? 'yes' : '-'}</td>
+                <td>{attempt.solutionSeen ? 'yes' : '-'}</td>
+                <td>{new Date(attempt.startedAt).toLocaleString()}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </section>
   )
 }
