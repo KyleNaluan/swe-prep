@@ -66,6 +66,44 @@ class ContentWriterTest {
         assertThat(Files.readString(solution)).isEqualTo("class Solution {}");
     }
 
+    // --- LeetCode-style examples and constraints (issue: swe-examples-feedback) -------
+
+    @Test
+    void writesExamplesAndConstraintsAndLoadsThemBackUnchanged(@TempDir Path dir) throws Exception {
+        Exercise base = Fixtures.pairInAnyOrder();
+        Exercise withExamples = new Exercise(
+                base.id(), base.title(), base.statement(), base.domain(), base.topics(),
+                base.difficulty(), base.form(), base.response(), base.grading(), base.hints(),
+                base.explanation(), base.family(), base.stability(), base.reviewed(),
+                base.derivedFrom(), base.complexityCheck(),
+                java.util.List.of(new com.sweprep.backend.exercise.Example(
+                        "nums = [2,7,11,15], target = 9", "[0,1]", "explains it")),
+                java.util.List.of("2 <= nums.length <= 10^4"));
+
+        writer.writeExercise(withExamples, dir);
+
+        JsonNode root = mapper.readTree(dir.resolve(base.id() + ".json").toFile());
+        assertThat(root.get("examples")).hasSize(1);
+        assertThat(root.get("examples").get(0).get("input").asText())
+                .isEqualTo("nums = [2,7,11,15], target = 9");
+        assertThat(root.get("constraints").get(0).asText()).isEqualTo("2 <= nums.length <= 10^4");
+
+        ExerciseCatalog catalog = new FileExerciseCatalog(new ContentProperties(dir.toString()), mapper);
+        Exercise reloaded = catalog.byId(base.id()).orElseThrow();
+        assertThat(reloaded.examples()).hasSize(1);
+        assertThat(reloaded.examples().get(0).output()).isEqualTo("[0,1]");
+        assertThat(reloaded.constraints()).containsExactly("2 <= nums.length <= 10^4");
+    }
+
+    @Test
+    void anExerciseWithNoExamplesOrConstraintsWritesNeitherField(@TempDir Path dir) throws Exception {
+        writer.writeExercise(Fixtures.pairInAnyOrder(), dir);
+
+        JsonNode root = mapper.readTree(dir.resolve("pair-in-any-order.json").toFile());
+        assertThat(root.has("examples")).isFalse();
+        assertThat(root.has("constraints")).isFalse();
+    }
+
     @Test
     void everyWrittenExerciseLoadsBackThroughTheRealProductionLoader(@TempDir Path dir) throws Exception {
         writer.writeExercise(Fixtures.pairInAnyOrder(), dir);

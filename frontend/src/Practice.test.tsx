@@ -575,3 +575,97 @@ describe('Practice full-screen workspace navigation (issue: swe-practice-fs-buil
     expect(onExit).toHaveBeenCalledTimes(1)
   })
 })
+
+// LeetCode-style examples and constraints (issue: swe-examples-feedback), rendered
+// under the statement for algorithm items that carry them; a non-algorithm item (or
+// one authored with neither field) is unaffected.
+describe('Practice examples and constraints (issue: swe-examples-feedback)', () => {
+  const EX_CATALOG = [
+    { id: 'two-sum', title: 'Two Sum', domain: 'algorithms', difficulty: 'EASY', form: 'CHALLENGE' },
+  ]
+  const TWO_SUM_WITH_EXAMPLES = {
+    id: 'two-sum',
+    title: 'Two Sum',
+    statement: 'Return the indices that add up to target.',
+    domain: 'algorithms',
+    difficulty: 'EASY',
+    response: { kind: 'code', language: 'java', stub: 'class Solution {}' },
+    hints: [],
+    hasExplanation: false,
+    examples: [
+      {
+        input: 'nums = [2,7,11,15], target = 9',
+        output: '[0,1]',
+        explanation: 'nums[0] + nums[1] == 9, so we return [0, 1].',
+      },
+      { input: 'nums = [3,2,4], target = 6', output: '[1,2]' },
+    ],
+    constraints: ['2 <= nums.length <= 10^4', 'Exactly one valid answer exists.'],
+  }
+
+  beforeEach(() => vi.stubGlobal('fetch', vi.fn()))
+  afterEach(() => {
+    cleanup()
+    vi.unstubAllGlobals()
+  })
+
+  function mockExamplesFetch(exercise: unknown) {
+    return vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const href = String(url)
+      const method = init?.method ?? 'GET'
+      if (href.endsWith('/api/exercises')) return { ok: true, json: async () => EX_CATALOG } as Response
+      if (href.includes('/api/exercises/two-sum'))
+        return { ok: true, json: async () => exercise } as Response
+      if (href.endsWith('/api/attempts') && method === 'POST')
+        return { ok: true, json: async () => ({ id: 'att-1' }) } as Response
+      if (href.endsWith('/api/attempts')) return { ok: true, json: async () => [] } as Response
+      throw new Error(`unexpected fetch to ${method} ${href}`)
+    })
+  }
+
+  it('renders each example\'s Input/Output/Explanation and the constraints list', async () => {
+    vi.stubGlobal('fetch', mockExamplesFetch(TWO_SUM_WITH_EXAMPLES))
+    const { container } = render(<Practice />)
+    await screen.findByRole('heading', { name: 'Two Sum' })
+
+    expect(screen.getByText('Examples')).toBeInTheDocument()
+    expect(screen.getByText('Example 1:')).toBeInTheDocument()
+    expect(screen.getByText('Example 2:')).toBeInTheDocument()
+
+    // Query by their own class rather than getByText's substring matcher, which
+    // would also match every ancestor whose full text happens to contain the
+    // needle (the .examples wrapper, .fs-desc, ...) and throw on ambiguity.
+    const ioBlocks = container.querySelectorAll('.example-block-io')
+    expect(ioBlocks).toHaveLength(2)
+    expect(ioBlocks[0].textContent).toContain('nums = [2,7,11,15], target = 9')
+    expect(ioBlocks[0].textContent).toContain('[0,1]')
+    expect(ioBlocks[1].textContent).toContain('nums = [3,2,4], target = 6')
+    expect(ioBlocks[1].textContent).toContain('[1,2]')
+
+    const explanations = container.querySelectorAll('.example-block-explanation')
+    expect(explanations).toHaveLength(1)
+    expect(explanations[0].textContent).toContain('nums[0] + nums[1] == 9, so we return [0, 1].')
+
+    expect(screen.getByText('Constraints')).toBeInTheDocument()
+    const constraints = container.querySelectorAll('.constraints li')
+    expect(constraints).toHaveLength(2)
+    expect(constraints[0].textContent).toBe('2 <= nums.length <= 10^4')
+    expect(constraints[1].textContent).toBe('Exactly one valid answer exists.')
+  })
+
+  it('renders neither section for an item with no examples or constraints', async () => {
+    vi.stubGlobal(
+      'fetch',
+      mockExamplesFetch({
+        ...TWO_SUM_WITH_EXAMPLES,
+        examples: undefined,
+        constraints: undefined,
+      }),
+    )
+    render(<Practice />)
+    await screen.findByRole('heading', { name: 'Two Sum' })
+
+    expect(screen.queryByText('Examples')).not.toBeInTheDocument()
+    expect(screen.queryByText('Constraints')).not.toBeInTheDocument()
+  })
+})

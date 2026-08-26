@@ -78,6 +78,15 @@ type SelfRating = 'NAILED_IT' | 'PARTIAL' | 'MISSED'
 // What the self-check reveal returns: the model answer, and the committed submission to rate.
 type SelfCheckReveal = { submissionId: string; modelAnswer: string }
 
+// One LeetCode-style worked example (issue: swe-examples-feedback): a display-formatted
+// input/output pair, plus an optional one-or-two-sentence explanation. Purely teaching
+// material - shown up front, never withheld like a hint or the explanation field below.
+type Example = {
+  input: string
+  output: string
+  explanation?: string
+}
+
 type Exercise = {
   id: string
   title: string
@@ -99,6 +108,12 @@ type Exercise = {
   // recorded, so it can never sit in a response already held while the claim prompt
   // renders (the real information-ordering guarantee the ticket asks for).
   hasComplexityCheck: boolean
+  // LeetCode-style worked examples and constraints (issue: swe-examples-feedback),
+  // shown under the statement. Empty for the vast majority of non-algorithm items -
+  // both fields are optional on the wire and additive, so an older payload or a
+  // non-algorithm item renders exactly as before.
+  examples?: Example[]
+  constraints?: string[]
 }
 
 // The coarse complexity vocabulary the self-report and target-reveal flow is written
@@ -516,6 +531,8 @@ function Practice({ onSolved, onExit }: { onSolved?: () => void; onExit?: () => 
           hints: loaded.hints ?? [],
           hasExplanation: loaded.hasExplanation ?? false,
           hasComplexityCheck: loaded.hasComplexityCheck ?? false,
+          examples: loaded.examples ?? [],
+          constraints: loaded.constraints ?? [],
         })
         codeRef.current =
           loaded.response.kind === 'code' || loaded.response.kind === 'query'
@@ -979,6 +996,13 @@ function Practice({ onSolved, onExit }: { onSolved?: () => void; onExit?: () => 
               <h1 className="fs-desc-title">{exercise.title}</h1>
               <p className="statement">{exercise.statement}</p>
 
+              {exercise.examples && exercise.examples.length > 0 && (
+                <ExamplesSection examples={exercise.examples} />
+              )}
+              {exercise.constraints && exercise.constraints.length > 0 && (
+                <ConstraintsSection constraints={exercise.constraints} />
+              )}
+
               {!exerciseDone && (
                 <HintLadder
                   rungNames={exercise.hints}
@@ -1076,10 +1100,20 @@ function Practice({ onSolved, onExit }: { onSolved?: () => void; onExit?: () => 
 
             <div className="fs-results-pane">
               <div className="fs-section-label" style={{ marginTop: 0 }}>
-                Test results
+                {/* code and SQL genuinely run test cases against the submission; every other
+                    graded kind (choice, predict-output free text) has no test cases at all -
+                    this pane shows a plain right/wrong verdict plus any explanation, which
+                    reads as "Feedback", not "Test results" (issue: swe-examples-feedback). */}
+                {exercise?.response.kind === 'code' || exercise?.response.kind === 'query'
+                  ? 'Test results'
+                  : 'Feedback'}
               </div>
               {run.phase === 'idle' ? (
-                <p className="fs-results-idle">Run your code to see test results here.</p>
+                <p className="fs-results-idle">
+                  {exercise?.response.kind === 'code' || exercise?.response.kind === 'query'
+                    ? 'Run your code to see test results here.'
+                    : 'Submit your answer to see feedback here.'}
+                </p>
               ) : (
                 exercise && (
                   <>
@@ -1399,6 +1433,61 @@ function LanguagePicker({
         ))}
       </select>
     </label>
+  )
+}
+
+// LeetCode-style worked examples (issue: swe-examples-feedback), rendered under the
+// statement. Purely teaching material - always shown, never withheld - so this has none
+// of the reveal/recording machinery HintLadder below needs. Input/Output are display
+// strings authored to match the item's actual grading cases exactly, so they can never
+// disagree with what Run grades; Explanation is optional prose, not code, so it renders
+// in the ordinary reading font rather than monospace.
+function ExamplesSection({ examples }: { examples: Example[] }) {
+  return (
+    <>
+      <h2>Examples</h2>
+      <div className="examples">
+        {examples.map((example, index) => (
+          <div className="example-block" key={index}>
+            <p className="example-block-label">Example {index + 1}:</p>
+            {/* A <div>, not a <pre>: App.css's generic `pre { background: #161226; ... }`
+                rule (the fixed-dark convention shared by the failing-case/error panels)
+                would otherwise win over this block's own theme-aware color, leaving dark
+                ink text unreadable against that dark background - see issue:
+                swe-examples-feedback. white-space: pre-wrap keeps the Input/Output line
+                break without opting into that rule. */}
+            <div className="example-block-io">
+              <span className="example-block-field">Input:</span> {example.input}
+              {'\n'}
+              <span className="example-block-field">Output:</span> {example.output}
+            </div>
+            {example.explanation && (
+              <p className="example-block-explanation">
+                <span className="example-block-field">Explanation:</span> {example.explanation}
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
+    </>
+  )
+}
+
+// The constraints list, LeetCode-style, shown alongside the examples. Every entry is
+// authored text the content set's real grading cases actually back - never an invented
+// numeric bound - so this is a plain list, not a validated form.
+function ConstraintsSection({ constraints }: { constraints: string[] }) {
+  return (
+    <>
+      <h2>Constraints</h2>
+      <ul className="constraints">
+        {constraints.map((constraint, index) => (
+          <li key={index}>
+            <code>{constraint}</code>
+          </li>
+        ))}
+      </ul>
+    </>
   )
 }
 
