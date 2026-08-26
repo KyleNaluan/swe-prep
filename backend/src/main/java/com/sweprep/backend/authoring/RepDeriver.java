@@ -122,7 +122,8 @@ final class RepDeriver {
                 spec.id(), spec.title(), spec.statement(), spec.domain(), spec.topics(), spec.difficulty(),
                 Form.CHALLENGE, new Response.Code(spec.signature()),
                 new Grading.TestCases(spec.comparison(), spec.cases()), spec.hints(), spec.explanation(),
-                spec.family(), spec.stability(), spec.reviewed(), null, spec.complexityCheck());
+                spec.family(), spec.stability(), spec.reviewed(), null, spec.complexityCheck(),
+                spec.examples(), spec.constraints());
     }
 
     // ------------------------------------------------------------------ pattern-id

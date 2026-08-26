@@ -75,6 +75,31 @@ class RepDeriverTest {
         assertThat(result.skipped()).isEmpty();
     }
 
+    // A spec's authored examples/constraints (issue: swe-examples-feedback) belong to the
+    // challenge itself - they are a display/pedagogy choice for the problem an author
+    // wrote by hand, not something mechanically derivable from a case the way a rep is
+    // (see ProblemSpec's own javadoc). Derived reps carry none.
+    @Test
+    void examplesAndConstraintsThreadThroughToTheChallengeButNotToDerivedReps() throws Exception {
+        com.fasterxml.jackson.databind.node.ObjectNode root =
+                (com.fasterxml.jackson.databind.node.ObjectNode) mapper.readTree(RUNNING_MAX_SPEC);
+        com.fasterxml.jackson.databind.node.ObjectNode example = root.putArray("examples").addObject();
+        example.put("input", "nums = [1,5,3]");
+        example.put("output", "5");
+        root.putArray("constraints").add("1 <= nums.length");
+        ProblemSpec spec = ProblemSpecParser.parse("test", root);
+
+        DerivationResult result = deriver.derive(spec);
+
+        assertThat(result.challenge().examples()).hasSize(1);
+        assertThat(result.challenge().examples().get(0).output()).isEqualTo("5");
+        assertThat(result.challenge().constraints()).containsExactly("1 <= nums.length");
+        assertThat(result.reps()).allSatisfy(rep -> {
+            assertThat(rep.examples()).isEmpty();
+            assertThat(rep.constraints()).isEmpty();
+        });
+    }
+
     @Test
     void everyDerivedRepIsAWarmupRepNotAChallenge() throws Exception {
         DerivationResult result = deriver.derive(parse(RUNNING_MAX_SPEC));

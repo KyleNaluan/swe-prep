@@ -192,6 +192,46 @@ describe('App', () => {
     expect(await screen.findByText('Correct')).toBeInTheDocument()
   })
 
+  // Kind-appropriate results-pane labeling (issue: swe-examples-feedback): a choice
+  // item never runs test cases, so the pane reads "Feedback" both idle and after
+  // submitting - "Test results" is reserved for the kinds that genuinely run them.
+  it('labels the results pane "Feedback" for a choice exercise, idle and after submitting', async () => {
+    vi.stubGlobal('fetch', mockFetch({ outcome: 'PASSED', passed: 1, total: 1, detail: '' }))
+
+    render(<App />)
+    await gotoPractice()
+    await screen.findByRole('heading', { name: 'Two Sum' })
+    await selectExercise('Hash Map Lookup')
+    await screen.findByRole('heading', { name: 'Hash Map Lookup' })
+
+    expect(screen.getByText('Feedback')).toBeInTheDocument()
+    expect(screen.getByText('Submit your answer to see feedback here.')).toBeInTheDocument()
+    expect(screen.queryByText('Test results')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByLabelText('O(1)'))
+    fireEvent.click(screen.getByRole('button', { name: 'Submit' }))
+
+    expect(await screen.findByText('Correct')).toBeInTheDocument()
+    expect(screen.getByText('Feedback')).toBeInTheDocument()
+  })
+
+  it('keeps the results pane labeled "Test results" for a code exercise, idle and after running', async () => {
+    vi.stubGlobal('fetch', mockFetch({ outcome: 'PASSED', passed: 1, total: 1, detail: '' }))
+
+    render(<App />)
+    await gotoPractice()
+    await screen.findByRole('heading', { name: 'Two Sum' })
+
+    expect(screen.getByText('Test results')).toBeInTheDocument()
+    expect(screen.getByText('Run your code to see test results here.')).toBeInTheDocument()
+    expect(screen.queryByText('Feedback')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Run' }))
+
+    expect(await screen.findByText('1 of 1 tests passed')).toBeInTheDocument()
+    expect(screen.getByText('Test results')).toBeInTheDocument()
+  })
+
   // Practice's old dedicated-content-page breadcrumb is retired (captain-approved
   // full-screen redesign, issue: swe-practice-fs-build): the browse tree now lives
   // only inside the "Problem List" overlay sidebar, which is never unmounted while
