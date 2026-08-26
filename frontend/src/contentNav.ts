@@ -1,9 +1,10 @@
 import { useEffect, useLayoutEffect, useRef } from 'react'
 
-// Drives the browse <-> dedicated-content-page toggle Practice and Learn both use
-// (carrying Direction A's "three panes, drill left to right, breadcrumb above" pattern
-// into Direction C's shipped design - see AGENTS.md's visual-redesign section). The
-// tree/grid pane is never unmounted across the toggle - Practice.tsx/Lesson.tsx render
+// Drives the browse <-> dedicated-content-page toggle Learn uses (Practice retired its
+// use in the full-screen redesign - see AGENTS.md; this module stays generic over both
+// 'practice'/'learn' sections for any future content-page surface), carrying Direction A's
+// "three panes, drill left to right, breadcrumb above" pattern into Direction C's shipped
+// design. The tree/grid pane is never unmounted across the toggle - Lesson.tsx renders
 // it always, only hidden with CSS while a content page is open - so its own scroll
 // container, expanded nodes and filters need no explicit save/restore at all: nothing
 // here ever touches them. The two things that DO need explicit handling are the
@@ -28,7 +29,7 @@ export function replaceContentEntry(section: 'practice' | 'learn', id: string) {
 
 // The mount-time auto-pick each surface opens with (the scheduler's main exercise, the
 // first lesson) enters a content page just like a tree click, but must never accumulate
-// history depth on every remount (a Practice<->Learn tab switch remounts the surface) or
+// history depth on every remount (a tab switch away and back remounts the surface) or
 // stack a fresh entry over the one the browser already restored on reload. It reads the
 // browser's actual current state: any content-shaped entry already sitting here means a
 // browse base exists beneath it (an earlier push this session, or a reload-restored one),
