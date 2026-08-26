@@ -215,8 +215,7 @@ function History({ attempts }: { attempts: AttemptView[] }) {
         <h2>History</h2>
       </div>
       <p className="history-note">
-        Every attempt you have ever started - moved here from Practice so that workspace
-        could become full-screen. This is still the plain, unranked sitting-by-sitting
+        Every attempt you have ever started. This is the plain, unranked sitting-by-sitting
         record (issue #15); the schedulers read the underlying data, not this view.
       </p>
       <div className="history">
