@@ -59,6 +59,13 @@ import java.util.List;
  * @param complexityCheck the complexity self-report flow's authored target and optional
  *                   input generator (issue #17), or {@code null} when this exercise
  *                   carries none - which skips the whole flow, not just its measurement
+ * @param examples   LeetCode-style worked examples, shown under the statement; empty
+ *                   when the item carries none. Purely display metadata - see {@link
+ *                   Example}'s javadoc for why this is never a second grading path
+ * @param constraints short, authored constraint strings (e.g. {@code "1 <= n <= 10^4"}),
+ *                   shown as a list under the examples; empty when the item carries
+ *                   none. Like {@link #examples()}, this is authored display text, not
+ *                   anything the grader enforces
  */
 public record Exercise(
         String id,
@@ -76,13 +83,45 @@ public record Exercise(
         Stability stability,
         LocalDate reviewed,
         String derivedFrom,
-        ComplexityCheck complexityCheck) implements Content {
+        ComplexityCheck complexityCheck,
+        List<Example> examples,
+        List<String> constraints) implements Content {
 
     public Exercise {
         topics = List.copyOf(topics);
         hints = List.copyOf(hints);
         family = List.copyOf(family);
         stability = stability == null ? Stability.STABLE : stability;
+        examples = examples == null ? List.of() : List.copyOf(examples);
+        constraints = constraints == null ? List.of() : List.copyOf(constraints);
+    }
+
+    /**
+     * Convenience constructor for a pre-issue-90-follow-on caller with no examples or
+     * constraints: the description pane renders exactly as it did before that field
+     * pair existed.
+     */
+    public Exercise(
+            String id,
+            String title,
+            String statement,
+            String domain,
+            List<String> topics,
+            Difficulty difficulty,
+            Form form,
+            Response response,
+            Grading grading,
+            List<Hint> hints,
+            String explanation,
+            List<Family> family,
+            Stability stability,
+            LocalDate reviewed,
+            String derivedFrom,
+            ComplexityCheck complexityCheck) {
+        this(
+                id, title, statement, domain, topics, difficulty, form, response, grading, hints,
+                explanation, family, stability, reviewed, derivedFrom, complexityCheck,
+                List.of(), List.of());
     }
 
     /**

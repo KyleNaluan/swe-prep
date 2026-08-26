@@ -69,6 +69,40 @@ class ProblemSpecParserTest {
     }
 
     @Test
+    void aSpecWithNoExamplesOrConstraintsParsesWithEmptyLists(@TempDir Path dir) throws Exception {
+        Path file = dir.resolve("add-two.json");
+        Files.writeString(file, VALID);
+
+        ProblemSpec spec = ProblemSpecParser.parse(file);
+
+        assertThat(spec.examples()).isEmpty();
+        assertThat(spec.constraints()).isEmpty();
+    }
+
+    @Test
+    void parsesExamplesAndConstraintsWhenPresent(@TempDir Path dir) throws Exception {
+        JsonNode root = mapper.readTree(VALID).deepCopy();
+        com.fasterxml.jackson.databind.node.ObjectNode object =
+                (com.fasterxml.jackson.databind.node.ObjectNode) root;
+        com.fasterxml.jackson.databind.node.ArrayNode examples = object.putArray("examples");
+        com.fasterxml.jackson.databind.node.ObjectNode example = examples.addObject();
+        example.put("input", "a = 1, b = 2");
+        example.put("output", "3");
+        example.put("explanation", "1 + 2 = 3.");
+        object.putArray("constraints").add("-1000 <= a, b <= 1000");
+        Path file = dir.resolve("add-two.json");
+        Files.writeString(file, object.toString());
+
+        ProblemSpec spec = ProblemSpecParser.parse(file);
+
+        assertThat(spec.examples()).hasSize(1);
+        assertThat(spec.examples().get(0).input()).isEqualTo("a = 1, b = 2");
+        assertThat(spec.examples().get(0).output()).isEqualTo("3");
+        assertThat(spec.examples().get(0).explanation()).isEqualTo("1 + 2 = 3.");
+        assertThat(spec.constraints()).containsExactly("-1000 <= a, b <= 1000");
+    }
+
+    @Test
     void missingReferenceSolutionFailsNamingTheField(@TempDir Path dir) throws Exception {
         JsonNode root = mapper.readTree(VALID).deepCopy();
         ((com.fasterxml.jackson.databind.node.ObjectNode) root).remove("referenceSolution");

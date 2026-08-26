@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.sweprep.backend.exercise.Comparison;
 import com.sweprep.backend.exercise.ComplexityCheck;
+import com.sweprep.backend.exercise.Example;
 import com.sweprep.backend.exercise.Exercise;
 import com.sweprep.backend.exercise.Grading;
 import com.sweprep.backend.exercise.Hint;
@@ -95,7 +96,27 @@ final class ContentWriter {
         if (exercise.complexityCheck() != null) {
             root.set("complexity", complexityCheck(exercise.complexityCheck()));
         }
+        if (!exercise.examples().isEmpty()) {
+            root.set("examples", examples(exercise.examples()));
+        }
+        if (!exercise.constraints().isEmpty()) {
+            root.set("constraints", stringArray(exercise.constraints()));
+        }
         return root;
+    }
+
+    private ArrayNode examples(java.util.List<Example> examples) {
+        ArrayNode array = mapper.createArrayNode();
+        for (Example example : examples) {
+            ObjectNode node = mapper.createObjectNode();
+            node.put("input", example.input());
+            node.put("output", example.output());
+            if (example.explanation() != null) {
+                node.put("explanation", example.explanation());
+            }
+            array.add(node);
+        }
+        return array;
     }
 
     private ObjectNode response(Response response) {

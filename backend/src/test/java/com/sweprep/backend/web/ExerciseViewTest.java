@@ -2,8 +2,11 @@ package com.sweprep.backend.web;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.sweprep.backend.exercise.Example;
+import com.sweprep.backend.exercise.Exercise;
 import com.sweprep.backend.language.JavaLanguageAdapter;
 import com.sweprep.backend.testsupport.Fixtures;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -63,5 +66,35 @@ class ExerciseViewTest {
         ExerciseView view = ExerciseView.of(Fixtures.pairInAnyOrder(), adapter, OptionShuffler.IDENTITY);
 
         assertThat(view.hasComplexityCheck()).isFalse();
+    }
+
+    // --- LeetCode-style examples and constraints (issue: swe-examples-feedback) -------
+
+    @Test
+    void anExerciseWithExamplesAndConstraintsShipsThemOnTheView() {
+        Exercise base = Fixtures.pairInAnyOrder();
+        Exercise withExamples = new Exercise(
+                base.id(), base.title(), base.statement(), base.domain(), base.topics(),
+                base.difficulty(), base.form(), base.response(), base.grading(), base.hints(),
+                base.explanation(), base.family(), base.stability(), base.reviewed(),
+                base.derivedFrom(), base.complexityCheck(),
+                List.of(new Example("nums = [2,7,11,15], target = 9", "[0,1]", "explains it")),
+                List.of("2 <= nums.length <= 10^4"));
+
+        ExerciseView view = ExerciseView.of(withExamples, adapter, OptionShuffler.IDENTITY);
+
+        assertThat(view.examples()).hasSize(1);
+        assertThat(view.examples().get(0).input()).isEqualTo("nums = [2,7,11,15], target = 9");
+        assertThat(view.examples().get(0).output()).isEqualTo("[0,1]");
+        assertThat(view.examples().get(0).explanation()).isEqualTo("explains it");
+        assertThat(view.constraints()).containsExactly("2 <= nums.length <= 10^4");
+    }
+
+    @Test
+    void anExerciseWithNoExamplesOrConstraintsShipsEmptyLists() {
+        ExerciseView view = ExerciseView.of(Fixtures.pairInAnyOrder(), adapter, OptionShuffler.IDENTITY);
+
+        assertThat(view.examples()).isEmpty();
+        assertThat(view.constraints()).isEmpty();
     }
 }

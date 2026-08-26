@@ -3,6 +3,7 @@ package com.sweprep.backend.authoring;
 import com.sweprep.backend.exercise.ComplexityCheck;
 import com.sweprep.backend.exercise.Comparison;
 import com.sweprep.backend.exercise.Difficulty;
+import com.sweprep.backend.exercise.Example;
 import com.sweprep.backend.exercise.Family;
 import com.sweprep.backend.exercise.Hint;
 import com.sweprep.backend.exercise.Signature;
@@ -51,6 +52,13 @@ import java.util.List;
  *                            unrelated to the derived <em>complexity rep</em> (issue #9),
  *                            which asks the solver to classify a snippet's Big-O rather
  *                            than self-report and empirically check the challenge's own
+ * @param examples            optional LeetCode-style worked examples for the challenge
+ *                            (issue: swe-examples-feedback); an author supplies these
+ *                            directly rather than having the tool derive them, since a
+ *                            good example is a display/pedagogy choice, not something
+ *                            mechanically derivable from a case the way a rep is
+ * @param constraints         optional short, authored constraint strings for the
+ *                            challenge, shown alongside the examples
  */
 public record ProblemSpec(
         String id,
@@ -68,7 +76,9 @@ public record ProblemSpec(
         List<Family> family,
         com.sweprep.backend.exercise.Stability stability,
         LocalDate reviewed,
-        ComplexityCheck complexityCheck) {
+        ComplexityCheck complexityCheck,
+        List<Example> examples,
+        List<String> constraints) {
 
     public ProblemSpec {
         topics = List.copyOf(topics);
@@ -76,6 +86,8 @@ public record ProblemSpec(
         hints = hints == null ? List.of() : List.copyOf(hints);
         family = family == null ? List.of() : List.copyOf(family);
         stability = stability == null ? com.sweprep.backend.exercise.Stability.STABLE : stability;
+        examples = examples == null ? List.of() : List.copyOf(examples);
+        constraints = constraints == null ? List.of() : List.copyOf(constraints);
         if (id == null || id.isBlank()) {
             throw new AuthoringException("problem spec is missing a non-blank 'id'");
         }

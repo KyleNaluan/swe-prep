@@ -413,6 +413,75 @@ class FileExerciseCatalogTest {
         assertThat(catalog(dir).byId("pick-demo").orElseThrow().explanation()).isNull();
     }
 
+    // --- LeetCode-style examples and constraints (issue: swe-examples-feedback) -------
+
+    @Test
+    void parsesExamplesAndConstraintsWhenPresent(@TempDir Path dir) throws IOException {
+        String withExamples = CODE_EXERCISE.replaceFirst(
+                "\\}\\s*$",
+                """
+                ,
+                  "examples": [
+                    { "input": "n = 3", "output": "3", "explanation": "Return the argument." },
+                    { "input": "n = -1", "output": "-1" }
+                  ],
+                  "constraints": [ "-1000 <= n <= 1000" ]
+                }
+                """);
+        write(dir, "echo.json", withExamples);
+
+        Exercise loaded = catalog(dir).byId("echo-demo").orElseThrow();
+        assertThat(loaded.examples()).hasSize(2);
+        assertThat(loaded.examples().get(0).input()).isEqualTo("n = 3");
+        assertThat(loaded.examples().get(0).output()).isEqualTo("3");
+        assertThat(loaded.examples().get(0).explanation()).isEqualTo("Return the argument.");
+        assertThat(loaded.examples().get(1).explanation()).isNull();
+        assertThat(loaded.constraints()).containsExactly("-1000 <= n <= 1000");
+    }
+
+    @Test
+    void anExerciseWithNoExamplesOrConstraintsLoadsWithEmptyLists(@TempDir Path dir) throws IOException {
+        write(dir, "echo.json", CODE_EXERCISE);
+
+        Exercise loaded = catalog(dir).byId("echo-demo").orElseThrow();
+        assertThat(loaded.examples()).isEmpty();
+        assertThat(loaded.constraints()).isEmpty();
+    }
+
+    @Test
+    void anExampleMissingItsOutputNamesFileAndField(@TempDir Path dir) throws IOException {
+        String badExample = CODE_EXERCISE.replaceFirst(
+                "\\}\\s*$",
+                """
+                ,
+                  "examples": [ { "input": "n = 3" } ]
+                }
+                """);
+        write(dir, "bad-example.json", badExample);
+
+        assertThatThrownBy(catalog(dir)::all)
+                .isInstanceOf(ContentException.class)
+                .hasMessageContaining("bad-example.json")
+                .hasMessageContaining("output");
+    }
+
+    @Test
+    void aNonStringConstraintNamesFileAndField(@TempDir Path dir) throws IOException {
+        String badConstraints = CODE_EXERCISE.replaceFirst(
+                "\\}\\s*$",
+                """
+                ,
+                  "constraints": [ 42 ]
+                }
+                """);
+        write(dir, "bad-constraints.json", badConstraints);
+
+        assertThatThrownBy(catalog(dir)::all)
+                .isInstanceOf(ContentException.class)
+                .hasMessageContaining("bad-constraints.json")
+                .hasMessageContaining("constraints");
+    }
+
     // --- The competitive-distractor gate (issue #42) ----------------------------------
 
     @Test
