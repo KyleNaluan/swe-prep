@@ -7,6 +7,7 @@ import com.sweprep.backend.exercise.Complexity;
 import com.sweprep.backend.exercise.ComplexityCheck;
 import com.sweprep.backend.exercise.DataType;
 import com.sweprep.backend.exercise.Difficulty;
+import com.sweprep.backend.exercise.Example;
 import com.sweprep.backend.exercise.Exercise;
 import com.sweprep.backend.exercise.Form;
 import com.sweprep.backend.exercise.Grading;
@@ -67,6 +68,11 @@ import java.util.regex.Pattern;
  *                                                                      // unspecified
  *                    "expected": [ [1, "Alice"], [2, "Bob"] ] },       // rows, columns by position
  *   "hints":    [ { "name": "Pattern", "body": "..." }, ... ], // optional ladder
+ *   "examples": [ { "input": "nums = [2,7,11,15], target = 9", // optional, LeetCode-style
+ *                    "output": "[0,1]",                        // worked examples shown
+ *                    "explanation": "..." } ],                 // under the statement;
+ *                                                               // "explanation" is optional
+ *   "constraints": [ "1 &lt;= nums.length &lt;= 10^4" ],        // optional, short strings
  *   "explanation": "why the correct answer is correct",        // optional (issue #51)
  *   "family":   ["BACKEND", "AIML"],                           // optional, default []
  *   "stability": "STABLE|VOLATILE",                            // optional, default STABLE
@@ -128,10 +134,63 @@ final class ExerciseParser {
         String explanation = json.optionalText(root, "explanation");
         String derivedFrom = json.optionalText(root, "derivedFrom");
         ComplexityCheck complexityCheck = complexityCheck(json, root, response);
+        List<Example> examples = examples(json, root);
+        List<String> constraints = constraints(json, root);
         return new Exercise(
                 id, title, statement, domain, topics, difficulty, form, response, grading, hints,
                 explanation, json.family(root), json.stability(root), json.reviewed(root),
-                derivedFrom, complexityCheck);
+                derivedFrom, complexityCheck, examples, constraints);
+    }
+
+    /**
+     * The optional {@code "examples"} block (LeetCode-style worked examples). Absent by
+     * default - every pre-existing exercise loads unchanged, since this is purely
+     * additive display metadata (see {@link Example}'s javadoc). Each entry requires a
+     * non-blank {@code input}/{@code output} display string; {@code explanation} is
+     * optional.
+     */
+    private static List<Example> examples(ContentJson json, JsonNode root) {
+        JsonNode node = root.get("examples");
+        if (node == null || node.isNull()) {
+            return List.of();
+        }
+        if (!node.isArray()) {
+            throw json.malformed("'examples' must be an array of { input, output, explanation? }");
+        }
+        List<Example> examples = new ArrayList<>();
+        for (JsonNode example : node) {
+            if (!example.isObject()) {
+                throw json.malformed("each example must be an object with 'input' and 'output'");
+            }
+            examples.add(new Example(
+                    json.requireText(example, "input"),
+                    json.requireText(example, "output"),
+                    json.optionalText(example, "explanation")));
+        }
+        return examples;
+    }
+
+    /**
+     * The optional {@code "constraints"} block: short, author-verified constraint
+     * strings shown alongside the examples. Absent by default, same additive shape as
+     * {@link #examples}.
+     */
+    private static List<String> constraints(ContentJson json, JsonNode root) {
+        JsonNode node = root.get("constraints");
+        if (node == null || node.isNull()) {
+            return List.of();
+        }
+        if (!node.isArray()) {
+            throw json.malformed("'constraints' must be an array of strings");
+        }
+        List<String> constraints = new ArrayList<>();
+        for (JsonNode constraint : node) {
+            if (!constraint.isTextual() || constraint.asText().isBlank()) {
+                throw json.malformed("'constraints' must contain only non-empty strings");
+            }
+            constraints.add(constraint.asText());
+        }
+        return constraints;
     }
 
     /**

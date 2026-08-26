@@ -34,6 +34,12 @@ import java.util.List;
  *                           only from {@code POST .../complexity}, after the solver's
  *                           claim is already recorded, so it can never sit in a
  *                           response the client holds while the claim prompt renders.
+ * @param examples           LeetCode-style worked examples (issue: swe-examples-feedback),
+ *                           shown under the statement; empty when the item carries none.
+ *                           Unlike the withheld fields above, these are shown up front -
+ *                           they are teaching material, not something graded or revealed
+ * @param constraints        short authored constraint strings shown alongside the
+ *                           examples; empty when the item carries none
  */
 public record ExerciseView(
         String id,
@@ -45,7 +51,9 @@ public record ExerciseView(
         ResponseView response,
         List<String> hints,
         boolean hasExplanation,
-        boolean hasComplexityCheck) {
+        boolean hasComplexityCheck,
+        List<ExampleView> examples,
+        List<String> constraints) {
 
     static ExerciseView of(Exercise exercise, LanguageAdapter adapter, OptionShuffler shuffler) {
         return new ExerciseView(
@@ -58,7 +66,9 @@ public record ExerciseView(
                 responseView(exercise, adapter, shuffler),
                 exercise.hints().stream().map(Hint::name).toList(),
                 exercise.explanation() != null,
-                exercise.complexityCheck() != null);
+                exercise.complexityCheck() != null,
+                exercise.examples().stream().map(ExampleView::of).toList(),
+                exercise.constraints());
     }
 
     private static ResponseView responseView(

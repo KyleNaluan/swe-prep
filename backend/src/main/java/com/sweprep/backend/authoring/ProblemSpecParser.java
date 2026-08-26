@@ -7,6 +7,7 @@ import com.sweprep.backend.exercise.Complexity;
 import com.sweprep.backend.exercise.ComplexityCheck;
 import com.sweprep.backend.exercise.DataType;
 import com.sweprep.backend.exercise.Difficulty;
+import com.sweprep.backend.exercise.Example;
 import com.sweprep.backend.exercise.Family;
 import com.sweprep.backend.exercise.Hint;
 import com.sweprep.backend.exercise.InputGenerator;
@@ -47,6 +48,9 @@ import java.util.List;
  *   "family": ["BACKEND"],                                // optional
  *   "stability": "STABLE",                                // optional
  *   "reviewed": "2026-08-07",                              // optional
+ *   "examples": [ { "input": "nums = [2,7,11,15], target = 9",  // optional
+ *                    "output": "[0,1]", "explanation": "…" } ],
+ *   "constraints": [ "1 &lt;= nums.length &lt;= 10^4" ],   // optional
  *   "complexity": { "targetTime": "LINEAR", "targetSpace": "CONSTANT",
  *                    "generator": { "arguments": [...] } } // optional
  * }
@@ -91,9 +95,30 @@ public final class ProblemSpecParser {
                 : null;
         LocalDate reviewed = reviewed(source, root);
         ComplexityCheck complexityCheck = complexityCheck(source, root, signature);
+        List<Example> examples = examples(source, root);
+        List<String> constraints = textArray(source, root, "constraints");
         return new ProblemSpec(
                 id, title, statement, domain, topics, difficulty, signature, comparison, cases,
-                referenceSolution, hints, explanation, family, stability, reviewed, complexityCheck);
+                referenceSolution, hints, explanation, family, stability, reviewed, complexityCheck,
+                examples, constraints);
+    }
+
+    private static List<Example> examples(String source, JsonNode root) {
+        JsonNode node = root.get("examples");
+        if (node == null || node.isNull()) {
+            return List.of();
+        }
+        if (!node.isArray()) {
+            throw malformed(source, "'examples' must be an array of { input, output, explanation? }");
+        }
+        List<Example> examples = new ArrayList<>();
+        for (JsonNode example : node) {
+            examples.add(new Example(
+                    requireText(source, example, "input"),
+                    requireText(source, example, "output"),
+                    optionalText(source, example, "explanation")));
+        }
+        return examples;
     }
 
     private static Signature signature(String source, JsonNode node) {
