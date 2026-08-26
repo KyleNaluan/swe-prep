@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 
-// The dedicated content page shell Practice and Learn both use - carrying Direction
+// The dedicated content page shell Learn uses (Practice retired its use in the
+// full-screen redesign - see AGENTS.md) - carrying Direction
 // A's "three panes, drill left to right, breadcrumb above" pattern into Direction C's
 // shipped design language (see AGENTS.md's visual-redesign section). Deliberately just
 // the shell: a crumb trail plus whatever the caller renders as the body, so it composes

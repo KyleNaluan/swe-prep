@@ -56,13 +56,14 @@ function Session() {
   // without either ever popping its own content entry, so a content page left open would
   // otherwise strand the URL hash pointing at a page nothing renders anymore (see
   // contentNav.ts's clearContentHashIfOpen) - a no-op when no content page is open, so
-  // every such call site can route through it with no conditional of its own. Switching
-  // *between* Practice and Learn must NOT clear first: each mounts with its own
-  // mount-time auto-pick (enterAutoPickedContent), which already replaces a still-open
-  // content entry in place rather than pushing a second one - clearing here first would
-  // erase the "already on a content entry" signal that replace-in-place depends on and
-  // silently turn every Practice<->Learn switch back into an accumulating push (see
-  // Session.test.tsx's "keeps history depth constant across Practice<->Learn switches").
+  // every such call site can route through it with no conditional of its own. Only Learn
+  // touches browser history now: it mounts with its own auto-pick (enterAutoPickedContent),
+  // which replaces a still-open content entry in place rather than pushing a second one, so
+  // switching *to* Learn must NOT clear first - clearing would erase the "already on a
+  // content entry" signal that replace-in-place depends on and silently turn a re-entry into
+  // an accumulating push. Practice contributes no history entries at all (its breadcrumb and
+  // contentNav usage were retired in the full-screen redesign), so switching to or from it
+  // never needs its own clear.
   const switchMode = useCallback((next: Mode) => {
     if (next === 'today' || next === 'readiness') clearContentHashIfOpen()
     setMode(next)
@@ -146,6 +147,17 @@ function Session() {
     }
   }, [warmupEmpty, status?.dayComplete, recordDayComplete])
 
+  // Practice is a full-screen workspace (captain-approved redesign, issue:
+  // swe-practice-fs-build): it renders its own edge-to-edge shell - a slim top bar in
+  // place of Session's `.app`/tabs chrome - rather than sitting inside `.workspace`
+  // like the other three modes. Its brand icon calls `switchMode('today')` directly
+  // (the same action the retired chrome's own brand icon would have taken), which is
+  // how leaving the workspace is reachable with no tabs on screen; the "Practice" tab
+  // button below (rendered only in the non-practice chrome) is still what enters it.
+  if (mode === 'practice') {
+    return <Practice onSolved={handleMainSolved} onExit={() => switchMode('today')} />
+  }
+
   return (
     <div className="app">
       <header className="topbar session-header">
@@ -181,13 +193,10 @@ function Session() {
         >
           Readiness
         </button>
-        <button
-          type="button"
-          className={mode === 'practice' ? 'active' : ''}
-          aria-selected={mode === 'practice'}
-          aria-pressed={mode === 'practice'}
-          onClick={() => switchMode('practice')}
-        >
+        {/* Never active here: this chrome only renders when mode !== 'practice' (see
+            the early return above) - Practice is a full-screen mode with no tabs of
+            its own, so entering it is the only thing this button ever does. */}
+        <button type="button" onClick={() => switchMode('practice')}>
           Practice
         </button>
         <button
@@ -221,8 +230,6 @@ function Session() {
           </div>
         ) : mode === 'readiness' ? (
           <Readiness streak={status?.streak} />
-        ) : mode === 'practice' ? (
-          <Practice dayComplete={status?.dayComplete ?? false} onSolved={handleMainSolved} />
         ) : (
           <Lesson />
         )}

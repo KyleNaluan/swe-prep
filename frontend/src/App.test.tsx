@@ -1,11 +1,4 @@
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitForElementToBeRemoved,
-  within,
-} from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 
@@ -66,30 +59,21 @@ const CHOICE_EXERCISE = {
 // tab first.
 async function gotoPractice() {
   fireEvent.click(screen.getByRole('button', { name: 'Practice' }))
-  await screen.findByLabelText('Find a problem')
+  await screen.findByRole('button', { name: 'Problem List' })
 }
 
-// Selects an exercise through the TreeBrowser (issue #90's replacement for the old flat
-// `<select id="exercise-select">`): search narrows the tree to a cross-domain match, then
-// the matching item card is clicked. The two-item CATALOG below spans two domains, so
-// this is the only reliable way to reach the second exercise without first knowing -
-// and clicking into - the domain it happens to live under.
-//
-// Practice always arrives on a content page (the auto-picked main exercise) rather
-// than the tree, so this first returns to browse via the breadcrumb - exactly the real
-// user path (the tree is not part of the accessibility tree, and so not reachable,
-// while a content page is open). Leaving is a real, asynchronous history navigation
-// (`history.back()`), so this awaits the content page actually unmounting before
-// touching the tree.
+// Selects an exercise through the TreeBrowser inside the "Problem List" overlay
+// sidebar (captain-approved full-screen redesign, issue: swe-practice-fs-build -
+// Practice's old inline browse tree and breadcrumb are retired): open the sidebar,
+// search narrows it to a cross-domain match, then the matching row is clicked -
+// closing the sidebar automatically, exactly the real user path. The two-item
+// CATALOG below spans two domains, so this is the only reliable way to reach the
+// second exercise without first knowing - and clicking into - the domain it lives in.
 async function selectExercise(title: string) {
-  fireEvent.click(
-    within(screen.getByRole('navigation', { name: 'Breadcrumb' })).getByRole('button', {
-      name: 'Practice',
-    }),
-  )
-  await waitForElementToBeRemoved(() => screen.queryByRole('navigation', { name: 'Breadcrumb' }))
-  fireEvent.change(screen.getByLabelText('Find a problem'), { target: { value: title } })
-  fireEvent.click(screen.getByRole('button', { name: new RegExp(title) }))
+  fireEvent.click(screen.getByRole('button', { name: 'Problem List' }))
+  const sidebar = await screen.findByRole('dialog', { name: 'Problem list' })
+  fireEvent.change(within(sidebar).getByLabelText('Find a problem'), { target: { value: title } })
+  fireEvent.click(within(sidebar).getByRole('button', { name: new RegExp(title) }))
 }
 
 function mockFetch(run: unknown, runOk = true) {
@@ -208,41 +192,55 @@ describe('App', () => {
     expect(await screen.findByText('Correct')).toBeInTheDocument()
   })
 
-  // Direction A's "drill in, breadcrumb above" pattern, carried into Direction C
-  // (see AGENTS.md's visual-redesign section): clicking an item opens it as a
-  // dedicated page with a breadcrumb, and returning restores the tree exactly -
-  // Direction C's position-preserving filters, the captain's confirmed feature of
-  // PR #89, must survive this round trip too.
-  it('opens a selected exercise as a dedicated page with a breadcrumb, and returning restores the open domain and filters exactly', async () => {
+  // Practice's old dedicated-content-page breadcrumb is retired (captain-approved
+  // full-screen redesign, issue: swe-practice-fs-build): the browse tree now lives
+  // only inside the "Problem List" overlay sidebar, which is never unmounted while
+  // closed - only hidden - so Direction C's position-preserving filters (the
+  // captain's confirmed feature of PR #89) still hold with nothing to explicitly
+  // restore: closing and reopening the sidebar finds the tree exactly as it was left.
+  it('opens the Problem List as an overlay sidebar, and closing/reopening it preserves the open domain and filters exactly', async () => {
     vi.stubGlobal('fetch', mockFetch({}))
 
     render(<App />)
     await gotoPractice()
     await screen.findByRole('heading', { name: 'Two Sum' })
 
-    // The auto-picked exercise already opened straight to its own content page.
-    const breadcrumb = () => screen.getByRole('navigation', { name: 'Breadcrumb' })
-    expect(within(breadcrumb()).getByText('Practice')).toBeInTheDocument()
-    expect(within(breadcrumb()).getByText('Two Sum')).toBeInTheDocument()
+    // The auto-picked exercise already opened straight into the workspace, sidebar
+    // closed - aria-hidden while closed, so the tree is not reachable until it is
+    // explicitly opened.
+    // aria-hidden zeroes out the computed accessible name too, so this looks the
+    // element up by id rather than role+name while closed.
+    expect(document.getElementById('practice-sidebar')).toHaveAttribute('aria-hidden', 'true')
 
-    // Return to browse, exclude Hard, and drill into the Fundamentals domain.
-    fireEvent.click(within(breadcrumb()).getByRole('button', { name: 'Practice' }))
-    await waitForElementToBeRemoved(() => screen.queryByRole('navigation', { name: 'Breadcrumb' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Hard' }))
-    expect(screen.getByRole('button', { name: 'Hard' })).toHaveAttribute('aria-pressed', 'false')
-    fireEvent.click(screen.getByRole('button', { name: /^Fundamentals/ }))
+    // Open the sidebar, exclude Hard, and drill into the Fundamentals domain.
+    fireEvent.click(screen.getByRole('button', { name: 'Problem List' }))
+    const sidebar = await screen.findByRole('dialog', { name: 'Problem list' })
+    fireEvent.click(within(sidebar).getByRole('button', { name: 'Hard' }))
+    expect(within(sidebar).getByRole('button', { name: 'Hard' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    )
+    fireEvent.click(within(sidebar).getByRole('button', { name: /^Fundamentals/ }))
 
-    // Pick the item from the newly opened domain - a real dedicated page opens.
-    fireEvent.click(screen.getByRole('button', { name: /Hash Map Lookup/ }))
+    // Pick the item from the newly opened domain - a real navigation happens, and the
+    // sidebar closes on its own.
+    fireEvent.click(within(sidebar).getByRole('button', { name: /Hash Map Lookup/ }))
     expect(await screen.findByRole('heading', { name: 'Hash Map Lookup' })).toBeInTheDocument()
-    expect(within(breadcrumb()).getByText('Fundamentals')).toBeInTheDocument()
+    // aria-hidden zeroes out the computed accessible name too, so this looks the
+    // element up by id rather than role+name while closed.
+    expect(document.getElementById('practice-sidebar')).toHaveAttribute('aria-hidden', 'true')
 
-    // Return to browse again: the exclusion and the open domain are exactly as left.
-    fireEvent.click(within(breadcrumb()).getByRole('button', { name: 'Practice' }))
-    await waitForElementToBeRemoved(() => screen.queryByRole('navigation', { name: 'Breadcrumb' }))
-    expect(screen.getByRole('button', { name: 'Hard' })).toHaveAttribute('aria-pressed', 'false')
-    expect(screen.getByRole('button', { name: /^Fundamentals/ })).toHaveClass('open')
-    expect(screen.getByRole('button', { name: /Hash Map Lookup/ })).toHaveAttribute(
+    // Reopen the sidebar: the exclusion, the open domain and the current selection
+    // are exactly as left - it was never unmounted, only hidden, so there is nothing
+    // to restore, only to find.
+    fireEvent.click(screen.getByRole('button', { name: 'Problem List' }))
+    const reopened = await screen.findByRole('dialog', { name: 'Problem list' })
+    expect(within(reopened).getByRole('button', { name: 'Hard' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    )
+    expect(within(reopened).getByRole('button', { name: /^Fundamentals/ })).toHaveClass('open')
+    expect(within(reopened).getByRole('button', { name: /Hash Map Lookup/ })).toHaveAttribute(
       'aria-current',
       'true',
     )
@@ -302,7 +300,12 @@ describe('App', () => {
     expect(lastSubmission).toBe(typed)
   })
 
-  it('shows past attempts in the history list', async () => {
+  // The attempt-history table moved to Readiness (captain-approved full-screen
+  // redesign, issue: swe-practice-fs-build - see Readiness.test.tsx for its coverage
+  // there). Practice still fetches the same history, though, since the sidebar tree's
+  // solved count and checkmarks are derived from it (AGENTS.md's honest-gaps note:
+  // relocating the table does not remove that need).
+  it('keeps fetching attempt history for the sidebar tree even with no history table on Practice anymore', async () => {
     const attempts = [
       {
         id: 'a1',
@@ -310,7 +313,7 @@ describe('App', () => {
         exerciseTitle: 'Two Sum',
         domain: 'algorithms',
         form: 'CHALLENGE',
-        outcome: 'ABANDONED',
+        outcome: 'SOLVED',
         startedAt: '2026-08-06T10:00:00Z',
         endedAt: '2026-08-06T10:05:00Z',
         submissionCount: 2,
@@ -335,10 +338,13 @@ describe('App', () => {
 
     render(<App />)
     await gotoPractice()
+    await screen.findByRole('heading', { name: 'Two Sum' })
 
-    expect(await screen.findByRole('heading', { name: 'History' })).toBeInTheDocument()
-    expect(screen.getByRole('cell', { name: 'abandoned' })).toBeInTheDocument()
-    expect(screen.getByRole('cell', { name: '2' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'History' })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Problem List' }))
+    const sidebar = await screen.findByRole('dialog', { name: 'Problem list' })
+    expect(within(sidebar).getByText('1 of 2 solved')).toBeInTheDocument()
   })
 
   it('offers the hint ladder and shows a rung body only when taken', async () => {

@@ -58,7 +58,7 @@ Prerequisites: Java 21 on `PATH`, Docker running, Node 24, Python 3 on `PATH` (f
    Today/Readiness/Practice/Learn tabs to switch surfaces and a role picker in the header for
    choosing which roles you are preparing for (issue #40): the required warm-up and
    auto-seeding then draw only from those families (plus the always-on core), while
-   everything stays reachable through the Practice/Learn browse tabs - it hides nothing.
+   everything stays reachable through Practice's Problem List and the Learn browse tab - it hides nothing.
    The warm-up (issue #18) walks an
    interleaved set of ~8 quick reps one at a time - multiple-choice or a short
    predict-the-output box - driving the same attempt flow every exercise uses; a
@@ -68,10 +68,11 @@ Prerequisites: Java 21 on `PATH`, Docker running, Node 24, Python 3 on `PATH` (f
    day-complete landing celebrates that first, then offers an optional ~30-minute
    main exercise as a bonus - declining keeps the day done and the streak intact, and the
    landing links straight into the Readiness surface at the moment progress is most salient. The
-   Practice tab is the free-practice editor: pick an exercise
-   from a tiered browser that groups the catalog by area then pattern, with
-   difficulty and family filters that re-filter in place without ever losing your
-   spot in the tree (issue #90). A coding
+   Practice tab opens a full-screen workspace (the description on the left, the
+   editor and results on the right): a Problem List button reveals an overlay
+   sidebar that groups the catalog by area then pattern, with difficulty and family
+   filters that re-filter in place without ever losing your spot in the tree
+   (issue #90), and a brand icon returns to Today. A coding
    exercise opens in a Monaco editor: write a solution and press Run to have the
    backend compile and execute it against the test cases and report
    `N of M tests passed`. Java is the default language; a code exercise's header also
@@ -116,9 +117,9 @@ Prerequisites: Java 21 on `PATH`, Docker running, Node 24, Python 3 on `PATH` (f
    per-family breakdown - never a
    score, points, badges, or levels, and a broken streak is only ever described, never
    framed as a loss. Each sitting and every press of Run is
-   recorded as durable practice history, shown in a History panel below the editor
-   (with the hints taken) and surviving a restart; a Give up button abandons an
-   unsolved sitting.
+   recorded as durable practice history, shown in a scrollable History table on the
+   Readiness tab below the per-family breakdown (with the hints taken) and surviving
+   a restart; a Give up button abandons an unsolved sitting.
 
 If Postgres isn't reachable, the backend fails to start rather than coming up in
 a degraded state. If the content path is missing or a file is malformed, the app
