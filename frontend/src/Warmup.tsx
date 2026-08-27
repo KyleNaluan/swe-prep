@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { apiFetch, errorMessage } from './api'
 import Confetti from './Confetti'
+import { roleLabelFrom, type RoleStatus } from './role'
 
 // The warm-up runner: the ~8-rep, ~4-minute daily core (issues #3, #9, #18). It fetches
 // the interleaved, family-filtered, gated set the backend builds, then walks it one rep
@@ -76,6 +77,14 @@ function Warmup({ onComplete, onEmpty }: WarmupProps = {}) {
   const [pos, setPos] = useState(0)
   const [correctCount, setCorrectCount] = useState(0)
 
+  // The active focus preset's label (issue #40's dropdown), shown as a quiet "Drawing from:"
+  // line so the family filter's effect on this set is visible rather than invisible server-
+  // side behaviour (captain-requested, 2026-08-26). Fetched independently of RolePicker's own
+  // read of the same endpoint - Session remounts Warmup via `key={roleVersion}` on a role
+  // change, so a fresh mount here always picks up the new focus. Best-effort: this is a quiet
+  // indicator, never something a failed read may block the warm-up over.
+  const [roleLabel, setRoleLabel] = useState<string | null>(null)
+
   const [rep, setRep] = useState<Rep | null>(null)
   const [repError, setRepError] = useState<string | null>(null)
   const [submitError, setSubmitError] = useState<string | null>(null)
@@ -113,6 +122,26 @@ function Warmup({ onComplete, onEmpty }: WarmupProps = {}) {
       void abandonIfUnsolved()
     }
   }, [abandonIfUnsolved])
+
+  // Read the active focus label once, purely for the quiet source line below - never gates
+  // or delays the warm-up set itself, which loads in its own independent effect.
+  useEffect(() => {
+    let cancelled = false
+    apiFetch('/api/role')
+      .then(async (response) => {
+        if (!response.ok) throw new Error(await errorMessage(response))
+        return (await response.json()) as RoleStatus
+      })
+      .then((status) => {
+        if (!cancelled) setRoleLabel(roleLabelFrom(status))
+      })
+      .catch(() => {
+        // Quiet indicator only; a failed read just leaves the line unshown.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   // Load the warm-up set once.
   useEffect(() => {
@@ -307,7 +336,7 @@ function Warmup({ onComplete, onEmpty }: WarmupProps = {}) {
   return (
     <section className="warmup">
       <div className="card arcbar">
-        <WarmupArc pos={pos} total={queue.length} resultLog={resultLog} />
+        <WarmupArc pos={pos} total={queue.length} resultLog={resultLog} roleLabel={roleLabel} />
       </div>
       <div className="warmup-progress">
         <span className="warmup-count">
@@ -500,10 +529,12 @@ function WarmupArc({
   pos,
   total,
   resultLog,
+  roleLabel,
 }: {
   pos: number
   total: number
   resultLog: Record<number, boolean>
+  roleLabel: string | null
 }) {
   const radius = 28
   const circumference = 2 * Math.PI * radius
@@ -529,6 +560,9 @@ function WarmupArc({
         <p>
           Rep {pos + 1} of {total} - about 30 seconds each.
         </p>
+        {/* Subtle by design (issue #40's dropdown made visible): quiet secondary copy, never
+            competing with the rep itself - one line, not a per-item marker on every rep. */}
+        {roleLabel && <p className="note warmup-source">Drawing from: {roleLabel}</p>}
       </div>
       <div className="dots">
         {Array.from({ length: total }, (_, i) => {
