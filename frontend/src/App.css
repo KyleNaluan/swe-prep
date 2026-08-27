@@ -472,6 +472,14 @@ button.secondary:hover:not(:disabled) {
   color: var(--muted);
   font-size: 13px;
 }
+/* The active-focus source line (issue #40's dropdown made visible) - quieter than the
+   "Rep X of Y" line above it, deliberately never competing with the rep itself. Selector
+   specificity, not stylesheet order, is what wins this over the plain `.arcbar p` rule. */
+.arcbar .warmup-source {
+  margin-top: 3px;
+  color: var(--faint);
+  font-size: 12.5px;
+}
 .dots {
   display: flex;
   gap: 6px;
@@ -2291,6 +2299,32 @@ input[type='search'] {
 .role-picker.error,
 .role-picker-error {
   color: var(--coral);
+}
+/* The Focus dropdown's hover/focus description (captain-requested, 2026-08-26): floating,
+   positioned below and right-aligned so it grows toward the viewport's centre rather than
+   off its right edge, and width-capped against the viewport so a narrow layout never clips
+   it. Visibility is gated by the `hidden` attribute in RolePicker.tsx, not a CSS :hover rule,
+   so it also works from keyboard focus and stays out of the accessibility tree when closed. */
+.role-field {
+  position: relative;
+  display: inline-flex;
+}
+.role-tooltip {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 30;
+  width: max-content;
+  max-width: min(260px, calc(100vw - 32px));
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line2);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 12.5px;
+  font-weight: 400;
+  line-height: 1.5;
+  box-shadow: var(--shadow-m);
 }
 .visually-hidden {
   position: absolute;

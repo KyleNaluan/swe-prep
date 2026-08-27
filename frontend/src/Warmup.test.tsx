@@ -30,18 +30,26 @@ const FREE_TEXT_REP = {
 
 // A fetch stub over a warm-up set of the given rep summaries, serving each rep's full
 // view from `reps` and grading a submission with `verdictFor(submission)`. Records
-// whether the explanation endpoint was called.
+// whether the explanation endpoint was called. `role`, when given, serves /api/role so
+// the quiet "Drawing from:" source line has something real to read; omitted entirely
+// (rather than defaulted) so a test that doesn't care about it still exercises the
+// component's best-effort handling of that read failing.
 function mockWarmup(options: {
   set: { id: string }[]
   reps: Record<string, unknown>
   verdictFor: (submission: string, id: string) => unknown
   onExplanation?: () => void
+  role?: unknown
 }) {
   let currentExerciseId = ''
   return vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
     const href = String(url)
     if (href.endsWith('/api/reps/warmup')) {
       return { ok: true, json: async () => options.set } as Response
+    }
+    if (href.endsWith('/api/role')) {
+      if (options.role === undefined) return { ok: false, status: 500, json: async () => ({}) } as Response
+      return { ok: true, json: async () => options.role } as Response
     }
     const exerciseMatch = href.match(/\/api\/exercises\/([^/]+)$/)
     if (exerciseMatch) {
@@ -216,5 +224,67 @@ describe('Warmup', () => {
       screen.getByText(/completing any one exercise in Practice finishes your day/i),
     ).toBeInTheDocument()
     await waitFor(() => expect(onEmpty).toHaveBeenCalledTimes(1))
+  })
+
+  // Captain-requested (2026-08-26): the active focus (issue #40's dropdown) shapes this exact
+  // set server-side, but nothing said so on the warm-up surface itself.
+  describe('the active-focus source line', () => {
+    it('shows the active preset label from the real role status endpoint', async () => {
+      vi.stubGlobal(
+        'fetch',
+        mockWarmup({
+          set: [{ id: 'rep-pattern' }],
+          reps: { 'rep-pattern': CHOICE_REP },
+          verdictFor: () => ({ outcome: 'FAILED', passed: 0, total: 1, detail: '' }),
+          role: {
+            presets: [{ id: 'backend', label: 'Backend', families: ['BACKEND'] }],
+            activeFamilies: ['BACKEND'],
+            currentPreset: 'backend',
+            chosen: true,
+          },
+        }) as unknown as typeof fetch,
+      )
+
+      render(<Warmup />)
+
+      expect(await screen.findByText('Drawing from: Backend')).toBeInTheDocument()
+    })
+
+    it('reflects a different active preset, matching whatever /api/role currently answers', async () => {
+      vi.stubGlobal(
+        'fetch',
+        mockWarmup({
+          set: [{ id: 'rep-pattern' }],
+          reps: { 'rep-pattern': CHOICE_REP },
+          verdictFor: () => ({ outcome: 'FAILED', passed: 0, total: 1, detail: '' }),
+          role: {
+            presets: [{ id: 'everything', label: 'Everything', families: [] }],
+            activeFamilies: [],
+            currentPreset: 'everything',
+            chosen: false,
+          },
+        }) as unknown as typeof fetch,
+      )
+
+      render(<Warmup />)
+
+      expect(await screen.findByText('Drawing from: Everything')).toBeInTheDocument()
+    })
+
+    it('shows no source line when the role status cannot be read - a quiet indicator only', async () => {
+      vi.stubGlobal(
+        'fetch',
+        mockWarmup({
+          set: [{ id: 'rep-pattern' }],
+          reps: { 'rep-pattern': CHOICE_REP },
+          verdictFor: () => ({ outcome: 'FAILED', passed: 0, total: 1, detail: '' }),
+        }) as unknown as typeof fetch,
+      )
+
+      render(<Warmup />)
+
+      await screen.findByRole('heading', { name: 'Pattern: sorted-pair sum' })
+      expect(screen.queryByText(/Drawing from:/)).not.toBeInTheDocument()
+    })
   })
 })
