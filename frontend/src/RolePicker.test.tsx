@@ -87,4 +87,48 @@ describe('RolePicker (issue #40)', () => {
 
     expect(await screen.findByText('Focus unavailable')).toBeInTheDocument()
   })
+
+  // Captain-requested (2026-08-26): the dropdown's effect on the warm-up/seeding was real but
+  // invisible in the UI. The tooltip must show on hover AND on keyboard focus, and stay wired
+  // to the select via aria-describedby regardless of which one triggered it.
+  describe('the hover/focus description', () => {
+    it('is hidden until hovered, then hides again on mouse-leave', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => ({ ok: true, json: async () => STATUS }) as Response),
+      )
+      render(<RolePicker />)
+
+      const select = (await screen.findByRole('combobox')) as HTMLSelectElement
+      const tooltip = screen.getByRole('tooltip', { hidden: true })
+      expect(tooltip).toHaveAttribute('hidden')
+      expect(select).toHaveAttribute('aria-describedby', tooltip.id)
+
+      fireEvent.mouseEnter(select.closest('.role-field') as Element)
+      expect(screen.getByRole('tooltip')).not.toHaveAttribute('hidden')
+
+      fireEvent.mouseLeave(select.closest('.role-field') as Element)
+      expect(screen.getByRole('tooltip', { hidden: true })).toHaveAttribute('hidden')
+    })
+
+    it('shows on keyboard focus (a11y) even with no hover, and describes what Focus does', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => ({ ok: true, json: async () => STATUS }) as Response),
+      )
+      render(<RolePicker />)
+
+      const select = await screen.findByRole('combobox')
+      fireEvent.focus(select)
+
+      const tooltip = screen.getByRole('tooltip')
+      expect(tooltip).not.toHaveAttribute('hidden')
+      expect(tooltip).toHaveTextContent(/daily warm-up/i)
+      expect(tooltip).toHaveTextContent(/browsable in Practice and Learn/i)
+      expect(tooltip).toHaveTextContent(/never drops a review/i)
+
+      fireEvent.blur(select)
+      expect(screen.getByRole('tooltip', { hidden: true })).toHaveAttribute('hidden')
+    })
+  })
 })
