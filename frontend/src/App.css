@@ -735,6 +735,10 @@ fieldset.filtergroup legend {
 
 /* ---------- day ribbon (Direction C signature element) ---------- */
 .ribbon {
+  /* Matches .history-section's own stacked-section gap (Readiness) - the page's
+     established rhythm for separating a distinct trailing card from the content
+     above it, reused here rather than a one-off value. */
+  margin-top: 32px;
   padding: 18px 22px 20px;
 }
 .ribbon h2 {
